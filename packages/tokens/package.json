@@ -1,0 +1,11 @@
+{
+  "name": "@destello/tokens",
+  "version": "1.0.0",
+  "description": "Design tokens de Destello — colores, tipografía, espaciado",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": ["src"]
+}

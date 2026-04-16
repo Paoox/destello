@@ -1,0 +1,26 @@
+{
+  "name": "destello",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Destello — Plataforma de aprendizaje inmersivo 3D",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev":        "concurrently \"npm run dev --workspace=apps/web\" \"npm run dev --workspace=apps/api\"",
+    "dev:web":    "npm run dev --workspace=apps/web",
+    "dev:api":    "npm run dev --workspace=apps/api",
+    "build":      "npm run build --workspace=apps/web",
+    "build:web":  "npm run build --workspace=apps/web",
+    "lint":       "npm run lint --workspaces",
+    "tokens:build": "npm run build --workspace=packages/tokens"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

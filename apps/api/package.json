@@ -1,0 +1,23 @@
+{
+  "name": "@destello/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev":   "node --watch src/index.js",
+    "start": "node src/index.js",
+    "lint":  "eslint src --ext .js"
+  },
+  "dependencies": {
+    "express":      "^4.19.2",
+    "cors":         "^2.8.5",
+    "helmet":       "^7.1.0",
+    "dotenv":       "^16.4.5",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs":     "^2.4.3",
+    "pg":           "^8.11.5"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0"
+  }
+}

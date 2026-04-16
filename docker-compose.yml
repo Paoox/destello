@@ -1,0 +1,114 @@
+# ============================================================
+#  Destello — Docker Compose
+#  Servidor: Toshiba Satellite L55-B | Debian 13
+#  Uso: docker compose up -d
+# ============================================================
+
+services:
+
+  # ── API Node.js ─────────────────────────────────────────
+  api:
+    build:
+      context:    ./apps/api
+      dockerfile: Dockerfile
+    container_name: destello-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - WEB_URL=${WEB_URL}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - destello-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout:  10s
+      retries:  3
+
+  # ── Visualizador 3D (container independiente) ─────────────
+  viewer3d:
+    build:
+      context:    ./apps/viewer3d
+      dockerfile: Dockerfile
+    container_name: destello-3d
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    networks:
+      - destello-net
+    # Puede crearse más adelante — comentado por ahora
+    profiles: ["3d"]
+
+  # ── PostgreSQL ──────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: destello-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${DB_NAME:-destello_db}
+      - POSTGRES_USER=${DB_USER:-destello}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - destello-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-destello}"]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+
+  # ── Redis (cache + sessiones) ────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: destello-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - destello-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+
+  # ── Cloudflared (tunnel) ─────────────────────────────────
+  # Alternativa a instalarlo como servicio systemd
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: destello-tunnel
+  #   restart: unless-stopped
+  #   command: tunnel run
+  #   environment:
+  #     - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+  #   networks:
+  #     - destello-net
+
+# ── Volúmenes persistentes ───────────────────────────────────
+volumes:
+  postgres_data:
+    name: destello-postgres-data
+  redis_data:
+    name: destello-redis-data
+
+# ── Red interna ──────────────────────────────────────────────
+networks:
+  destello-net:
+    name: destello-network
+    driver: bridge
