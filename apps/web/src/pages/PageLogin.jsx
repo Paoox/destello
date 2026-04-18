@@ -114,10 +114,15 @@ export default function PageLogin() {
 
     return (
         <div style={{
-            minHeight: '100vh',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'var(--bg-dark)',      // ← tokens.css lo adapta solo
+            position: 'fixed',      // ← toma el viewport completo
+            inset: 0,               // ← equivale a top/right/bottom/left: 0
+            overflowY: 'auto',      // ← si la card no cabe en móvil, scroll interno
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'var(--bg-dark)',
             padding: 'var(--space-6)',
+            boxSizing: 'border-box',
         }}>
             <div style={{ maxWidth: 420, width: '100%' }}>
 

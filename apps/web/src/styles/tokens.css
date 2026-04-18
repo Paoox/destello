@@ -2,7 +2,7 @@
    Destello — Design Tokens (CSS estático)
    Single source of truth para custom properties.
    Generado a partir de packages/tokens/src/
-   ⚠️  Si cambias valores aquí, actualiza también el .js
+   ⚠️  Al cambiar valores aquí, actualizar también el .js
        correspondiente para mantener sincronía en el código JS.
    ============================================================ */
 
