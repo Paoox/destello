@@ -12,7 +12,7 @@ export default function AuthLayout() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'var(--bg-dark)'
+      background: 'var(--bg-dark)',
     }}>
       {/* Glow decorativo de fondo */}
       <div style={{

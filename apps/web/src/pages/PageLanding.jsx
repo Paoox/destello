@@ -160,6 +160,7 @@ export default function PageLanding() {
                 alignItems: 'center', justifyContent: 'center',
                 textAlign: 'center',
                 position: 'relative', overflow: 'hidden',
+                margin: '0 auto var(--space-4)'
             }}>
 
                 {/* Glows */}
