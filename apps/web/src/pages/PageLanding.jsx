@@ -159,7 +159,6 @@ export default function PageLanding() {
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
                 textAlign: 'center',
-                padding: 'var(--space-8) var(--space-6)',
                 position: 'relative', overflow: 'hidden',
             }}>
 
@@ -396,7 +395,7 @@ export default function PageLanding() {
 
             {/* ══ CTA FINAL ════════════════════════════════════════ */}
             <section style={{
-                padding: 'var(--space-20) var(--space-6)',
+                padding: 'var(--space-20) 0',
                 textAlign: 'center',
                 borderTop: '1px solid var(--border-subtle)',
                 background: 'var(--bg-card)',
