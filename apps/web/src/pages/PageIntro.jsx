@@ -37,7 +37,7 @@ export default function PageIntro() {
 
     const sloganStart = letraStart + NOMBRE.length * LETTER_INTERVAL + SLOGAN_DELAY_AFTER
     timers.push(setTimeout(() => setSloganVisible(true), sloganStart))
-    timers.push(setTimeout(() => navigate('/login'), sloganStart + 1800))
+    timers.push(setTimeout(() => navigate('/bienvenida'), sloganStart + 1800))
 
     return () => timers.forEach(clearTimeout)
   }, [navigate])

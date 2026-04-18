@@ -14,6 +14,8 @@ import AuthLayout    from '@components/layout/AuthLayout.jsx'
 
 // Lazy-load de páginas → cada una es un chunk independiente
 const PageIntro    = lazy(() => import('@pages/PageIntro.jsx'))
+const PageLanding  = lazy(() => import('@pages/PageLanding.jsx'))
+const PageAcceso   = lazy(() => import('@pages/PageAcceso.jsx'))
 const PageLogin    = lazy(() => import('@pages/PageLogin.jsx'))
 const PageHome     = lazy(() => import('@pages/PageHome.jsx'))
 const PageHabitat  = lazy(() => import('@pages/PageHabitat.jsx'))
@@ -53,7 +55,9 @@ export default function App() {
 
         {/* ── Rutas de auth ─────────────────────────────── */}
         <Route element={<AuthLayout />}>
-          <Route path="/login" element={<PageLogin />} />
+            <Route path="/acceso" element={<PageAcceso />} />
+            <Route path="/bienvenida" element={<PageLanding />} />
+            <Route path="/login" element={<PageLogin />} />
         </Route>
 
         {/* ── Rutas privadas (con sidebar/navbar) ───────── */}
