@@ -1,0 +1,140 @@
+/* ============================================================
+   Destello — Design Tokens (CSS estático)
+   Single source of truth para custom properties.
+   Generado a partir de packages/tokens/src/
+   ⚠️  Si cambias valores aquí, actualiza también el .js
+       correspondiente para mantener sincronía en el código JS.
+   ============================================================ */
+
+:root {
+    /* ── Jade (Primario) ───────────────────────────────────── */
+    --color-jade-50:  #E6F5F5;
+    --color-jade-100: #BFDFDF;
+    --color-jade-200: #8EC8C8;
+    --color-jade-300: #5CAEAE;
+    --color-jade-400: #2F9699;
+    --color-jade-500: #0D7377;
+    --color-jade-600: #0F766E;
+    --color-jade-700: #095C5F;
+    --color-jade-800: #064346;
+    --color-jade-900: #02292B;
+
+    /* ── Ámbar (Acento) ────────────────────────────────────── */
+    --color-amber-50:  #FFFBEB;
+    --color-amber-100: #FEF3C7;
+    --color-amber-200: #FDE68A;
+    --color-amber-300: #FCD34D;
+    --color-amber-400: #FBBF24;
+    --color-amber-500: #F59E0B;
+    --color-amber-600: #D97706;
+    --color-amber-700: #B45309;
+    --color-amber-800: #92400E;
+    --color-amber-900: #78350F;
+
+    /* ── Estados / Semánticos ──────────────────────────────── */
+    --color-success: #10B981;
+    --color-warning: #F59E0B;
+    --color-error:   #EF4444;
+    --color-info:    #3B82F6;
+
+    /* ── Fondos (modo oscuro por defecto) ──────────────────── */
+    --bg-dark:    #061A18;
+    --bg-card:    #0A2422;
+    --bg-surface: #122F2D;
+    --bg-light:   #FAF7F2;
+
+    /* ── Texto (modo oscuro por defecto) ───────────────────── */
+    --text-primary:   #FAF7F2;
+    --text-secondary: #C8D8D7;
+    --text-muted:     #8DA8A6;
+    --text-disabled:  #4A6E6C;
+    --text-inverse:   #061A18;
+
+    /* ── Bordes (modo oscuro por defecto) ──────────────────── */
+    --border-subtle:  rgba(13, 115, 119, 0.2);
+    --border-default: rgba(13, 115, 119, 0.35);
+    --border-strong:  rgba(13, 115, 119, 0.6);
+
+    /* ── Tipografía ─────────────────────────────────────────── */
+    --font-sans:    "Space Grotesk", system-ui, -apple-system, sans-serif;
+    --font-mono:    "JetBrains Mono", "Fira Code", monospace;
+    --font-display: "Space Grotesk", sans-serif;
+
+    --font-light:    300;
+    --font-regular:  400;
+    --font-medium:   500;
+    --font-semibold: 600;
+    --font-bold:     700;
+
+    /* ── Escala de texto ────────────────────────────────────── */
+    --text-xs:   0.75rem;
+    --text-sm:   0.875rem;
+    --text-base: 1rem;
+    --text-lg:   1.125rem;
+    --text-xl:   1.25rem;
+    --text-2xl:  1.5rem;
+    --text-3xl:  1.875rem;
+    --text-4xl:  2.25rem;
+    --text-5xl:  3rem;
+
+    /* ── Espaciado ──────────────────────────────────────────── */
+    --space-1:  0.25rem;
+    --space-2:  0.5rem;
+    --space-3:  0.75rem;
+    --space-4:  1rem;
+    --space-5:  1.25rem;
+    --space-6:  1.5rem;
+    --space-8:  2rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
+    --space-16: 4rem;
+    --space-20: 5rem;
+    --space-24: 6rem;
+
+    /* ── Radios ─────────────────────────────────────────────── */
+    --radius-sm:   4px;
+    --radius-md:   8px;
+    --radius-lg:   12px;
+    --radius-xl:   16px;
+    --radius-2xl:  20px;
+    --radius-full: 9999px;
+
+    /* ── Sombras ────────────────────────────────────────────── */
+    --shadow-sm:    0 1px 2px rgba(6, 26, 24, 0.5);
+    --shadow-md:    0 4px 16px rgba(6, 26, 24, 0.4);
+    --shadow-lg:    0 8px 32px rgba(6, 26, 24, 0.5);
+    --shadow-jade:  0 0 20px rgba(13, 115, 119, 0.25);
+    --shadow-amber: 0 0 20px rgba(217, 119, 6, 0.3);
+    --shadow-glow:  0 0 40px rgba(13, 115, 119, 0.4);
+}
+
+/* ── Modo claro ─────────────────────────────────────────────
+   Sobreescribe solo las variables semánticas.
+   El resto (jade, amber, radios, spacing) no cambia.
+   ──────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: light) {
+    :root {
+        /* Fondos */
+        --bg-dark:    #ECEEE8;
+        --bg-card:    #FFFFFF;
+        --bg-surface: #F4F5F0;
+
+        /* Texto */
+        --text-primary:   #1A1A1A;
+        --text-secondary: #3A3A3A;
+        --text-muted:     #666660;
+        --text-disabled:  #AAAAAA;
+
+        /* Bordes */
+        --border-subtle:  rgba(0, 0, 0, 0.06);
+        --border-default: #DDDDD6;
+        --border-strong:  #AAAAAA;
+
+        /* Sombras — más suaves en claro */
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+        --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.05), 0 16px 48px rgba(0, 0, 0, 0.06);
+
+        color-scheme: light;
+    }
+}

@@ -3,6 +3,7 @@
    Los tokens de color/tipografía se inyectan dinámicamente
    desde @destello/tokens en main.jsx
    ============================================================ */
+@import './tokens.css';
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -87,3 +88,30 @@ code, pre, kbd {
 }
 
 .animate-fade-in { animation: fadeIn 0.35s ease forwards; }
+
+/* ── Modo claro — sobreescribe tokens semánticos ──────────── */
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Fondos */
+    --bg-dark:    #ECEEE8;
+    --bg-card:    #FFFFFF;
+    --bg-surface: #F4F5F0;
+
+    /* Texto */
+    --text-primary:   #1A1A1A;
+    --text-secondary: #3A3A3A;
+    --text-muted:     #666660;
+    --text-disabled:  #AAAAAA;
+
+    /* Bordes */
+    --border-subtle:  rgba(0, 0, 0, 0.06);
+    --border-default: #DDDDD6;
+    --border-strong:  #AAAAAA;
+
+    /* Scrollbar */
+    color-scheme: light;
+  }
+
+  ::-webkit-scrollbar-track { background: #ECEEE8; }
+  ::-webkit-scrollbar-thumb { background: #DDDDD6; }
+}
