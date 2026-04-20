@@ -5,7 +5,8 @@
  */
 import jwt      from 'jsonwebtoken'
 import bcrypt   from 'bcryptjs'
-import { AppError } from '../middleware/errorHandler.js'
+import { AppError }      from '../middleware/errorHandler.js'
+import { validateChispa } from '../services/chispaService.js'
 
 // Generar JWT
 function signToken(payload) {
@@ -14,20 +15,35 @@ function signToken(payload) {
   })
 }
 
-// POST /auth/login — login con código de pago
+// POST /auth/login — login con chispa (código de acceso de pago)
 export async function loginWithCode(req, res, next) {
   try {
     const { code } = req.body
     if (!code) throw new AppError('Código de acceso requerido', 400, 'BAD_REQUEST')
 
-    // TODO: validar código contra DB
-    // Por ahora: mock de validación
-    if (code !== process.env.DEMO_CODE && code !== 'DESTELLO2026') {
-      throw new AppError('Código de acceso inválido', 401, 'INVALID_CODE')
+    // ── Validar chispa contra el servicio ─────────────────────────────────
+    // Se pasa un userId temporal para marcarla como usada al canjear.
+    // En producción el userId real llegará después de crear el usuario en DB.
+    const tempUserId = `pending-${Date.now()}`
+    const result     = validateChispa(code, tempUserId)
+
+    if (!result.valid) {
+      const messages = {
+        INVALID_CODE:  'Código no reconocido',
+        REVOKED:       'Este código ha sido revocado',
+        ALREADY_USED:  'Este código ya fue utilizado',
+        EXPIRED:       'Este código ha expirado',
+      }
+      throw new AppError(
+          messages[result.reason] ?? 'Código de acceso inválido',
+          401,
+          result.reason,
+      )
     }
 
-    const user = { id: 'mock-001', name: 'Demo User', role: 'alumno' }
-    const token = signToken({ userId: user.id, role: user.role })
+    // ── Emitir JWT con información del taller al que da acceso ────────────
+    const user  = { id: tempUserId, role: 'alumno', tallerId: result.record.tallerId }
+    const token = signToken({ userId: user.id, role: user.role, tallerId: user.tallerId })
 
     res.json({ status: 'ok', token, user })
   } catch (err) {

@@ -13,6 +13,7 @@ import authRouter    from './routes/auth.js'
 import usersRouter   from './routes/users.js'
 import tallersRouter from './routes/tallers.js'
 import healthRouter  from './routes/health.js'
+import chispasRouter from './routes/chispas.js'
 
 // ── Importar middleware ───────────────────────────────────
 import { errorHandler }   from './middleware/errorHandler.js'
@@ -35,8 +36,11 @@ app.use(express.json())
 app.use(requestLogger)
 
 // ── Rutas públicas ────────────────────────────────────────
-app.use('/health', healthRouter)
-app.use('/auth',   authRouter)
+app.use('/health',  healthRouter)
+app.use('/auth',    authRouter)
+
+// ── Módulo chispas (mezcla de pública + admin — el router gestiona internamente)
+app.use('/chispas', chispasRouter)
 
 // ── Rutas protegidas (requieren JWT) ─────────────────────
 app.use('/users',   authenticate, usersRouter)
