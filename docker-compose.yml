@@ -26,6 +26,9 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - WEB_URL=${WEB_URL}
       - REDIS_URL=redis://redis:6379
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+      - ADMIN_TOKEN_SECRET=${ADMIN_TOKEN_SECRET}
+      - ADMIN_TOKEN_EXPIRES=${ADMIN_TOKEN_EXPIRES}
     depends_on:
       postgres:
         condition: service_healthy
