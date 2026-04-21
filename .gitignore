@@ -12,6 +12,7 @@ out/
 # Variables de entorno (NUNCA committear)
 .env
 .env.local
+.env.example
 .env.production
 .env.staging
 

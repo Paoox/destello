@@ -12,9 +12,18 @@ const TALLERS = [
     { id: 'dibujo-expresivo',  label: 'Dibujo Expresivo' },
 ]
 
+// Opciones de vigencia predefinidas
+const VIGENCIA_OPTS = [
+    { label: '7 días',      value: 7    },
+    { label: '15 días',     value: 15   },
+    { label: '1 mes',       value: 30   },
+    { label: 'Sin vigencia', value: null },
+]
+
 export default function ChispaCreator({ adminToken, onCreated }) {
     const [tallerId,      setTallerId]      = useState('')
     const [expiresInDays, setExpiresInDays] = useState(30)
+    const [isDemo,        setIsDemo]        = useState(false)
     const [usuarioNombre, setUsuarioNombre] = useState('')
     const [usuarioWa,     setUsuarioWa]     = useState('')
     const [isLoading,     setIsLoading]     = useState(false)
@@ -34,7 +43,7 @@ export default function ChispaCreator({ adminToken, onCreated }) {
                     'Content-Type':  'application/json',
                     'Authorization': `Bearer ${adminToken}`,
                 },
-                body: JSON.stringify({ tallerId, expiresInDays, usuarioNombre, usuarioWa }),
+                body: JSON.stringify({ tallerId, expiresInDays, isDemo, usuarioNombre, usuarioWa }),
             })
             if (!res.ok) throw new Error('Error generando chispa')
             const data = await res.json()
@@ -54,8 +63,12 @@ export default function ChispaCreator({ adminToken, onCreated }) {
     }
 
     // Mensaje listo para pegar en WhatsApp
+    const vigenciaLabel = expiresInDays == null
+        ? 'Sin vigencia'
+        : VIGENCIA_OPTS.find(o => o.value === expiresInDays)?.label ?? `${expiresInDays} días`
+
     const waMessage = lastChispa
-        ? `¡Hola${usuarioNombre ? ` ${usuarioNombre}` : ''}! 🌟\nAquí está tu código de acceso a Destello:\n\n*${lastChispa.code}*\n\nVigencia: ${expiresInDays} días.\nÚsalo en: https://app.destello.mx/login`
+        ? `¡Hola${usuarioNombre ? ` ${usuarioNombre}` : ''}! 🌟\nAquí está tu código de acceso a Destello:\n\n*${lastChispa.code}*\n\nVigencia: ${vigenciaLabel}.\nÚsalo en: https://app.destello.mx/login`
         : ''
 
     return (
@@ -80,19 +93,47 @@ export default function ChispaCreator({ adminToken, onCreated }) {
                     </select>
                 </div>
 
-                {/* Vigencia */}
-                <div>
-                    <label style={labelStyle}>Vigencia (días)</label>
-                    <input
-                        type="number" min={1} max={365}
-                        value={expiresInDays}
-                        onChange={e => setExpiresInDays(Number(e.target.value))}
-                        style={inputStyle}
-                    />
+                {/* Vigencia + Demo en la misma fila */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
+                    <div>
+                        <label style={labelStyle}>Vigencia</label>
+                        <select
+                            value={expiresInDays ?? 'null'}
+                            onChange={e => setExpiresInDays(e.target.value === 'null' ? null : Number(e.target.value))}
+                            style={inputStyle}
+                        >
+                            {VIGENCIA_OPTS.map(o => (
+                                <option key={String(o.value)} value={o.value ?? 'null'}>
+                                    {o.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    {/* Toggle demo */}
+                    <button
+                        type="button"
+                        onClick={() => setIsDemo(d => !d)}
+                        title="Marcar como demo / cortesía"
+                        style={{
+                            padding:      'var(--space-3) var(--space-4)',
+                            background:   isDemo ? 'var(--color-amber-500, #D97706)22' : 'var(--bg-surface)',
+                            border:       `1px solid ${isDemo ? 'var(--color-amber-500, #D97706)' : 'var(--border-default)'}`,
+                            borderRadius: 'var(--radius-lg)',
+                            color:        isDemo ? 'var(--color-amber-500, #D97706)' : 'var(--text-muted)',
+                            fontFamily:   'var(--font-sans)',
+                            fontWeight:   600,
+                            fontSize:     'var(--text-xs)',
+                            cursor:       'pointer',
+                            whiteSpace:   'nowrap',
+                            transition:   'all 0.15s',
+                        }}
+                    >
+                        🎁 {isDemo ? 'Demo ✓' : 'Demo'}
+                    </button>
                 </div>
 
                 {/* Datos del usuario (del bot de WA) */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                     <div>
                         <label style={labelStyle}>Nombre del usuario</label>
                         <input
@@ -103,13 +144,53 @@ export default function ChispaCreator({ adminToken, onCreated }) {
                         />
                     </div>
                     <div>
-                        <label style={labelStyle}>WhatsApp (+52...)</label>
-                        <input
-                            type="text" placeholder="+5215512345678"
-                            value={usuarioWa}
-                            onChange={e => setUsuarioWa(e.target.value)}
-                            style={inputStyle}
-                        />
+                        <label style={labelStyle}>WhatsApp</label>
+                        <div style={{ display: 'flex', alignItems: 'center', ...inputStyle, padding: 0, overflow: 'hidden' }}>
+                            <span style={{
+                                padding:     'var(--space-3)',
+                                background:  'var(--bg-surface)',
+                                borderRight: '1px solid var(--border-default)',
+                                color:       'var(--text-muted)',
+                                fontSize:    'var(--text-sm)',
+                                fontWeight:  600,
+                                whiteSpace:  'nowrap',
+                                userSelect:  'none',
+                            }}>
+                                🇲🇽 +52
+                            </span>
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="1234567890"
+                                maxLength={10}
+                                value={usuarioWa}
+                                onChange={e => {
+                                    // Solo dígitos, máximo 10
+                                    const digits = e.target.value.replace(/\D/g, '').slice(0, 10)
+                                    setUsuarioWa(digits)
+                                }}
+                                style={{
+                                    flex:       1,
+                                    border:     'none',
+                                    outline:    'none',
+                                    background: 'transparent',
+                                    padding:    'var(--space-3)',
+                                    color:      'var(--text-primary)',
+                                    fontSize:   'var(--text-sm)',
+                                    fontFamily: 'var(--font-sans)',
+                                    width:      '100%',
+                                }}
+                            />
+                            {/* Indicador de longitud */}
+                            <span style={{
+                                padding:   '0 var(--space-3)',
+                                fontSize:  'var(--text-xs)',
+                                color:     usuarioWa.length === 10 ? '#22c55e' : 'var(--text-muted)',
+                                fontWeight: 600,
+                            }}>
+                                {usuarioWa.length}/10
+                            </span>
+                        </div>
                     </div>
                 </div>
 
@@ -148,33 +229,33 @@ export default function ChispaCreator({ adminToken, onCreated }) {
                     </div>
 
                     {/* Botón abrir WhatsApp con mensaje prellenado */}
-                    {usuarioWa && (
+                    {usuarioWa.length === 10 && (
 
                         <a
-                        href={`https://wa.me/${usuarioWa.replace(/\D/g, '')}?text=${encodeURIComponent(waMessage)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                        display:        'flex',
-                        alignItems:     'center',
-                        justifyContent: 'center',
-                        gap:            8,
-                        padding:        'var(--space-3)',
-                        background:     '#25D366',
-                        borderRadius:   'var(--radius-lg)',
-                        color:          '#fff',
-                        fontWeight:     600,
-                        fontSize:       'var(--text-sm)',
-                        textDecoration: 'none',
-                    }}
+                            href={`https://wa.me/52${usuarioWa}?text=${encodeURIComponent(waMessage)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                                display:        'flex',
+                                alignItems:     'center',
+                                justifyContent: 'center',
+                                gap:            8,
+                                padding:        'var(--space-3)',
+                                background:     '#25D366',
+                                borderRadius:   'var(--radius-lg)',
+                                color:          '#fff',
+                                fontWeight:     600,
+                                fontSize:       'var(--text-sm)',
+                                textDecoration: 'none',
+                            }}
                         >
-                        <WhatsappLogo size={18} weight="fill" />
-                        Enviar por WhatsApp
+                            <WhatsappLogo size={18} weight="fill" />
+                            Enviar por WhatsApp
                         </a>
-                        )}
+                    )}
 
                     {/* Copiar mensaje completo si no hay WA */}
-                    {!usuarioWa && (
+                    {usuarioWa.length !== 10 && (
                         <button
                             onClick={() => { navigator.clipboard.writeText(waMessage) }}
                             style={btnSecondaryStyle}

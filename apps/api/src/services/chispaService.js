@@ -41,6 +41,7 @@ const store = new Map() // Map<code, ChispaRecord>
  * @property {boolean}     used         true si ya fue canjeada
  * @property {string|null} usedBy       userId que la canjeó
  * @property {boolean}     revoked      true si fue revocada manualmente
+ * @property {boolean}     isDemo       true si fue regalada como demo/cortesía
  */
 
 // ── Helpers internos ─────────────────────────────────────────────────────────
@@ -93,12 +94,13 @@ function uniqueCode(prefix) {
  * @param {string}      [opts.prefix]        Prefijo del código (default: 'DEST')
  * @returns {ChispaRecord}
  */
-export function createChispa({ tallerId, createdBy, expiresInDays = 30, prefix = 'DEST' }) {
+export function createChispa({ tallerId, createdBy, expiresInDays = 30, prefix = 'DEST', isDemo = false }) {
     if (!tallerId)  throw new Error('tallerId es requerido')
     if (!createdBy) throw new Error('createdBy es requerido')
 
     const code      = uniqueCode(prefix.toUpperCase())
-    const expiresAt = expiresInDays
+    // expiresInDays === null → sin vigencia (acceso permanente)
+    const expiresAt = expiresInDays != null
         ? new Date(Date.now() + expiresInDays * 86_400_000)
         : null
 
@@ -112,6 +114,7 @@ export function createChispa({ tallerId, createdBy, expiresInDays = 30, prefix =
         used:    false,
         usedBy:  null,
         revoked: false,
+        isDemo:  Boolean(isDemo),
     }
 
     store.set(code, record)
@@ -224,5 +227,6 @@ export function getStats() {
         used:    records.filter(r => r.used).length,
         revoked: records.filter(r => r.revoked).length,
         expired: records.filter(r => !r.used && !r.revoked && r.expiresAt && r.expiresAt <= now).length,
+        demo:    records.filter(r => r.isDemo).length,
     }
 }

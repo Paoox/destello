@@ -29,7 +29,7 @@ const REASON_MESSAGES = {
  */
 export async function generateChispa(req, res, next) {
     try {
-        const { tallerId, expiresInDays, prefix } = req.body
+        const { tallerId, expiresInDays, prefix, isDemo } = req.body
 
         if (!tallerId) {
             throw new AppError('tallerId es requerido', 400, 'BAD_REQUEST')
@@ -37,9 +37,10 @@ export async function generateChispa(req, res, next) {
 
         const record = chispaService.createChispa({
             tallerId,
-            createdBy:    req.user?.userId ?? 'admin',
-            expiresInDays: expiresInDays ?? 30,
+            createdBy:     req.user?.userId ?? 'admin',
+            expiresInDays: expiresInDays !== undefined ? expiresInDays : 30,
             prefix,
+            isDemo:        Boolean(isDemo),
         })
 
         res.status(201).json({ status: 'ok', chispa: record })
