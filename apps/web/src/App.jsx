@@ -22,6 +22,8 @@ const PageHabitat  = lazy(() => import('@pages/PageHabitat.jsx'))
 const PageAula     = lazy(() => import('@pages/PageAula.jsx'))
 const PagePerfil   = lazy(() => import('@pages/PagePerfil.jsx'))
 const Page404      = lazy(() => import('@pages/Page404.jsx'))
+const PageAdmin    = lazy(() => import('@pages/PageAdmin.jsx'))
+
 
 // Loading fallback mientras carga la página
 function PageLoader() {
@@ -58,6 +60,7 @@ export default function App() {
             <Route path="/acceso" element={<PageAcceso />} />
             <Route path="/bienvenida" element={<PageLanding />} />
             <Route path="/login" element={<PageLogin />} />
+            <Route path="/admin" element={<PageAdmin />} />
         </Route>
 
         {/* ── Rutas privadas (con sidebar/navbar) ───────── */}

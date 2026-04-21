@@ -14,6 +14,7 @@ import usersRouter   from './routes/users.js'
 import tallersRouter from './routes/tallers.js'
 import healthRouter  from './routes/health.js'
 import chispasRouter from './routes/chispas.js'
+import adminRouter from './routes/admin.js'
 
 // ── Importar middleware ───────────────────────────────────
 import { errorHandler }   from './middleware/errorHandler.js'
@@ -45,6 +46,9 @@ app.use('/chispas', chispasRouter)
 // ── Rutas protegidas (requieren JWT) ─────────────────────
 app.use('/users',   authenticate, usersRouter)
 app.use('/tallers', authenticate, tallersRouter)
+
+// ── Admin (mezcla pública + protegida — el router gestiona internamente)
+app.use('/admin', adminRouter)
 
 // ── Manejo de errores (siempre al final) ──────────────────
 app.use(errorHandler)
