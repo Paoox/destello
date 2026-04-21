@@ -29,7 +29,7 @@ export default function PageAcceso() {
         setIsLoading(true)
 
         try {
-            const res = await fetch('/api/auth/validate-code', {
+            const res = await fetch('/api/chispas/validate', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({ code: codigo.trim().toUpperCase() }),
@@ -194,10 +194,10 @@ export default function PageAcceso() {
                         >
                             Consigue la tuya
                         </a>
-                </p>
+                    </p>
 
+                </div>
             </div>
         </div>
-</div>
-)
+    )
 }
