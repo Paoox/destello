@@ -10,14 +10,12 @@ import makeWASocket, {
     useMultiFileAuthState,
     DisconnectReason,
     fetchLatestBaileysVersion,
-    makeInMemoryStore,
 } from 'baileys'
 import qrcode              from 'qrcode-terminal'
 import pino                from 'pino'
 import { procesarMensaje } from './src/flujo.js'
 
 const logger = pino({ level: 'silent' })
-const store  = makeInMemoryStore({ logger })
 
 async function conectar() {
     const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
@@ -31,8 +29,6 @@ async function conectar() {
         auth:              state,
         printQRInTerminal: false,
     })
-
-    store.bind(sock.ev)
 
     // ── QR y estado de conexión ───────────────────────────────
     sock.ev.on('connection.update', async (update) => {
