@@ -179,7 +179,7 @@ export default function PageAcceso() {
                     }}>
                         ¿No tienes una Chispa?{' '}
                         <a
-                            href="https://wa.me/TU_NUMERO_AQUI"
+                            href="https://wa.me/5577888800"
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{

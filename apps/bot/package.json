@@ -1,0 +1,19 @@
+{
+  "name": "@destello/bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bot de WhatsApp para Destello",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev":   "node --watch index.js"
+  },
+  "dependencies": {
+    "baileys":         "^6.7.14",
+    "qrcode-terminal": "0.12.0",
+    "pino":            "8.21.0",
+    "node-fetch":      "3.3.2",
+    "dotenv":          "^16.4.5"
+  }
+}

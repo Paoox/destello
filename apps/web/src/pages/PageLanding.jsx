@@ -13,7 +13,7 @@ import {
 import logoLight from '../Images/destello-logo-512.png'
 import logoDark  from '../Images/destello-logo-dark-512.png'
 
-const WA_NUMBER = 'TU_NUMERO_AQUI'  // ← reemplaza con tu número
+const WA_NUMBER = '5577888800'  // ← reemplaza con tu número
 
 // ── Stats globales ────────────────────────────────────────────
 const STATS = [
