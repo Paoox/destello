@@ -42,15 +42,20 @@ async function conectar() {
         }
 
         if (connection === 'close') {
-            const statusCode = lastDisconnect?.error?.output?.statusCode
-            const fueLogout  = statusCode === DisconnectReason.loggedOut
+            const statusCode     = lastDisconnect?.error?.output?.statusCode
+            const fueLogout      = statusCode === DisconnectReason.loggedOut
+            const fueReemplazado = statusCode === DisconnectReason.connectionReplaced // 440
 
-            console.log(`⚠  Conexión cerrada (código ${statusCode}). Reconectando: ${!fueLogout}`)
+            console.log(`⚠  Conexión cerrada (código ${statusCode}).`)
 
-            if (!fueLogout) {
-                setTimeout(conectar, 3000)
-            } else {
+            if (fueLogout) {
                 console.log('⚠  Sesión cerrada. Borra la carpeta ./auth_info/ y reinicia.')
+            } else if (fueReemplazado) {
+                console.log('⚠  Sesión reemplazada por otra instancia. Deteniendo para evitar loop.')
+                process.exit(1)
+            } else {
+                console.log('↺  Reconectando en 5s...')
+                setTimeout(conectar, 5000)
             }
         }
 
