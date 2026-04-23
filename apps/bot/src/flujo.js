@@ -148,6 +148,7 @@ function menuTalleres(talleres) {
 export async function procesarMensaje(jid, texto) {
     const msg  = texto.trim()
     const conv = conversaciones.get(jid) || { paso: PASO.MENU, esNuevo: true }
+    console.log(`[flujo] jid="${jid}" conv=${JSON.stringify(conv)} msg="${msg}"`)
 
     // "menu" o "cancelar" reinician siempre
     if (['menu', 'menú', 'cancelar', 'inicio'].includes(msg.toLowerCase())) {

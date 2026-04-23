@@ -81,7 +81,7 @@ async function conectar() {
 
             if (!texto) continue
 
-            console.log(`📨 ${jid}: "${texto}"`)
+            console.log(`📨 jid_raw="${msg.key.remoteJid}" jid_norm="${jid}" texto="${texto}"`)
 
             try {
                 await sock.sendPresenceUpdate('composing', jid)
