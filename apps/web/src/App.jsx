@@ -27,55 +27,55 @@ const PageAdmin    = lazy(() => import('@pages/PageAdmin.jsx'))
 
 // Loading fallback mientras carga la página
 function PageLoader() {
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      background: 'var(--bg-dark)',
-    }}>
-      <div style={{
-        width: 40, height: 40,
-        border: '3px solid var(--border-subtle)',
-        borderTopColor: 'var(--color-jade-500)',
-        borderRadius: '50%',
-        animation: 'spin 0.8s linear infinite',
-      }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  )
+    return (
+        <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '100vh',
+            background: 'var(--bg-dark)',
+        }}>
+            <div style={{
+                width: 40, height: 40,
+                border: '3px solid var(--border-subtle)',
+                borderTopColor: 'var(--color-jade-500)',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+            }} />
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+    )
 }
 
 export default function App() {
-  return (
-    <Suspense fallback={<PageLoader />}>
-      <Routes>
+    return (
+        <Suspense fallback={<PageLoader />}>
+            <Routes>
 
-        {/* ── Rutas públicas (sin layout) ───────────────── */}
-        <Route path="/intro"  element={<PageIntro />} />
+                {/* ── Rutas públicas (sin layout) ───────────────── */}
+                <Route path="/intro"  element={<PageIntro />} />
 
-        {/* ── Rutas de auth ─────────────────────────────── */}
-        <Route element={<AuthLayout />}>
-            <Route path="/acceso" element={<PageAcceso />} />
-            <Route path="/bienvenida" element={<PageLanding />} />
-            <Route path="/login" element={<PageLogin />} />
-            <Route path="/admin" element={<PageAdmin />} />
-        </Route>
+                {/* ── Rutas de auth ─────────────────────────────── */}
+                <Route element={<AuthLayout />}>
+                    <Route path="/acceso" element={<PageAcceso />} />
+                    <Route path="/bienvenida" element={<PageLanding />} />
+                    <Route path="/login" element={<PageLogin />} />
+                    <Route path="/admin" element={<PageAdmin />} />
+                </Route>
 
-        {/* ── Rutas privadas (con sidebar/navbar) ───────── */}
-        <Route element={<MainLayout />}>
-          <Route path="/home"          element={<PageHome />} />
-          <Route path="/habitat"       element={<PageHabitat />} />
-          <Route path="/aula/:id"      element={<PageAula />} />
-          <Route path="/perfil"        element={<PagePerfil />} />
-        </Route>
+                {/* ── Rutas privadas (con sidebar/navbar) ───────── */}
+                <Route element={<MainLayout />}>
+                    <Route path="/home"          element={<PageHome />} />
+                    <Route path="/habitat"       element={<PageHabitat />} />
+                    <Route path="/aula/:id"      element={<PageAula />} />
+                    <Route path="/perfil"        element={<PagePerfil />} />
+                </Route>
 
-        {/* ── Redirects ─────────────────────────────────── */}
-        <Route path="/"   element={<Navigate to="/intro" replace />} />
-        <Route path="*"   element={<Page404 />} />
+                {/* ── Redirects ─────────────────────────────────── */}
+                <Route path="/"   element={<Navigate to="/intro" replace />} />
+                <Route path="*"   element={<Page404 />} />
 
-      </Routes>
-    </Suspense>
-  )
+            </Routes>
+        </Suspense>
+    )
 }

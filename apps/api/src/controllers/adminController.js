@@ -72,6 +72,31 @@ export async function revokeChispa(req, res, next) {
 
 // ── Talleres ──────────────────────────────────────────────────────────────────
 
+/**
+ * GET /admin/talleres/stats
+ * Devuelve cada taller con conteos de lista de espera
+ * (pendientes, confirmados, total) ordenados por demanda desc.
+ */
+export async function getTalleresStats(_req, res, next) {
+    try {
+        const { rows } = await query(`
+            SELECT
+                t.id,
+                t.nombre,
+                t.estado,
+                t.categoria,
+                COUNT(le.id) FILTER (WHERE le.estado = 'pendiente')  AS pendientes,
+                COUNT(le.id) FILTER (WHERE le.estado = 'confirmado') AS confirmados,
+                COUNT(le.id)                                          AS total_espera
+            FROM talleres t
+            LEFT JOIN lista_espera le ON le.taller_id = t.id::text
+            GROUP BY t.id
+            ORDER BY total_espera DESC, t.nombre ASC
+        `)
+        res.json({ status: 'ok', stats: rows })
+    } catch (err) { next(err) }
+}
+
 export async function listTalleres(_req, res, next) {
     try {
         const talleres = await tallerService.listTodosLosTalleres()

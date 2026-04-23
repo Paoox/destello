@@ -3,9 +3,9 @@
  * Tabla de personas en lista de espera, agrupadas por taller.
  * Permite confirmar cupo → genera chispa automáticamente.
  */
-import { useState, useCallback } from 'react'
-import { UserList, CheckCircle, Copy, CheckFat, Clock, X } from '@phosphor-icons/react'
-import { apiListEspera, apiConfirmarCupo } from '@services/adminApi.js'
+import { useState, useEffect, useCallback } from 'react'
+import { UserList, CheckCircle, Copy, CheckFat, Clock, X, ChartBar } from '@phosphor-icons/react'
+import { apiListEspera, apiConfirmarCupo, apiGetTalleresStats } from '@services/adminApi.js'
 
 const ESTADO_CONFIG = {
     pendiente:   { label: 'Pendiente',   color: '#f59e0b' },
@@ -126,21 +126,117 @@ function ChispaResultModal({ chispa, onClose }) {
     )
 }
 
+// ── Resumen de demanda por taller ─────────────────────────────────────────────
+function ResumenDemanda({ talStats }) {
+    if (!talStats || talStats.length === 0) return null
+    // Solo mostrar talleres con al menos 1 persona en espera
+    const conEspera = talStats.filter(s => Number(s.total_espera) > 0)
+    if (conEspera.length === 0) return null
+
+    return (
+        <div style={{
+            background:   'var(--bg-card)',
+            border:       '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-xl)',
+            padding:      'var(--space-4) var(--space-5)',
+            marginBottom: 'var(--space-5)',
+        }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--space-3)' }}>
+                <ChartBar size={16} color="var(--color-jade-500)" weight="fill" />
+                <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Resumen por taller</span>
+            </div>
+            <div style={{
+                display:             'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gap:                 'var(--space-3)',
+            }}>
+                {conEspera.map(s => {
+                    const pendientes  = Number(s.pendientes)
+                    const confirmados = Number(s.confirmados)
+                    const total       = Number(s.total_espera)
+                    return (
+                        <div key={s.id} style={{
+                            background:   'var(--bg-surface)',
+                            borderRadius: 'var(--radius-lg)',
+                            padding:      'var(--space-3) var(--space-4)',
+                            border:       '1px solid var(--border-subtle)',
+                        }}>
+                            <p style={{
+                                fontSize:     'var(--text-xs)',
+                                fontWeight:   600,
+                                marginBottom: 'var(--space-2)',
+                                overflow:     'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace:   'nowrap',
+                            }}>
+                                {s.nombre}
+                            </p>
+                            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                                <span style={{
+                                    display:      'inline-flex',
+                                    alignItems:   'center',
+                                    gap:          4,
+                                    fontSize:     'var(--text-xs)',
+                                    color:        'var(--text-muted)',
+                                }}>
+                                    <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: 'var(--text-base)' }}>
+                                        {total}
+                                    </span>
+                                    total
+                                </span>
+                                {pendientes > 0 && (
+                                    <span style={{
+                                        fontSize:    'var(--text-xs)',
+                                        color:       '#f59e0b',
+                                        background:  '#f59e0b22',
+                                        padding:     '1px 7px',
+                                        borderRadius: 999,
+                                        fontWeight:  600,
+                                    }}>
+                                        {pendientes} pendiente{pendientes !== 1 ? 's' : ''}
+                                    </span>
+                                )}
+                                {confirmados > 0 && (
+                                    <span style={{
+                                        fontSize:    'var(--text-xs)',
+                                        color:       '#22c55e',
+                                        background:  '#22c55e22',
+                                        padding:     '1px 7px',
+                                        borderRadius: 999,
+                                        fontWeight:  600,
+                                    }}>
+                                        {confirmados} confirmado{confirmados !== 1 ? 's' : ''}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+        </div>
+    )
+}
+
 export default function ListaEsperaPanel({ adminToken }) {
-    const [lista,       setLista]       = useState([])
-    const [loading,     setLoading]     = useState(false)
-    const [loaded,      setLoaded]      = useState(false)
-    const [error,       setError]       = useState(null)
-    const [confirming,  setConfirming]  = useState(null) // id del registro en proceso
-    const [lastChispa,  setLastChispa]  = useState(null) // modal resultado
+    const [lista,        setLista]        = useState([])
+    const [talStats,     setTalStats]     = useState([])
+    const [loading,      setLoading]      = useState(false)
+    const [loaded,       setLoaded]       = useState(false)
+    const [error,        setError]        = useState(null)
+    const [confirming,   setConfirming]   = useState(null) // id del registro en proceso
+    const [lastChispa,   setLastChispa]   = useState(null) // modal resultado
     const [filtroEstado, setFiltroEstado] = useState('todos')
 
     const fetchLista = useCallback(async () => {
         setLoading(true)
         setError(null)
         try {
-            const data = await apiListEspera(adminToken)
-            setLista(data.lista)
+            const [listaData, statsData] = await Promise.all([
+                apiListEspera(adminToken),
+                apiGetTalleresStats(adminToken),
+            ])
+            setLista(listaData.lista)
+            setTalStats(statsData.stats)
             setLoaded(true)
         } catch (err) {
             setError(err.message)
@@ -149,15 +245,22 @@ export default function ListaEsperaPanel({ adminToken }) {
         }
     }, [adminToken])
 
+    // Carga automática al montar el componente (al entrar al tab)
+    useEffect(() => { fetchLista() }, [fetchLista])
+
     const handleConfirmar = async (registro) => {
         if (!confirm(`¿Confirmar cupo para ${registro.nombre || registro.email}?\nSe generará una chispa automáticamente.`)) return
         setConfirming(registro.id)
         try {
             const data = await apiConfirmarCupo(adminToken, registro.id, { expiresInDays: 30 })
             setLastChispa(data.chispa)
-            // Refresh lista
-            const fresh = await apiListEspera(adminToken)
+            // Refresh lista + stats
+            const [fresh, statsData] = await Promise.all([
+                apiListEspera(adminToken),
+                apiGetTalleresStats(adminToken),
+            ])
             setLista(fresh.lista)
+            setTalStats(statsData.stats)
         } catch (err) {
             alert('Error: ' + err.message)
         } finally {
@@ -245,6 +348,9 @@ export default function ListaEsperaPanel({ adminToken }) {
                     </button>
                 </div>
             </div>
+
+            {/* Resumen por taller */}
+            {loaded && <ResumenDemanda talStats={talStats} />}
 
             {error && (
                 <div style={{ color: 'var(--color-error)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>

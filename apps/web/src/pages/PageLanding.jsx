@@ -13,7 +13,7 @@ import {
 import logoLight from '../Images/destello-logo-512.png'
 import logoDark  from '../Images/destello-logo-dark-512.png'
 
-const WA_NUMBER = '5577888800'  // ← reemplaza con tu número
+const WA_NUMBER = 'TU_NUMERO_AQUI'  // ← reemplaza con tu número
 
 // ── Stats globales ────────────────────────────────────────────
 const STATS = [
@@ -160,6 +160,7 @@ export default function PageLanding() {
                 alignItems: 'center', justifyContent: 'center',
                 textAlign: 'center',
                 position: 'relative', overflow: 'hidden',
+                padding: 'var(--space-20) var(--space-6) var(--space-10)',
                 margin: '0 auto var(--space-4)'
             }}>
 
@@ -204,10 +205,10 @@ export default function PageLanding() {
                     </div>
 
                     <h1 style={{
-                        fontSize: 'clamp(2.2rem, 6vw, 3.8rem)',
-                        fontWeight: 700, lineHeight: 1.15,
-                        letterSpacing: '-0.03em',
-                        margin: '0 0 var(--space-5)',
+                        fontSize: 'clamp(1.75rem, 4vw, 2.8rem)',
+                        fontWeight: 700, lineHeight: 1.2,
+                        letterSpacing: '-0.025em',
+                        margin: '0 0 var(--space-4)',
                     }}>
                         Aprende con experiencias
                         <br />
@@ -215,9 +216,9 @@ export default function PageLanding() {
                     </h1>
 
                     <p style={{
-                        fontSize: 'var(--text-lg)', color: 'var(--text-muted)',
+                        fontSize: 'var(--text-base)', color: 'var(--text-muted)',
                         lineHeight: 1.7, margin: '0 0 var(--space-8)',
-                        maxWidth: 520, marginInline: 'auto',
+                        maxWidth: 480, marginInline: 'auto',
                     }}>
                         Destello es la primera plataforma donde tomas talleres dentro de
                         aulas 3D en vivo, con maestros reales, gamificación y una comunidad
@@ -390,6 +391,213 @@ export default function PageLanding() {
                         gap: 'var(--space-3)',
                     }}>
                         {TALLERES.map(t => <TallerChip key={t.nombre} {...t} />)}
+                    </div>
+                </div>
+            </section>
+
+            {/* ══ RESPLANDOR & CHISPA — Explicación ═══════════════ */}
+            <section style={{
+                padding: 'var(--space-20) var(--space-6)',
+                borderTop: '1px solid var(--border-subtle)',
+            }}>
+                <div style={{ maxWidth: 900, marginInline: 'auto' }}>
+
+                    <div style={{ textAlign: 'center', marginBottom: 'var(--space-12)' }}>
+                        <span style={{
+                            fontSize: 'var(--text-xs)', fontWeight: 700,
+                            color: 'var(--color-jade-500)', letterSpacing: '0.12em',
+                            textTransform: 'uppercase',
+                        }}>
+                            Así funciona
+                        </span>
+                        <h2 style={{
+                            fontSize: 'clamp(1.5rem, 3.5vw, 2rem)',
+                            fontWeight: 700, letterSpacing: '-0.02em',
+                            margin: 'var(--space-3) 0 var(--space-3)',
+                        }}>
+                            Tu camino hacia el aprendizaje
+                        </h2>
+                        <p style={{
+                            fontSize: 'var(--text-sm)', color: 'var(--text-muted)',
+                            maxWidth: 480, marginInline: 'auto', lineHeight: 1.7,
+                        }}>
+                            En Destello usamos dos tipos de accesos para que todo sea
+                            seguro, personalizado y sin fricción.
+                        </p>
+                    </div>
+
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                        gap: 'var(--space-6)',
+                        alignItems: 'stretch',
+                    }}>
+
+                        {/* ── Resplandor ── */}
+                        <div style={{
+                            background: 'linear-gradient(145deg, rgba(13,115,119,0.08) 0%, var(--bg-card) 60%)',
+                            border: '1px solid rgba(13,115,119,0.25)',
+                            borderRadius: 'var(--radius-2xl)',
+                            padding: 'var(--space-8)',
+                            position: 'relative', overflow: 'hidden',
+                            display: 'flex', flexDirection: 'column', gap: 'var(--space-4)',
+                        }}>
+                            {/* Glow de fondo */}
+                            <div style={{
+                                position: 'absolute', bottom: -60, right: -60,
+                                width: 220, height: 220, borderRadius: '50%',
+                                background: 'radial-gradient(circle, rgba(13,115,119,0.15) 0%, transparent 70%)',
+                                pointerEvents: 'none',
+                            }} />
+
+                            {/* Badge paso + icono */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                                {/* Icono */}
+                                <div style={{
+                                    width: 56, height: 56, borderRadius: 'var(--radius-xl)',
+                                    background: 'rgba(13,115,119,0.15)',
+                                    border: '1px solid rgba(13,115,119,0.3)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    flexShrink: 0,
+                                }}>
+                                    <Sparkle size={28} color="var(--color-jade-500)" weight="fill" />
+                                </div>
+                                <span style={{
+                                    padding: '4px 12px', borderRadius: 999,
+                                    background: 'rgba(13,115,119,0.15)',
+                                    border: '1px solid rgba(13,115,119,0.3)',
+                                    fontSize: 'var(--text-xs)', fontWeight: 700,
+                                    color: 'var(--color-jade-500)', letterSpacing: '0.08em',
+                                }}>
+                                    PASO 1 · CUENTA
+                                </span>
+                            </div>
+
+                            <div>
+                                <h3 style={{
+                                    fontSize: 'var(--text-xl)', fontWeight: 700,
+                                    margin: '0 0 var(--space-2)',
+                                    color: 'var(--color-jade-500)',
+                                }}>
+                                    Tu Resplandor
+                                </h3>
+                                <p style={{
+                                    fontSize: 'var(--text-sm)', color: 'var(--text-muted)',
+                                    lineHeight: 1.75, margin: 0,
+                                }}>
+                                    Es tu <strong style={{ color: 'var(--text-primary)' }}>invitación personal</strong>.
+                                    Lo recibes por correo cuando te unimos a Destello.
+                                    Es único, intransferible y de un solo uso —
+                                    con él creas tu cuenta y solo funciona una vez.
+                                </p>
+                            </div>
+
+                            {/* Formato de código */}
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                                padding: 'var(--space-3) var(--space-4)',
+                                background: 'rgba(13,115,119,0.08)',
+                                borderRadius: 'var(--radius-lg)',
+                                border: '1px dashed rgba(13,115,119,0.3)',
+                                marginTop: 'auto',
+                            }}>
+                                <Sparkle size={14} color="var(--color-jade-500)" />
+                                <span style={{
+                                    fontFamily: 'var(--font-mono)',
+                                    fontSize: 'var(--text-sm)', fontWeight: 600,
+                                    color: 'var(--color-jade-500)', letterSpacing: '0.12em',
+                                }}>
+                                    RESP-••••-••••
+                                </span>
+                                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                                    formato del código
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* ── Flecha central (solo en desktop) ── */}
+                        <div style={{
+                            display: 'none',
+                        }} />
+
+                        {/* ── Chispa ── */}
+                        <div style={{
+                            background: 'linear-gradient(145deg, rgba(217,119,6,0.07) 0%, var(--bg-card) 60%)',
+                            border: '1px solid rgba(217,119,6,0.25)',
+                            borderRadius: 'var(--radius-2xl)',
+                            padding: 'var(--space-8)',
+                            position: 'relative', overflow: 'hidden',
+                            display: 'flex', flexDirection: 'column', gap: 'var(--space-4)',
+                        }}>
+                            <div style={{
+                                position: 'absolute', bottom: -60, right: -60,
+                                width: 220, height: 220, borderRadius: '50%',
+                                background: 'radial-gradient(circle, rgba(217,119,6,0.12) 0%, transparent 70%)',
+                                pointerEvents: 'none',
+                            }} />
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                                <div style={{
+                                    width: 56, height: 56, borderRadius: 'var(--radius-xl)',
+                                    background: 'rgba(217,119,6,0.12)',
+                                    border: '1px solid rgba(217,119,6,0.3)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    flexShrink: 0,
+                                }}>
+                                    <Lightning size={28} color="var(--color-amber-600)" weight="fill" />
+                                </div>
+                                <span style={{
+                                    padding: '4px 12px', borderRadius: 999,
+                                    background: 'rgba(217,119,6,0.12)',
+                                    border: '1px solid rgba(217,119,6,0.3)',
+                                    fontSize: 'var(--text-xs)', fontWeight: 700,
+                                    color: 'var(--color-amber-600)', letterSpacing: '0.08em',
+                                }}>
+                                    PASO 2 · TALLER
+                                </span>
+                            </div>
+
+                            <div>
+                                <h3 style={{
+                                    fontSize: 'var(--text-xl)', fontWeight: 700,
+                                    margin: '0 0 var(--space-2)',
+                                    color: 'var(--color-amber-600)',
+                                }}>
+                                    Tu Chispa
+                                </h3>
+                                <p style={{
+                                    fontSize: 'var(--text-sm)', color: 'var(--text-muted)',
+                                    lineHeight: 1.75, margin: 0,
+                                }}>
+                                    Es la <strong style={{ color: 'var(--text-primary)' }}>llave de cada taller</strong>.
+                                    Una vez que tienes cuenta, cada experiencia que desbloqueas
+                                    tiene su propia Chispa. Puede ser de pago, cortesía o demo —
+                                    y mientras esté activa, el contenido es tuyo.
+                                </p>
+                            </div>
+
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                                padding: 'var(--space-3) var(--space-4)',
+                                background: 'rgba(217,119,6,0.07)',
+                                borderRadius: 'var(--radius-lg)',
+                                border: '1px dashed rgba(217,119,6,0.3)',
+                                marginTop: 'auto',
+                            }}>
+                                <Lightning size={14} color="var(--color-amber-600)" weight="fill" />
+                                <span style={{
+                                    fontFamily: 'var(--font-mono)',
+                                    fontSize: 'var(--text-sm)', fontWeight: 600,
+                                    color: 'var(--color-amber-600)', letterSpacing: '0.12em',
+                                }}>
+                                    DEST-••••-••••
+                                </span>
+                                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                                    formato del código
+                                </span>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </section>

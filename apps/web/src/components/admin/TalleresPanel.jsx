@@ -2,9 +2,9 @@
  * Destello Admin — TalleresPanel
  * CRUD de talleres: crear, editar estado, ver lista.
  */
-import { useState, useCallback } from 'react'
-import { BookOpen, PencilSimple, CheckCircle, Plus, X } from '@phosphor-icons/react'
-import { apiListTalleres, apiCreateTaller, apiUpdateTaller } from '@services/adminApi.js'
+import { useState, useEffect, useCallback } from 'react'
+import { BookOpen, PencilSimple, CheckCircle, Plus, X, TrendUp, Users } from '@phosphor-icons/react'
+import { apiListTalleres, apiCreateTaller, apiUpdateTaller, apiGetTalleresStats } from '@services/adminApi.js'
 
 const ESTADO_COLOR = {
     activo:    { color: '#22c55e',            label: 'Activo'    },
@@ -31,8 +31,135 @@ function EstadoBadge({ estado }) {
 
 const EMPTY_FORM = { nombre: '', descripcion: '', precio: '', horario: '', categoria: '' }
 
+// ── Ranking de demanda ──────────────────────────────────────────────────────
+function RankingDemanda({ stats }) {
+    if (!stats || stats.length === 0) return null
+
+    const topN     = stats.slice(0, 5)
+    const maxTotal = Math.max(...topN.map(s => Number(s.total_espera)), 1)
+
+    return (
+        <div style={{
+            background:   'var(--bg-card)',
+            border:       '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-xl)',
+            padding:      'var(--space-5) var(--space-6)',
+            marginBottom: 'var(--space-6)',
+        }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--space-4)' }}>
+                <TrendUp size={18} color="var(--color-jade-500)" weight="fill" />
+                <h3 style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Top talleres por demanda</h3>
+                <span style={{
+                    fontSize:   'var(--text-xs)',
+                    color:      'var(--text-muted)',
+                    fontWeight: 400,
+                    marginLeft: 4,
+                }}>
+                    (personas en lista de espera)
+                </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                {topN.map((s, i) => {
+                    const total      = Number(s.total_espera)
+                    const pendientes = Number(s.pendientes)
+                    const confirmados = Number(s.confirmados)
+                    const pct        = total === 0 ? 0 : Math.round((total / maxTotal) * 100)
+                    const medal      = ['🥇', '🥈', '🥉'][i] ?? `${i + 1}.`
+
+                    return (
+                        <div key={s.id}>
+                            <div style={{
+                                display:        'flex',
+                                alignItems:     'center',
+                                justifyContent: 'space-between',
+                                marginBottom:   4,
+                                gap:            'var(--space-2)',
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                                    <span style={{ fontSize: 'var(--text-sm)', lineHeight: 1, flexShrink: 0 }}>{medal}</span>
+                                    <span style={{
+                                        fontSize:     'var(--text-sm)',
+                                        fontWeight:   600,
+                                        overflow:     'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace:   'nowrap',
+                                    }}>
+                                        {s.nombre}
+                                    </span>
+                                    {s.categoria && (
+                                        <span style={{
+                                            fontSize:    'var(--text-xs)',
+                                            color:       'var(--text-muted)',
+                                            background:  'var(--bg-surface)',
+                                            padding:     '1px 7px',
+                                            borderRadius: 999,
+                                            flexShrink:  0,
+                                        }}>
+                                            {s.categoria}
+                                        </span>
+                                    )}
+                                </div>
+                                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexShrink: 0 }}>
+                                    {pendientes > 0 && (
+                                        <span style={{
+                                            fontSize:    'var(--text-xs)',
+                                            color:       '#f59e0b',
+                                            background:  '#f59e0b22',
+                                            padding:     '1px 7px',
+                                            borderRadius: 999,
+                                            fontWeight:  600,
+                                        }}>
+                                            {pendientes} pendiente{pendientes !== 1 ? 's' : ''}
+                                        </span>
+                                    )}
+                                    <span style={{
+                                        fontSize:    'var(--text-xs)',
+                                        color:       'var(--text-muted)',
+                                        fontWeight:  600,
+                                        minWidth:    40,
+                                        textAlign:   'right',
+                                    }}>
+                                        {total} {total === 1 ? 'persona' : 'personas'}
+                                    </span>
+                                </div>
+                            </div>
+                            {/* Barra de progreso */}
+                            <div style={{
+                                height:     6,
+                                background: 'var(--bg-surface)',
+                                borderRadius: 99,
+                                overflow:   'hidden',
+                            }}>
+                                <div style={{
+                                    height:      '100%',
+                                    width:       `${pct}%`,
+                                    background:  i === 0
+                                        ? 'var(--color-jade-500)'
+                                        : i === 1
+                                            ? 'var(--color-jade-500)aa'
+                                            : 'var(--color-jade-500)66',
+                                    borderRadius: 99,
+                                    transition:  'width 0.4s ease',
+                                }} />
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+
+            {stats.every(s => Number(s.total_espera) === 0) && (
+                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', textAlign: 'center', paddingTop: 'var(--space-2)' }}>
+                    Aún no hay registros en lista de espera
+                </p>
+            )}
+        </div>
+    )
+}
+
 export default function TalleresPanel({ adminToken }) {
     const [talleres,    setTalleres]    = useState([])
+    const [talStats,    setTalStats]    = useState([])
     const [loading,     setLoading]     = useState(false)
     const [loaded,      setLoaded]      = useState(false)
     const [error,       setError]       = useState(null)
@@ -48,8 +175,12 @@ export default function TalleresPanel({ adminToken }) {
         setLoading(true)
         setError(null)
         try {
-            const data = await apiListTalleres(adminToken)
-            setTalleres(data.talleres)
+            const [talData, statsData] = await Promise.all([
+                apiListTalleres(adminToken),
+                apiGetTalleresStats(adminToken),
+            ])
+            setTalleres(talData.talleres)
+            setTalStats(statsData.stats)
             setLoaded(true)
         } catch (err) {
             setError(err.message)
@@ -57,6 +188,9 @@ export default function TalleresPanel({ adminToken }) {
             setLoading(false)
         }
     }, [adminToken])
+
+    // Carga automática al montar el componente (al entrar al tab)
+    useEffect(() => { fetchTalleres() }, [fetchTalleres])
 
     const startEdit = (taller) => {
         setEditingId(taller.id)
@@ -276,6 +410,9 @@ export default function TalleresPanel({ adminToken }) {
                     </form>
                 </div>
             )}
+
+            {/* Ranking de demanda */}
+            {loaded && <RankingDemanda stats={talStats} />}
 
             {error && (
                 <div style={{ color: 'var(--color-error)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>

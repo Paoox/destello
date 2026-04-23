@@ -20,6 +20,7 @@ router.get('/chispas/stats',     ctrl.getStats)
 router.delete('/chispas/:code',  ctrl.revokeChispa)
 
 // Talleres
+router.get('/talleres/stats',    ctrl.getTalleresStats)   // ← antes de :id
 router.get('/talleres',          ctrl.listTalleres)
 router.post('/talleres',         ctrl.createTaller)
 router.put('/talleres/:id',      ctrl.updateTaller)

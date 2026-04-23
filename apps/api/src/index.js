@@ -13,7 +13,6 @@ import tallersRouter from './routes/tallers.js'
 import healthRouter  from './routes/health.js'
 import chispasRouter from './routes/chispas.js'
 import adminRouter   from './routes/admin.js'
-import botRouter     from './routes/bot.js'
 
 import { errorHandler }  from './middleware/errorHandler.js'
 import { requestLogger } from './middleware/requestLogger.js'
@@ -33,20 +32,18 @@ app.use(cors({
 app.use(express.json())
 app.use(requestLogger)
 
-// ── Rutas públicas ────────────────────────────────────────
+// Rutas públicas
 app.use('/health',  healthRouter)
 app.use('/auth',    authRouter)
-app.use('/tallers', tallersRouter)   // público — bot y landing lo consumen
-app.use('/bot',     botRouter)       // público — registro desde WhatsApp
+app.use('/tallers', tallersRouter)   // público — bot y landing
 app.use('/chispas', chispasRouter)
 
-// ── Rutas protegidas ──────────────────────────────────────
-app.use('/users',   authenticate, usersRouter)
-app.use('/admin',   adminRouter)
+// Rutas protegidas
+app.use('/users',  authenticate, usersRouter)
+app.use('/admin',  adminRouter)
 
 app.use(errorHandler)
 
-// ── Arrancar verificando la BD ────────────────────────────
 async function start() {
   try {
     await pool.query('SELECT 1')
@@ -55,7 +52,6 @@ async function start() {
     console.error('❌ No se pudo conectar a PostgreSQL:', err.message)
     process.exit(1)
   }
-
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`✦ Destello API corriendo en http://0.0.0.0:${PORT}`)
     console.log(`  Entorno: ${process.env.NODE_ENV || 'development'}`)

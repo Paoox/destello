@@ -90,6 +90,17 @@ export async function apiRevokeChispa(adminToken, code) {
 // ── Talleres ──────────────────────────────────────────────────────────────────
 
 /**
+ * Estadísticas de talleres con conteos de lista de espera.
+ * Devuelve array ordenado por total_espera desc.
+ */
+export async function apiGetTalleresStats(adminToken) {
+    const res = await fetch('/api/admin/talleres/stats', {
+        headers: authHeaders(adminToken),
+    })
+    return handleResponse(res)
+}
+
+/**
  * Lista todos los talleres (sin filtro de estado).
  */
 export async function apiListTalleres(adminToken) {

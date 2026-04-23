@@ -5,7 +5,7 @@
  * Protegida por AdminAuthOverlay hasta que el admin se autentique.
  */
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowClockwise, SignOut, Sparkle, UserList, BookOpen } from '@phosphor-icons/react'
+import { ArrowClockwise, SignOut, Sparkle, UserList, BookOpen, Envelope } from '@phosphor-icons/react'
 import { useAdminSession }     from '@hooks/useAdminSession.js'
 import AdminAuthOverlay        from '@components/admin/AdminAuthOverlay.jsx'
 import ChispaStats             from '@components/admin/ChispaStats.jsx'
@@ -13,12 +13,14 @@ import ChispaCreator           from '@components/admin/ChispaCreator.jsx'
 import ChispaList              from '@components/admin/ChispaList.jsx'
 import ListaEsperaPanel        from '@components/admin/ListaEsperaPanel.jsx'
 import TalleresPanel           from '@components/admin/TalleresPanel.jsx'
+import ResplandoresPanel       from '@components/admin/ResplandoresPanel.jsx'
 import { apiListChispas, apiGetStats } from '@services/adminApi.js'
 
 const TABS = [
-    { id: 'chispas',  label: 'Chispas',         Icon: Sparkle   },
-    { id: 'espera',   label: 'Lista de espera',  Icon: UserList  },
-    { id: 'talleres', label: 'Talleres',          Icon: BookOpen  },
+    { id: 'chispas',      label: 'Chispas',          Icon: Sparkle   },
+    { id: 'resplandores', label: 'Resplandores',      Icon: Envelope  },
+    { id: 'espera',       label: 'Lista de espera',   Icon: UserList  },
+    { id: 'talleres',     label: 'Talleres',           Icon: BookOpen  },
 ]
 
 export default function PageAdmin() {
@@ -176,6 +178,10 @@ export default function PageAdmin() {
                             onRevoked={fetchChispasData}
                         />
                     </div>
+                )}
+
+                {activeTab === 'resplandores' && (
+                    <ResplandoresPanel adminToken={adminToken} />
                 )}
 
                 {activeTab === 'espera' && (
