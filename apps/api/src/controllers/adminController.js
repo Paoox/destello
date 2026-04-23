@@ -8,7 +8,7 @@ import * as chispaService      from '../services/chispaService.js'
 import * as resplandorService  from '../services/resplandorService.js'
 import * as tallerService      from '../services/tallerService.js'
 import * as listaEsperaService from '../services/listaEsperaService.js'
-import { query }               from '../db.js'
+import { query }               from '../db/db.js'
 import { AppError }            from '../middleware/errorHandler.js'
 
 // ── Auth admin ────────────────────────────────────────────────────────────────

@@ -1,247 +1,171 @@
 /**
- * Destello Admin — ChispaCreator
- * Formulario para generar una chispa y copiarla / reenviarla al bot.
+ * Destello API — Chispas Controller
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Handlers HTTP para el módulo de chispas.
+ * Este archivo SOLO maneja la capa HTTP: validar req, llamar al servicio,
+ * formatear res. Toda la lógica de negocio vive en chispaService.js.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
-import { useState } from 'react'
-import { Sparkle, Copy, CheckFat, WhatsappLogo } from '@phosphor-icons/react'
 
-const TALLERS = [
-    { id: 'auriculoterapia-1', label: 'Auriculoterapia Nivel 1' },
-    { id: 'automaquillaje',    label: 'Automaquillaje Artístico' },
-    { id: 'gomitas',           label: 'Elaboración de Gomitas' },
-    { id: 'dibujo-expresivo',  label: 'Dibujo Expresivo' },
-]
+import * as chispaService from '../services/chispaService.js'
+import { AppError }       from '../middleware/errorHandler.js'
 
-export default function ChispaCreator({ adminToken, onCreated }) {
-    const [tallerId,      setTallerId]      = useState('')
-    const [expiresInDays, setExpiresInDays] = useState(30)
-    const [usuarioNombre, setUsuarioNombre] = useState('')
-    const [usuarioWa,     setUsuarioWa]     = useState('')
-    const [isLoading,     setIsLoading]     = useState(false)
-    const [error,         setError]         = useState(null)
-    const [lastChispa,    setLastChispa]    = useState(null)
-    const [copied,        setCopied]        = useState(false)
+// Mapa de razones de fallo → mensajes legibles para el usuario
+const REASON_MESSAGES = {
+    INVALID_CODE:  'Código no reconocido. Verifica que lo hayas escrito correctamente.',
+    REVOKED:       'Este código ha sido revocado.',
+    ALREADY_USED:  'Este código ya fue utilizado.',
+    EXPIRED:       'Este código ha expirado. Contacta al organizador.',
+}
 
-    const handleGenerate = async (e) => {
-        e.preventDefault()
-        if (!tallerId) return
-        setIsLoading(true)
-        setError(null)
-        try {
-            const res = await fetch('/api/admin/chispas', {
-                method:  'POST',
-                headers: {
-                    'Content-Type':  'application/json',
-                    'Authorization': `Bearer ${adminToken}`,
-                },
-                body: JSON.stringify({ tallerId, expiresInDays, usuarioNombre, usuarioWa }),
-            })
-            if (!res.ok) throw new Error('Error generando chispa')
-            const data = await res.json()
-            setLastChispa(data.chispa)
-            onCreated?.()
-        } catch (err) {
-            setError(err.message)
-        } finally {
-            setIsLoading(false)
+// ── Rutas de administración (requieren JWT) ───────────────────────────────────
+
+/**
+ * POST /chispas/generate
+ * Genera una nueva chispa para un taller dado.
+ *
+ * Body: { tallerId, expiresInDays?, prefix? }
+ * Response: { status, chispa }
+ */
+export async function generateChispa(req, res, next) {
+    try {
+        const {
+            tallerId, tallerNombre, expiresInDays, prefix, isDemo,
+            usuarioNombre, usuarioEmail, usuarioWa,
+        } = req.body
+
+        if (!tallerId) {
+            throw new AppError('tallerId es requerido', 400, 'BAD_REQUEST')
         }
+
+        const record = chispaService.createChispa({
+            tallerId,
+            tallerNombre:  tallerNombre  || null,
+            createdBy:     req.user?.userId ?? 'admin',
+            expiresInDays: expiresInDays !== undefined ? expiresInDays : 30,
+            prefix,
+            isDemo:        Boolean(isDemo),
+            usuarioNombre: usuarioNombre || null,
+            usuarioEmail:  usuarioEmail  || null,
+            usuarioWa:     usuarioWa     || null,
+        })
+
+        res.status(201).json({ status: 'ok', chispa: record })
+    } catch (err) {
+        next(err)
     }
+}
 
-    const handleCopy = () => {
-        navigator.clipboard.writeText(lastChispa.code)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
+/**
+ * POST /chispas/generate/batch
+ * Genera N chispas de una vez para el mismo taller.
+ *
+ * Body: { tallerId, quantity, expiresInDays?, prefix? }
+ * Response: { status, chispas, total }
+ */
+export async function generateBatch(req, res, next) {
+    try {
+        const { tallerId, quantity = 1, expiresInDays, prefix } = req.body
+
+        if (!tallerId)          throw new AppError('tallerId es requerido', 400, 'BAD_REQUEST')
+        if (quantity < 1 || quantity > 500) {
+            throw new AppError('quantity debe estar entre 1 y 500', 400, 'BAD_REQUEST')
+        }
+
+        const chispas = Array.from({ length: quantity }, () =>
+            chispaService.createChispa({
+                tallerId,
+                createdBy:    req.user?.userId ?? 'admin',
+                expiresInDays: expiresInDays ?? 30,
+                prefix,
+            })
+        )
+
+        res.status(201).json({ status: 'ok', chispas, total: chispas.length })
+    } catch (err) {
+        next(err)
     }
-
-    // Mensaje listo para pegar en WhatsApp
-    const waMessage = lastChispa
-        ? `¡Hola${usuarioNombre ? ` ${usuarioNombre}` : ''}! 🌟\nAquí está tu código de acceso a Destello:\n\n*${lastChispa.code}*\n\nVigencia: ${expiresInDays} días.\nÚsalo en: https://app.destello.mx/login`
-        : ''
-
-    return (
-        <div style={{
-            background:   'var(--bg-card)',
-            border:       '1px solid var(--border-default)',
-            borderRadius: 'var(--radius-xl)',
-            padding:      'var(--space-6)',
-        }}>
-            <h3 style={{ fontWeight: 700, marginBottom: 'var(--space-5)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Sparkle size={20} weight="fill" color="var(--color-jade-500)" />
-                Generar chispa
-            </h3>
-
-            <form onSubmit={handleGenerate} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                {/* Taller */}
-                <div>
-                    <label style={labelStyle}>Taller</label>
-                    <select value={tallerId} onChange={e => setTallerId(e.target.value)} style={inputStyle} required>
-                        <option value="">Seleccionar taller...</option>
-                        {TALLERS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-                    </select>
-                </div>
-
-                {/* Vigencia */}
-                <div>
-                    <label style={labelStyle}>Vigencia (días)</label>
-                    <input
-                        type="number" min={1} max={365}
-                        value={expiresInDays}
-                        onChange={e => setExpiresInDays(Number(e.target.value))}
-                        style={inputStyle}
-                    />
-                </div>
-
-                {/* Datos del usuario (del bot de WA) */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
-                    <div>
-                        <label style={labelStyle}>Nombre del usuario</label>
-                        <input
-                            type="text" placeholder="Ej: María García"
-                            value={usuarioNombre}
-                            onChange={e => setUsuarioNombre(e.target.value)}
-                            style={inputStyle}
-                        />
-                    </div>
-                    <div>
-                        <label style={labelStyle}>WhatsApp (+52...)</label>
-                        <input
-                            type="text" placeholder="+5215512345678"
-                            value={usuarioWa}
-                            onChange={e => setUsuarioWa(e.target.value)}
-                            style={inputStyle}
-                        />
-                    </div>
-                </div>
-
-                {error && <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-xs)' }}>{error}</p>}
-
-                <button type="submit" disabled={!tallerId || isLoading} style={btnPrimaryStyle(!!tallerId && !isLoading)}>
-                    {isLoading ? 'Generando...' : '✦ Generar chispa'}
-                </button>
-            </form>
-
-            {/* Resultado */}
-            {lastChispa && (
-                <div style={{
-                    marginTop:    'var(--space-5)',
-                    padding:      'var(--space-5)',
-                    background:   'var(--bg-surface)',
-                    borderRadius: 'var(--radius-lg)',
-                    border:       '1px solid var(--color-jade-500)44',
-                }}>
-                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 4 }}>Código generado</p>
-
-                    {/* Código con botón copiar */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
-                        <code style={{
-                            fontSize:   'var(--text-xl)',
-                            fontWeight: 700,
-                            letterSpacing: '0.08em',
-                            color:      'var(--color-jade-500)',
-                            flex:       1,
-                        }}>
-                            {lastChispa.code}
-                        </code>
-                        <button onClick={handleCopy} style={btnIconStyle} title="Copiar código">
-                            {copied ? <CheckFat size={18} color="#22c55e" /> : <Copy size={18} />}
-                        </button>
-                    </div>
-
-                    {/* Botón abrir WhatsApp con mensaje prellenado */}
-                    {usuarioWa && (
-
-                        <a
-                            href={`https://wa.me/${usuarioWa.replace(/\D/g, '')}?text=${encodeURIComponent(waMessage)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{
-                                display:        'flex',
-                                alignItems:     'center',
-                                justifyContent: 'center',
-                                gap:            8,
-                                padding:        'var(--space-3)',
-                                background:     '#25D366',
-                                borderRadius:   'var(--radius-lg)',
-                                color:          '#fff',
-                                fontWeight:     600,
-                                fontSize:       'var(--text-sm)',
-                                textDecoration: 'none',
-                            }}
-                        >
-                            <WhatsappLogo size={18} weight="fill" />
-                            Enviar por WhatsApp
-                        </a>
-                    )}
-
-                    {/* Copiar mensaje completo si no hay WA */}
-                    {!usuarioWa && (
-                        <button
-                            onClick={() => { navigator.clipboard.writeText(waMessage) }}
-                            style={btnSecondaryStyle}
-                        >
-                            <Copy size={16} /> Copiar mensaje completo
-                        </button>
-                    )}
-                </div>
-            )}
-        </div>
-    )
 }
 
-// ── Estilos reutilizables ─────────────────────────────────────────────────────
-const labelStyle = {
-    display:      'block',
-    fontSize:     'var(--text-xs)',
-    color:        'var(--text-muted)',
-    marginBottom: 4,
-    fontWeight:   500,
+/**
+ * GET /chispas
+ * Lista todas las chispas con filtros opcionales.
+ *
+ * Query: ?tallerId=&activeOnly=true
+ * Response: { status, chispas, total }
+ */
+export async function listChispas(req, res) {
+    const { tallerId, activeOnly } = req.query
+    const records = chispaService.listChispas({
+        tallerId,
+        activeOnly: activeOnly === 'true',
+    })
+    res.json({ status: 'ok', chispas: records, total: records.length })
 }
 
-const inputStyle = {
-    width:        '100%',
-    padding:      'var(--space-3)',
-    background:   'var(--bg-surface)',
-    border:       '1px solid var(--border-default)',
-    borderRadius: 'var(--radius-lg)',
-    color:        'var(--text-primary)',
-    fontSize:     'var(--text-sm)',
-    fontFamily:   'var(--font-sans)',
-    outline:      'none',
-    boxSizing:    'border-box',
+/**
+ * GET /chispas/stats
+ * Estadísticas del estado global de chispas.
+ *
+ * Response: { status, stats }
+ */
+export async function getStats(_req, res) {
+    const stats = chispaService.getStats()
+    res.json({ status: 'ok', stats })
 }
 
-const btnPrimaryStyle = (active) => ({
-    padding:      'var(--space-3)',
-    background:   active ? 'var(--color-jade-500)' : 'var(--bg-surface)',
-    border:       '1px solid transparent',
-    borderRadius: 'var(--radius-lg)',
-    color:        'var(--text-primary)',
-    fontFamily:   'var(--font-sans)',
-    fontWeight:   600,
-    fontSize:     'var(--text-sm)',
-    cursor:       active ? 'pointer' : 'not-allowed',
-    transition:   'background 0.2s',
-})
-
-const btnIconStyle = {
-    background:   'none',
-    border:       'none',
-    color:        'var(--text-muted)',
-    cursor:       'pointer',
-    padding:      'var(--space-1)',
-    borderRadius: 'var(--radius-sm)',
+/**
+ * GET /chispas/:code
+ * Obtiene el detalle de una chispa por código.
+ *
+ * Response: { status, chispa }
+ */
+export async function getChispa(req, res, next) {
+    const record = chispaService.getChispa(req.params.code)
+    if (!record) return next(new AppError('Chispa no encontrada', 404, 'NOT_FOUND'))
+    res.json({ status: 'ok', chispa: record })
 }
 
-const btnSecondaryStyle = {
-    display:      'flex',
-    alignItems:   'center',
-    gap:          6,
-    padding:      'var(--space-2) var(--space-4)',
-    background:   'var(--bg-surface)',
-    border:       '1px solid var(--border-default)',
-    borderRadius: 'var(--radius-lg)',
-    color:        'var(--text-muted)',
-    fontSize:     'var(--text-xs)',
-    cursor:       'pointer',
-    fontFamily:   'var(--font-sans)',
+/**
+ * DELETE /chispas/:code
+ * Revoca una chispa. No la borra — queda en el historial como revocada.
+ *
+ * Response: { status, message }
+ */
+export async function revokeChispa(req, res, next) {
+    const ok = chispaService.revokeChispa(req.params.code)
+    if (!ok) return next(new AppError('Chispa no encontrada', 404, 'NOT_FOUND'))
+    res.json({ status: 'ok', message: `Chispa ${req.params.code} revocada exitosamente` })
+}
+
+// ── Ruta pública (sin JWT) ────────────────────────────────────────────────────
+
+/**
+ * POST /chispas/validate
+ * Valida un código ingresado por el usuario.
+ * Esta ruta es PÚBLICA — la usa el flow de login antes de emitir el JWT.
+ *
+ * Body: { code }
+ * Response: { status, record } | AppError 401
+ *
+ * Nota: validateChispa en el servicio marca la chispa como usada.
+ * Si solo quieres verificar sin consumirla, no pases userId.
+ */
+export async function validateChispa(req, res, next) {
+    try {
+        const { code } = req.body
+        if (!code) throw new AppError('Código requerido', 400, 'BAD_REQUEST')
+
+        // No pasamos userId todavía — el consumo real ocurre en authController.loginWithCode
+        const result = chispaService.validateChispa(code)
+
+        if (!result.valid) {
+            const message = REASON_MESSAGES[result.reason] ?? 'Código inválido'
+            throw new AppError(message, 401, result.reason)
+        }
+
+        res.json({ status: 'ok', record: result.record })
+    } catch (err) {
+        next(err)
+    }
 }

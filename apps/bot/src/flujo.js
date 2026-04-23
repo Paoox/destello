@@ -39,12 +39,25 @@ const PASO = {
     REG_TIPO:          'REG_TIPO',
     REG_CORREO_PERFIL: 'REG_CORREO_PERFIL',
     REG_NOMBRE:        'REG_NOMBRE',
+    REG_APELLIDO:      'REG_APELLIDO',   // ← nuevo: separar nombre y apellido
     REG_CORREO_NUEVO:  'REG_CORREO_NUEVO',
     REG_TALLER:        'REG_TALLER',
     // Sin código
     SIN_CODIGO:        'SIN_CODIGO',
     // Después de completar cualquier flujo
     POST_ACCION:       'POST_ACCION',
+}
+
+/**
+ * Extrae el número de teléfono local (10 dígitos) del JID de WhatsApp.
+ * Ejemplo: "521234567890@s.whatsapp.net" → "1234567890"
+ * Strips el código de país 52 (México) si está presente.
+ */
+function extractWhatsapp(jid) {
+    const raw = jid.replace('@s.whatsapp.net', '').replace('@c.us', '')
+    // Quita el código de país 52 si da exactamente 12 dígitos → 10 locales
+    if (raw.startsWith('52') && raw.length === 12) return raw.slice(2)
+    return raw
 }
 
 const conversaciones = new Map()
@@ -148,7 +161,6 @@ function menuTalleres(talleres) {
 export async function procesarMensaje(jid, texto) {
     const msg  = texto.trim()
     const conv = conversaciones.get(jid) || { paso: PASO.MENU, esNuevo: true }
-    console.log(`[flujo] jid="${jid}" conv=${JSON.stringify(conv)} msg="${msg}"`)
 
     // "menu" o "cancelar" reinician siempre
     if (['menu', 'menú', 'cancelar', 'inicio'].includes(msg.toLowerCase())) {
@@ -223,7 +235,7 @@ export async function procesarMensaje(jid, texto) {
             conversaciones.set(jid, { ...conv, paso: PASO.REG_NOMBRE })
             return (
                 '¡Bienvenido/a! 🎉\n\n' +
-                '¿Cuál es tu *nombre completo*?\n\n' +
+                '¿Cuál es tu *nombre*?\n\n' +
                 '_Lo usamos para personalizar tus diplomas._'
             )
         }
@@ -282,14 +294,14 @@ export async function procesarMensaje(jid, texto) {
         )
     }
 
-    // ── REGISTRO: nombre de usuario nuevo ────────────────────
+    // ── REGISTRO: nombre (primer paso) ────────────────────────
     if (conv.paso === PASO.REG_NOMBRE) {
         // Caso: venía del flujo "sí tengo perfil" pero no lo encontramos
-        if (conv.correo) {
-            // Preguntamos si quiere registrarse
+        // → primero preguntamos si quiere registrarse
+        if (conv.correo && !conv.preguntarNombre) {
             if (['1', 'si', 'sí'].includes(msg.toLowerCase())) {
-                conversaciones.set(jid, { ...conv, paso: PASO.REG_NOMBRE, correo: conv.correo, preguntarNombre: true })
-                return '¿Cuál es tu *nombre completo*?\n\n_Lo usamos para personalizar tus diplomas._'
+                conversaciones.set(jid, { ...conv, paso: PASO.REG_NOMBRE, preguntarNombre: true })
+                return '¿Cuál es tu *nombre*?\n\n_Lo usamos para personalizar tus diplomas._'
             }
             if (['2', 'no'].includes(msg.toLowerCase())) {
                 conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
@@ -297,9 +309,21 @@ export async function procesarMensaje(jid, texto) {
             }
         }
 
-        conversaciones.set(jid, { ...conv, paso: PASO.REG_CORREO_NUEVO, nombre: msg })
+        // Recibió el nombre — ahora pedir apellido
+        conversaciones.set(jid, { ...conv, paso: PASO.REG_APELLIDO, nombre: msg.trim() })
         return (
-            `Mucho gusto, *${msg.split(' ')[0]}*! 😊\n\n` +
+            `Hola, *${msg.trim()}*! 😊\n\n` +
+            '¿Cuál es tu *apellido*?\n\n' +
+            '_Lo necesitamos para tu certificado._'
+        )
+    }
+
+    // ── REGISTRO: apellido (segundo paso) ─────────────────────
+    if (conv.paso === PASO.REG_APELLIDO) {
+        const nombreCompleto = `${conv.nombre} ${msg.trim()}`
+        conversaciones.set(jid, { ...conv, paso: PASO.REG_CORREO_NUEVO, nombre: nombreCompleto })
+        return (
+            `Perfecto, *${conv.nombre}*! 👍\n\n` +
             '¿Cuál es tu *correo electrónico*?\n\n' +
             '_Tu perfil en Destello se vincula a tu correo._'
         )
@@ -333,7 +357,7 @@ export async function procesarMensaje(jid, texto) {
         }
 
         // Guardar usuario nuevo
-        const whatsapp = jid.replace('@s.whatsapp.net', '')
+        const whatsapp = extractWhatsapp(jid)
         await registrarUsuario({ email: msg, nombre: conv.nombre, whatsapp })
 
         const talleres = await getTalleresActivos()
@@ -382,7 +406,7 @@ export async function procesarMensaje(jid, texto) {
         }
 
         // Registrar en lista de espera
-        const whatsapp  = jid.replace('@s.whatsapp.net', '')
+        const whatsapp  = extractWhatsapp(jid)
         const resultado = await agregarALista({
             email:    correo,
             tallerId: tallerElegido.id,

@@ -1,7 +1,7 @@
 /**
  * Destello API — Lista de Espera Service
  */
-import { query } from '../db.js'
+import { query } from '../db/db.js'
 
 export async function listTodas() {
     const { rows } = await query(

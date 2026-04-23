@@ -3,7 +3,7 @@
  * Guardar y consultar usuarios en PostgreSQL.
  */
 
-import { query } from '../db.js'
+import { query } from '../db/db.js'
 
 /**
  * Crea un usuario nuevo O actualiza sus datos si el correo ya existe.

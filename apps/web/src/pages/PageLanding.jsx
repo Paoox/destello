@@ -13,7 +13,7 @@ import {
 import logoLight from '../Images/destello-logo-512.png'
 import logoDark  from '../Images/destello-logo-dark-512.png'
 
-const WA_NUMBER = 'TU_NUMERO_AQUI'  // ← reemplaza con tu número
+import { WA_NUMBER, WA_CHISPA_URL } from '../constants.js'
 
 // ── Stats globales ────────────────────────────────────────────
 const STATS = [
@@ -185,7 +185,7 @@ export default function PageLanding() {
                         src={logo} alt="Destello"
                         style={{
                             width: 72, height: 72, objectFit: 'contain',
-                            display: 'block', margin: '0 auto var(--space-5)',
+                            display: 'block', margin: '0 auto var(--space-6)',
                             filter: 'drop-shadow(0 0 20px rgba(13,115,119,0.5))',
                         }}
                     />
@@ -196,7 +196,7 @@ export default function PageLanding() {
                         background: 'rgba(13,115,119,0.12)',
                         border: '1px solid rgba(13,115,119,0.3)',
                         borderRadius: 'var(--radius-full)',
-                        fontSize: 'var(--text-xs)', fontWeight: 600,
+                        fontSize: 'var(--text-x)', fontWeight: 600,
                         color: 'var(--color-jade-500)',
                         marginBottom: 'var(--space-5)',
                     }}>
@@ -205,7 +205,7 @@ export default function PageLanding() {
                     </div>
 
                     <h1 style={{
-                        fontSize: 'clamp(1.75rem, 4vw, 2.8rem)',
+                        fontSize: 'clamp(1.5rem, 3vw, 2rem)',
                         fontWeight: 700, lineHeight: 1.2,
                         letterSpacing: '-0.025em',
                         margin: '0 0 var(--space-4)',
@@ -303,14 +303,14 @@ export default function PageLanding() {
                 textAlign: 'center',
             }}>
         <span style={{
-            fontSize: 'var(--text-xs)', fontWeight: 700,
+            fontSize: 'var(--text-xl)', fontWeight: 700,
             color: 'var(--color-jade-500)', letterSpacing: '0.1em',
             textTransform: 'uppercase',
         }}>
           Quiénes somos
         </span>
                 <h2 style={{
-                    fontSize: 'clamp(1.6rem, 4vw, 2.5rem)',
+                    fontSize: 'clamp(1.4rem, 3vw, 2rem)',
                     fontWeight: 700, letterSpacing: '-0.02em',
                     margin: 'var(--space-3) 0 var(--space-5)',
                 }}>
@@ -329,26 +329,26 @@ export default function PageLanding() {
 
             {/* ══ METODOLOGÍA ══════════════════════════════════════ */}
             <section style={{
-                padding: 'var(--space-10) var(--space-6) var(--space-20)',
+                padding: 'var(--space-8) var(--space-5) var(--space-15)',
             }}>
                 <div style={{ maxWidth: 960, marginInline: 'auto' }}>
                     <div style={{ textAlign: 'center', marginBottom: 'var(--space-10)' }}>
             <span style={{
-                fontSize: 'var(--text-xs)', fontWeight: 700,
+                fontSize: 'var(--text-xl)', fontWeight: 700,
                 color: 'var(--color-amber-600)', letterSpacing: '0.1em',
                 textTransform: 'uppercase',
             }}>
               Nuestra metodología
             </span>
                         <h2 style={{
-                            fontSize: 'clamp(1.6rem, 4vw, 2.5rem)',
+                            fontSize: 'clamp(1.4rem, 3vw, 2rem)',
                             fontWeight: 700, letterSpacing: '-0.02em',
                             margin: 'var(--space-3) 0 0',
                         }}>
                             Tres pilares que nos hacen únicos
                         </h2>
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', marginBottom: 'var(--space-10)'}}>
                         {PILARES.map(p => <PilarCard key={p.titulo} {...p} />)}
                     </div>
                 </div>
@@ -367,7 +367,7 @@ export default function PageLanding() {
                     }}>
                         <div>
               <span style={{
-                  fontSize: 'var(--text-xs)', fontWeight: 700,
+                  fontSize: 'var(--text-xl)', fontWeight: 700,
                   color: 'var(--color-jade-500)', letterSpacing: '0.1em',
                   textTransform: 'uppercase',
               }}>
@@ -404,14 +404,14 @@ export default function PageLanding() {
 
                     <div style={{ textAlign: 'center', marginBottom: 'var(--space-12)' }}>
                         <span style={{
-                            fontSize: 'var(--text-xs)', fontWeight: 700,
+                            fontSize: 'var(--text-xl)', fontWeight: 700,
                             color: 'var(--color-jade-500)', letterSpacing: '0.12em',
                             textTransform: 'uppercase',
                         }}>
                             Así funciona
                         </span>
                         <h2 style={{
-                            fontSize: 'clamp(1.5rem, 3.5vw, 2rem)',
+                            fontSize: 'clamp(1.4rem, 3vw, 2rem)',
                             fontWeight: 700, letterSpacing: '-0.02em',
                             margin: 'var(--space-3) 0 var(--space-3)',
                         }}>
@@ -611,7 +611,7 @@ export default function PageLanding() {
             }}>
                 <div style={{ maxWidth: 540, marginInline: 'auto' }}>
                     <h2 style={{
-                        fontSize: 'clamp(1.6rem, 4vw, 2.5rem)',
+                        fontSize: 'clamp(1.5rem, 3vw, 2rem)',
                         fontWeight: 700, letterSpacing: '-0.02em',
                         margin: '0 0 var(--space-3)',
                     }}>

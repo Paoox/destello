@@ -8,7 +8,7 @@
  * Formato de código: RESP-XXXX-XXXX
  */
 import crypto from 'node:crypto'
-import { query } from '../db.js'
+import { query } from '../db/db.js'
 
 // ── Helpers internos ──────────────────────────────────────────────────────────
 

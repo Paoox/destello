@@ -5,7 +5,7 @@ import 'dotenv/config'
 import express from 'express'
 import cors    from 'cors'
 import helmet  from 'helmet'
-import { pool } from './db.js'
+import { pool } from './db/db.js'
 
 import authRouter    from './routes/auth.js'
 import usersRouter   from './routes/users.js'
