@@ -74,7 +74,7 @@ async function conectar() {
             if (msg.key.fromMe)                        continue  // ignorar mis propios mensajes
             if (msg.key.remoteJid?.endsWith('@g.us'))  continue  // ignorar grupos
 
-            const jid   = msg.key.remoteJid
+            const jid   = msg.key.remoteJid?.replace(/:\d+@/, '@')
             const texto = msg.message?.conversation
                 || msg.message?.extendedTextMessage?.text
                 || ''
