@@ -26,6 +26,8 @@ const PASO = {
     REG_TALLER:        'REG_TALLER',
     // Sin código
     SIN_CODIGO:        'SIN_CODIGO',
+    // Después de completar cualquier flujo
+    POST_ACCION:       'POST_ACCION',
 }
 
 const conversaciones = new Map()
@@ -89,6 +91,16 @@ const MENU_TEXTO = (nombre = '') =>
     '4️⃣  Medios de pago\n' +
     '5️⃣  Tengo una duda'
 
+const POST_ACCION_TEXTO =
+    '¿Puedo ayudarte con algo más?\n\n' +
+    '1️⃣  Volver al menú\n' +
+    '2️⃣  Salir'
+
+const ADIOS_TEXTO =
+    '¡Hasta pronto! 👋✨\n\n' +
+    'Cuando quieras, escríbeme y con gusto te ayudo.\n\n' +
+    '_— Faro, tu guía en Destello_'
+
 const SALUDO_INICIAL =
     '✨ ¡Hola! Soy *Faro*, tu guía en *Destello*.\n\n' +
     'Te acompaño en cada paso de tu aprendizaje.\n\n' +
@@ -122,8 +134,14 @@ export async function procesarMensaje(jid, texto) {
 
     // "menu" o "cancelar" reinician siempre
     if (['menu', 'menú', 'cancelar', 'inicio'].includes(msg.toLowerCase())) {
-        conversaciones.delete(jid)
+        conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
         return MENU_TEXTO()
+    }
+
+    // "salir" o "adios" terminan la conversación
+    if (['salir', 'adiós', 'adios', 'bye', 'chao', 'hasta luego'].includes(msg.toLowerCase())) {
+        conversaciones.delete(jid)
+        return ADIOS_TEXTO
     }
 
     // ── MENÚ PRINCIPAL ────────────────────────────────────────
@@ -226,12 +244,12 @@ export async function procesarMensaje(jid, texto) {
         }
 
         if (usuario.estado === 'espera') {
-            conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+            conversaciones.set(jid, { paso: PASO.POST_ACCION })
             return (
                 `Hola *${usuario.nombre}* 👋\n\n` +
                 'Tu registro está en proceso. Aún no has activado tu perfil con tu *resplandor*.\n\n' +
                 'Revisa tu correo — si no lo encuentras escríbeme con la opción 3️⃣ del menú y lo revisamos.\n\n' +
-                MENU_TEXTO()
+                POST_ACCION_TEXTO
             )
         }
 
@@ -362,11 +380,13 @@ export async function procesarMensaje(jid, texto) {
 
         conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
 
+        conversaciones.set(jid, { paso: PASO.POST_ACCION })
+
         if (!resultado.nuevo) {
             return (
                 `ℹ️ *${nombre?.split(' ')[0] || 'Hola'}*, ya estás en la lista de espera de *${tallerElegido.nombre}*.\n\n` +
                 'Te avisaremos en cuanto haya un lugar disponible. 🙌\n\n' +
-                MENU_TEXTO()
+                POST_ACCION_TEXTO
             )
         }
 
@@ -375,7 +395,7 @@ export async function procesarMensaje(jid, texto) {
                 `🎉 *¡Listo!* Quedaste registrado/a en la lista de espera de:\n\n` +
                 `📚 *${tallerElegido.nombre}*\n\n` +
                 'Te notificaremos aquí y por correo cuando confirmemos tu cupo. ¡Estás muy cerca! ✨\n\n' +
-                MENU_TEXTO()
+                POST_ACCION_TEXTO
             )
         }
 
@@ -385,7 +405,7 @@ export async function procesarMensaje(jid, texto) {
             '📬 Te notificaremos por correo si alcanzaste lugar. En caso de que sí, ' +
             'recibirás tu *resplandor* para crear tu perfil en Destello.\n\n' +
             '_¡Mantente pendiente!_ 🌟\n\n' +
-            MENU_TEXTO()
+            POST_ACCION_TEXTO
         )
     }
 
@@ -397,7 +417,7 @@ export async function procesarMensaje(jid, texto) {
         }
 
         const pendientes = await getPendientes(msg)
-        conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+        conversaciones.set(jid, { paso: PASO.POST_ACCION })
 
         if (pendientes.chispas?.length > 0) {
             const lista = pendientes.chispas.map(c => `• *${c.taller_nombre}*: \`${c.code}\``).join('\n')
@@ -405,7 +425,7 @@ export async function procesarMensaje(jid, texto) {
                 '✅ Encontramos tu(s) código(s):\n\n' +
                 lista + '\n\n' +
                 '📱 Úsalos en: *destello.courses/acceso*\n\n' +
-                MENU_TEXTO()
+                POST_ACCION_TEXTO
             )
         }
 
@@ -414,16 +434,32 @@ export async function procesarMensaje(jid, texto) {
                 '✉️ Tu *resplandor* fue enviado a ese correo.\n\n' +
                 'Por favor revisa también tu carpeta de *spam o correo no deseado*.\n\n' +
                 'Si sigues sin encontrarlo, escríbenos y lo revisamos. 😊\n\n' +
-                MENU_TEXTO()
+                POST_ACCION_TEXTO
             )
         }
 
         return (
             `🔍 No encontramos códigos pendientes para *${msg}*.\n\n` +
             'Puede que aún no hayas sido seleccionado/a o que tu pago esté en proceso de verificación.\n\n' +
-            '¿Necesitas algo más?\n\n' +
-            MENU_TEXTO()
+            POST_ACCION_TEXTO
         )
+    }
+
+    // ── POST ACCIÓN: ¿volver al menú o salir? ────────────────
+    if (conv.paso === PASO.POST_ACCION) {
+        const resp = msg.toLowerCase().trim()
+
+        if (['1', 'menu', 'menú', 'volver'].includes(resp)) {
+            conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+            return MENU_TEXTO()
+        }
+
+        if (['2', 'salir', 'no', 'adios', 'adiós'].includes(resp)) {
+            conversaciones.delete(jid)
+            return ADIOS_TEXTO
+        }
+
+        return POST_ACCION_TEXTO
     }
 
     // Fallback — mostrar menú
