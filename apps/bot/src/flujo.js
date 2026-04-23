@@ -1,210 +1,432 @@
 /**
- * Destello Bot — Flujo de conversación
- * ─────────────────────────────────────────────────────────────
- * Maneja el estado de cada alumno que escribe al bot.
+ * Destello — Faro 🌟
+ * Bot de WhatsApp. Guía a los alumnos desde el primer contacto.
  *
- * Flujo:
- *   Alumno escribe → Bot pide nombre → Bot pide correo → Bot pide taller
- *   → Bot llama a la API → Bot entrega el código (chispa)
+ * MENÚ PRINCIPAL
+ *   1. Registrarme a un taller
+ *   2. Ver talleres disponibles
+ *   3. No me llegó mi chispa o resplandor
+ *   4. Medios de pago
+ *   5. Tengo una duda
  */
 
 import fetch from 'node-fetch'
 
-const API_URL    = process.env.API_URL       || 'http://localhost:3001'
-const ADMIN_PASS = process.env.ADMIN_PASSWORD
+const API_URL   = process.env.API_URL    || 'http://localhost:3001'
+const SPEI_INFO = process.env.SPEI_INFO  || 'Banco: BBVA\nCLABE: 000000000000000000\nTitular: Tu Nombre\nConcepto: Tu nombre + taller'
 
-let adminToken = null  // se renueva automáticamente si expira
-
-// ── Pasos de la conversación ──────────────────────────────────
+// ── Estados de conversación ───────────────────────────────────
 const PASO = {
-    INICIO:  'INICIO',
-    NOMBRE:  'NOMBRE',
-    CORREO:  'CORREO',
-    TALLER:  'TALLER',
-    LISTO:   'LISTO',
+    MENU:              'MENU',
+    // Flujo registro
+    REG_TIPO:          'REG_TIPO',
+    REG_CORREO_PERFIL: 'REG_CORREO_PERFIL',
+    REG_NOMBRE:        'REG_NOMBRE',
+    REG_CORREO_NUEVO:  'REG_CORREO_NUEVO',
+    REG_TALLER:        'REG_TALLER',
+    // Sin código
+    SIN_CODIGO:        'SIN_CODIGO',
 }
 
-// ── Estado de cada alumno (número de WhatsApp → datos) ────────
 const conversaciones = new Map()
 
-// ── Obtener token de admin ────────────────────────────────────
-async function getAdminToken() {
-    if (adminToken) return adminToken
+// ── Helpers de API ────────────────────────────────────────────
 
-    if (!ADMIN_PASS) {
-        throw new Error('Falta ADMIN_PASSWORD en el archivo .env del bot')
-    }
-
-    const res  = await fetch(`${API_URL}/admin/login`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ password: ADMIN_PASS }),
-    })
-    const data = await res.json()
-
-    if (!data.adminToken) {
-        throw new Error(`Login de admin falló: ${JSON.stringify(data)}`)
-    }
-
-    adminToken = data.adminToken
-    return adminToken
+async function getTalleresActivos() {
+    try {
+        const res  = await fetch(`${API_URL}/tallers`)
+        const data = await res.json()
+        return data.tallers || []
+    } catch { return [] }
 }
 
-// ── Generar chispa llamando a la API ──────────────────────────
-async function generarChispa(tallerId, { nombre, correo } = {}) {
-    const token = await getAdminToken()
-
-    const res = await fetch(`${API_URL}/admin/chispas`, {
-        method:  'POST',
-        headers: {
-            'Content-Type':  'application/json',
-            'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-            tallerId,
-            createdBy:     'bot-whatsapp',
-            expiresInDays: 30,
-            userEmail:     correo || null,
-            userName:      nombre || null,
-        }),
-    })
-
-    // Si el token expiró, renovar y reintentar
-    if (res.status === 401) {
-        adminToken = null
-        return generarChispa(tallerId, { nombre, correo })
-    }
-
-    const data = await res.json()
-
-    if (!data.code) {
-        throw new Error(`Error al generar chispa: ${JSON.stringify(data)}`)
-    }
-
-    return data.code  // ejemplo: "DEST-A1B2-C3D4"
+async function buscarUsuario(email) {
+    try {
+        const res  = await fetch(`${API_URL}/bot/usuario/${encodeURIComponent(email)}`)
+        const data = await res.json()
+        return data
+    } catch { return { existe: false } }
 }
 
-// ── Función principal: procesa un mensaje y devuelve respuesta ─
+async function registrarUsuario({ email, nombre, whatsapp }) {
+    try {
+        const res = await fetch(`${API_URL}/bot/registrar`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ email, nombre, whatsapp }),
+        })
+        return await res.json()
+    } catch { return { status: 'error' } }
+}
+
+async function agregarALista({ email, tallerId, nombre, whatsapp }) {
+    try {
+        const res = await fetch(`${API_URL}/bot/lista-espera`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ email, tallerId, nombre, whatsapp }),
+        })
+        return await res.json()
+    } catch { return { status: 'error' } }
+}
+
+async function getPendientes(email) {
+    try {
+        const res  = await fetch(`${API_URL}/bot/pendientes/${encodeURIComponent(email)}`)
+        const data = await res.json()
+        return data
+    } catch { return { chispas: [], resplandores: [] } }
+}
+
+// ── Textos reutilizables ──────────────────────────────────────
+
+const MENU_TEXTO = (nombre = '') =>
+    `${nombre ? `Hola de nuevo, *${nombre.split(' ')[0]}*! 👋\n\n` : ''}` +
+    '¿En qué puedo ayudarte?\n\n' +
+    '1️⃣  Quiero registrarme a un taller\n' +
+    '2️⃣  Ver talleres disponibles\n' +
+    '3️⃣  No me llegó mi chispa o resplandor\n' +
+    '4️⃣  Medios de pago\n' +
+    '5️⃣  Tengo una duda'
+
+const SALUDO_INICIAL =
+    '✨ ¡Hola! Soy *Faro*, tu guía en *Destello*.\n\n' +
+    'Te acompaño en cada paso de tu aprendizaje.\n\n' +
+    '¿Cómo puedo ayudarte hoy?\n\n' +
+    '1️⃣  Quiero registrarme a un taller\n' +
+    '2️⃣  Ver talleres disponibles\n' +
+    '3️⃣  No me llegó mi chispa o resplandor\n' +
+    '4️⃣  Medios de pago\n' +
+    '5️⃣  Tengo una duda'
+
+function menuTalleres(talleres) {
+    if (!talleres.length) {
+        return '😔 Por el momento no hay talleres disponibles. ¡Pronto abriremos nuevas fechas! Escribe *menu* para volver.'
+    }
+    const emojis = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣']
+    return (
+        '*Talleres disponibles:*\n\n' +
+        talleres.map((t, i) => {
+            const precio  = t.precio > 0 ? `  💰 $${t.precio} MXN` : ''
+            const horario = t.horario    ? `  🕐 ${t.horario}`     : ''
+            return `${emojis[i]}  *${t.nombre}*${precio}${horario}`
+        }).join('\n\n')
+    )
+}
+
+// ── Procesador principal ──────────────────────────────────────
+
 export async function procesarMensaje(jid, texto) {
     const msg  = texto.trim()
-    const conv = conversaciones.get(jid) || { paso: PASO.INICIO }
+    const conv = conversaciones.get(jid) || { paso: PASO.MENU, esNuevo: true }
 
-    // Cualquier momento: "cancelar" reinicia la conversación
-    if (msg.toLowerCase() === 'cancelar') {
+    // "menu" o "cancelar" reinician siempre
+    if (['menu', 'menú', 'cancelar', 'inicio'].includes(msg.toLowerCase())) {
         conversaciones.delete(jid)
-        return '✅ Conversación reiniciada. Escríbeme cuando quieras empezar de nuevo.'
+        return MENU_TEXTO()
     }
 
-    // ── Paso 1: Primer mensaje del alumno ─────────────────────
-    if (conv.paso === PASO.INICIO) {
-        conversaciones.set(jid, { paso: PASO.NOMBRE })
+    // ── MENÚ PRINCIPAL ────────────────────────────────────────
+    if (conv.paso === PASO.MENU) {
+        if (conv.esNuevo) {
+            conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+            return SALUDO_INICIAL
+        }
+
+        switch (msg) {
+            case '1':
+                conversaciones.set(jid, { paso: PASO.REG_TIPO })
+                return (
+                    '¡Perfecto! Primero dime:\n\n' +
+                    '¿Ya tienes un perfil en Destello?\n\n' +
+                    '1️⃣  Sí, ya tengo perfil\n' +
+                    '2️⃣  No, soy nuevo/a'
+                )
+
+            case '2': {
+                const talleres = await getTalleresActivos()
+                conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+                return menuTalleres(talleres) + '\n\n_Escribe *menu* para volver._'
+            }
+
+            case '3':
+                conversaciones.set(jid, { paso: PASO.SIN_CODIGO })
+                return (
+                    'Entendido, te ayudo a revisarlo. 🔍\n\n' +
+                    '¿Cuál es el correo con el que te registraste?'
+                )
+
+            case '4':
+                conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+                return (
+                    '💳 *Medios de pago*\n\n' +
+                    'Realizamos cobros por transferencia SPEI:\n\n' +
+                    `${SPEI_INFO}\n\n` +
+                    'Una vez realizado tu pago, envía el comprobante por este mismo chat y lo verificamos a la brevedad.\n\n' +
+                    '_Escribe *menu* para volver._'
+                )
+
+            case '5':
+                conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+                return (
+                    '💬 *¿Tienes una duda?*\n\n' +
+                    'Próximamente tendremos una sección de preguntas frecuentes.\n\n' +
+                    'Por ahora escríbenos tu duda aquí y te respondemos a la brevedad. 😊\n\n' +
+                    '_Escribe *menu* para volver._'
+                )
+
+            default:
+                return MENU_TEXTO()
+        }
+    }
+
+    // ── REGISTRO: ¿tienes perfil? ─────────────────────────────
+    if (conv.paso === PASO.REG_TIPO) {
+        const resp = msg.toLowerCase()
+
+        if (['1', 'si', 'sí', 'yes'].includes(resp)) {
+            conversaciones.set(jid, { ...conv, paso: PASO.REG_CORREO_PERFIL })
+            return '¿Cuál es el correo con el que te registraste?'
+        }
+
+        if (['2', 'no'].includes(resp)) {
+            conversaciones.set(jid, { ...conv, paso: PASO.REG_NOMBRE })
+            return (
+                '¡Bienvenido/a! 🎉\n\n' +
+                '¿Cuál es tu *nombre completo*?\n\n' +
+                '_Lo usamos para personalizar tus diplomas._'
+            )
+        }
+
         return (
-            '✨ *¡Hola! Soy el asistente de Destello.*\n\n' +
-            'Te ayudaré a obtener tu código de acceso para entrar a tu taller.\n\n' +
-            '¿Cuál es tu nombre y apellido?'
+            'Por favor elige una opción:\n\n' +
+            '1️⃣  Sí, ya tengo perfil\n' +
+            '2️⃣  No, soy nuevo/a'
         )
     }
 
-    // ── Paso 2: Recibimos nombre, pedimos correo ─────────────
-    if (conv.paso === PASO.NOMBRE) {
-        conversaciones.set(jid, { paso: PASO.CORREO, nombre: msg })
-        return (
-            `¡Hola, *${msg}*! 👋\n\n` +
-            '¿Cuál es tu correo electrónico?\n\n' +
-            '_Tu perfil en Destello se vincula a tu correo, así podrás ' +
-            'acceder a todos tus talleres desde un solo lugar._'
-        )
-    }
-
-    // ── Paso 3: Recibimos correo, pedimos taller ──────────────
-    if (conv.paso === PASO.CORREO) {
-        // Validación básica de formato de correo
+    // ── REGISTRO: correo de usuario con perfil ────────────────
+    if (conv.paso === PASO.REG_CORREO_PERFIL) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
         if (!emailRegex.test(msg)) {
+            return '⚠️ Ese correo no parece válido. Escríbelo completo, ej: _tunombre@gmail.com_'
+        }
+
+        const { existe, usuario } = await buscarUsuario(msg)
+
+        if (!existe) {
+            // No está en la BD — ofrecemos registrarlo
+            conversaciones.set(jid, { ...conv, paso: PASO.REG_NOMBRE, correo: msg })
             return (
-                '⚠️ Ese correo no parece válido. Por favor escríbelo completo, por ejemplo:\n\n' +
-                '_tunombre@gmail.com_'
+                `⚠️ No encontramos ningún perfil con *${msg}*.\n\n` +
+                '¿Deseas registrarte como nuevo/a alumno/a?\n\n' +
+                '1️⃣  Sí, quiero registrarme\n' +
+                '2️⃣  No, volver al menú'
             )
         }
 
-        conversaciones.set(jid, { ...conv, paso: PASO.TALLER, correo: msg })
+        if (usuario.estado === 'espera') {
+            conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+            return (
+                `Hola *${usuario.nombre}* 👋\n\n` +
+                'Tu registro está en proceso. Aún no has activado tu perfil con tu *resplandor*.\n\n' +
+                'Revisa tu correo — si no lo encuentras escríbeme con la opción 3️⃣ del menú y lo revisamos.\n\n' +
+                MENU_TEXTO()
+            )
+        }
+
+        // Usuario activo — mostrar talleres
+        const talleres = await getTalleresActivos()
+        conversaciones.set(jid, {
+            ...conv,
+            paso:     PASO.REG_TALLER,
+            correo:   msg,
+            nombre:   usuario.nombre,
+            talleres,
+            tienePerfil: true,
+        })
         return (
-            `✅ Correo registrado: *${msg}*\n\n` +
-            'Ahora dime, ¿a qué taller quieres acceder?\n\n' +
-            '1️⃣  Ciencias\n' +
-            '2️⃣  Matemáticas\n' +
-            '3️⃣  Arte\n' +
-            '4️⃣  Tecnología\n\n' +
-            'Escribe el *número* o el *nombre* del taller.'
+            `¡Hola de nuevo, *${usuario.nombre?.split(' ')[0]}*! 😊\n\n` +
+            '¿A qué taller deseas registrarte?\n\n' +
+            menuTalleres(talleres)
         )
     }
 
-    // ── Paso 4: Recibimos taller, generamos la chispa ─────────
-    if (conv.paso === PASO.TALLER) {
-        // Acepta número (1-4) O nombre del taller
-        const tallerIds = {
-            // Por número
-            '1':           'taller-ciencias',
-            '2':           'taller-matematicas',
-            '3':           'taller-arte',
-            '4':           'taller-tecnologia',
-            // Por nombre (con y sin acento)
-            'ciencias':    'taller-ciencias',
-            'matemáticas': 'taller-matematicas',
-            'matematicas': 'taller-matematicas',
-            'arte':        'taller-arte',
-            'tecnología':  'taller-tecnologia',
-            'tecnologia':  'taller-tecnologia',
+    // ── REGISTRO: nombre de usuario nuevo ────────────────────
+    if (conv.paso === PASO.REG_NOMBRE) {
+        // Caso: venía del flujo "sí tengo perfil" pero no lo encontramos
+        if (conv.correo) {
+            // Preguntamos si quiere registrarse
+            if (['1', 'si', 'sí'].includes(msg.toLowerCase())) {
+                conversaciones.set(jid, { ...conv, paso: PASO.REG_NOMBRE, correo: conv.correo, preguntarNombre: true })
+                return '¿Cuál es tu *nombre completo*?\n\n_Lo usamos para personalizar tus diplomas._'
+            }
+            if (['2', 'no'].includes(msg.toLowerCase())) {
+                conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+                return MENU_TEXTO()
+            }
         }
 
-        // Nombres bonitos para mostrar en el mensaje de confirmación
-        const tallerNombres = {
-            'taller-ciencias':    'Ciencias',
-            'taller-matematicas': 'Matemáticas',
-            'taller-arte':        'Arte',
-            'taller-tecnologia':  'Tecnología',
-        }
-
-        const tallerId    = tallerIds[msg.toLowerCase().trim()]
-        const tallerNombre = tallerNombres[tallerId] || msg
-
-        if (!tallerId) {
-            return (
-                '⚠️ No reconocí esa opción. Puedes escribir el número o el nombre:\n\n' +
-                '1️⃣  Ciencias\n' +
-                '2️⃣  Matemáticas\n' +
-                '3️⃣  Arte\n' +
-                '4️⃣  Tecnología'
-            )
-        }
-
-        try {
-            const codigo = await generarChispa(tallerId, { nombre: conv.nombre, correo: conv.correo })
-            conversaciones.set(jid, { ...conv, paso: PASO.LISTO })
-
-            return (
-                `🎉 *¡Listo, ${conv.nombre}!*\n\n` +
-                `Tu código de acceso para *${tallerNombre}* es:\n\n` +
-                `🔑  \`${codigo}\`\n\n` +
-                `Úsalo aquí:\n👉 https://destello-web.vercel.app/acceso\n\n` +
-                '_Código de un solo uso, válido 30 días._\n\n' +
-                '¡Que disfrutes tu taller! ✨'
-            )
-        } catch (err) {
-            console.error('[bot] Error generando chispa:', err.message)
-            return '😔 Hubo un problema al generar tu código. Intenta de nuevo en unos minutos.'
-        }
-    }
-
-    // ── Paso 4: Ya le entregamos su código ────────────────────
-    if (conv.paso === PASO.LISTO) {
+        conversaciones.set(jid, { ...conv, paso: PASO.REG_CORREO_NUEVO, nombre: msg })
         return (
-            '✅ Ya te envié tu código más arriba.\n\n' +
-            'Si necesitas uno nuevo, escribe *cancelar* para empezar de nuevo.'
+            `Mucho gusto, *${msg.split(' ')[0]}*! 😊\n\n` +
+            '¿Cuál es tu *correo electrónico*?\n\n' +
+            '_Tu perfil en Destello se vincula a tu correo._'
         )
     }
 
-    // Fallback
-    conversaciones.delete(jid)
-    return '¡Hola! Escríbeme para comenzar. 😊'
+    // ── REGISTRO: correo de usuario nuevo ────────────────────
+    if (conv.paso === PASO.REG_CORREO_NUEVO) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(msg)) {
+            return '⚠️ Ese correo no parece válido. Escríbelo completo, ej: _tunombre@gmail.com_'
+        }
+
+        // Verificar si ya existe
+        const { existe, usuario } = await buscarUsuario(msg)
+
+        if (existe && usuario.estado === 'activo') {
+            const talleres = await getTalleresActivos()
+            conversaciones.set(jid, {
+                ...conv,
+                paso:     PASO.REG_TALLER,
+                correo:   msg,
+                nombre:   usuario.nombre,
+                talleres,
+                tienePerfil: true,
+            })
+            return (
+                `¡Encontramos tu perfil, *${usuario.nombre?.split(' ')[0]}*! 👋\n\n` +
+                'Te muestro los talleres disponibles:\n\n' +
+                menuTalleres(talleres)
+            )
+        }
+
+        // Guardar usuario nuevo
+        const whatsapp = jid.replace('@s.whatsapp.net', '')
+        await registrarUsuario({ email: msg, nombre: conv.nombre, whatsapp })
+
+        const talleres = await getTalleresActivos()
+        conversaciones.set(jid, {
+            ...conv,
+            paso:     PASO.REG_TALLER,
+            correo:   msg,
+            talleres,
+            tienePerfil: false,
+        })
+        return (
+            '✅ *¡Registro guardado!*\n\n' +
+            '¿A qué taller deseas registrarte en la lista de espera?\n\n' +
+            menuTalleres(talleres)
+        )
+    }
+
+    // ── REGISTRO: selección de taller ────────────────────────
+    if (conv.paso === PASO.REG_TALLER) {
+        const { talleres = [], nombre, correo, tienePerfil } = conv
+
+        if (!talleres.length) {
+            conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+            return '😔 No hay talleres disponibles en este momento.\n\n' + MENU_TEXTO()
+        }
+
+        // Buscar por número o nombre
+        const input = msg.toLowerCase().trim()
+        let tallerElegido = null
+
+        const num = parseInt(input)
+        if (!isNaN(num) && num >= 1 && num <= talleres.length) {
+            tallerElegido = talleres[num - 1]
+        }
+        if (!tallerElegido) {
+            tallerElegido = talleres.find(t =>
+                t.nombre.toLowerCase().includes(input)
+            )
+        }
+
+        if (!tallerElegido) {
+            return (
+                '⚠️ No reconocí esa opción. Elige el *número* o escribe el *nombre* del taller:\n\n' +
+                menuTalleres(talleres)
+            )
+        }
+
+        // Registrar en lista de espera
+        const whatsapp  = jid.replace('@s.whatsapp.net', '')
+        const resultado = await agregarALista({
+            email:    correo,
+            tallerId: tallerElegido.id,
+            nombre,
+            whatsapp,
+        })
+
+        conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+
+        if (!resultado.nuevo) {
+            return (
+                `ℹ️ *${nombre?.split(' ')[0] || 'Hola'}*, ya estás en la lista de espera de *${tallerElegido.nombre}*.\n\n` +
+                'Te avisaremos en cuanto haya un lugar disponible. 🙌\n\n' +
+                MENU_TEXTO()
+            )
+        }
+
+        if (tienePerfil) {
+            return (
+                `🎉 *¡Listo!* Quedaste registrado/a en la lista de espera de:\n\n` +
+                `📚 *${tallerElegido.nombre}*\n\n` +
+                'Te notificaremos aquí y por correo cuando confirmemos tu cupo. ¡Estás muy cerca! ✨\n\n' +
+                MENU_TEXTO()
+            )
+        }
+
+        return (
+            `🎉 *¡Registro completado!*\n\n` +
+            `Quedaste en la lista de espera de:\n📚 *${tallerElegido.nombre}*\n\n` +
+            '📬 Te notificaremos por correo si alcanzaste lugar. En caso de que sí, ' +
+            'recibirás tu *resplandor* para crear tu perfil en Destello.\n\n' +
+            '_¡Mantente pendiente!_ 🌟\n\n' +
+            MENU_TEXTO()
+        )
+    }
+
+    // ── SIN CÓDIGO: buscar por correo ─────────────────────────
+    if (conv.paso === PASO.SIN_CODIGO) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(msg)) {
+            return '⚠️ Ese correo no parece válido. Escríbelo completo, ej: _tunombre@gmail.com_'
+        }
+
+        const pendientes = await getPendientes(msg)
+        conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+
+        if (pendientes.chispas?.length > 0) {
+            const lista = pendientes.chispas.map(c => `• *${c.taller_nombre}*: \`${c.code}\``).join('\n')
+            return (
+                '✅ Encontramos tu(s) código(s):\n\n' +
+                lista + '\n\n' +
+                '📱 Úsalos en: *destello.courses/acceso*\n\n' +
+                MENU_TEXTO()
+            )
+        }
+
+        if (pendientes.resplandores?.length > 0) {
+            return (
+                '✉️ Tu *resplandor* fue enviado a ese correo.\n\n' +
+                'Por favor revisa también tu carpeta de *spam o correo no deseado*.\n\n' +
+                'Si sigues sin encontrarlo, escríbenos y lo revisamos. 😊\n\n' +
+                MENU_TEXTO()
+            )
+        }
+
+        return (
+            `🔍 No encontramos códigos pendientes para *${msg}*.\n\n` +
+            'Puede que aún no hayas sido seleccionado/a o que tu pago esté en proceso de verificación.\n\n' +
+            '¿Necesitas algo más?\n\n' +
+            MENU_TEXTO()
+        )
+    }
+
+    // Fallback — mostrar menú
+    conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+    return MENU_TEXTO()
 }
