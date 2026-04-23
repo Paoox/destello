@@ -12,8 +12,25 @@
 
 import fetch from 'node-fetch'
 
-const API_URL   = process.env.API_URL    || 'http://localhost:3001'
-const SPEI_INFO = process.env.SPEI_INFO  || 'Banco: BBVA\nCLABE: 000000000000000000\nTitular: Tu Nombre\nConcepto: Tu nombre + taller'
+const API_URL = process.env.API_URL || 'http://localhost:3001'
+
+const PAGO_TEXTO =
+    '💳 *Medios de pago*\n\n' +
+    '─────────────────────\n' +
+    '🏦 *Transferencia SPEI*\n' +
+    '• Banco: Inbursa\n' +
+    '• CLABE: `036180500687558754`\n' +
+    '• Titular: Paola Arreola\n\n' +
+    '─────────────────────\n' +
+    '🏪 *Pago en efectivo*\n' +
+    'Depósito con número de tarjeta en:\n' +
+    'Walmart · Bodega Aurrera · Sam\'s Club\n' +
+    'OXXO · Sears · Sanborns\n\n' +
+    '📌 Número de tarjeta:\n' +
+    '`4658285017247424`\n' +
+    '• Titular: Paola Arreola\n\n' +
+    '─────────────────────\n' +
+    '📸 Una vez realizado tu pago, envía tu *comprobante* por este chat y lo verificamos a la brevedad. 🙌'
 
 // ── Estados de conversación ───────────────────────────────────
 const PASO = {
@@ -175,14 +192,8 @@ export async function procesarMensaje(jid, texto) {
                 )
 
             case '4':
-                conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
-                return (
-                    '💳 *Medios de pago*\n\n' +
-                    'Realizamos cobros por transferencia SPEI:\n\n' +
-                    `${SPEI_INFO}\n\n` +
-                    'Una vez realizado tu pago, envía el comprobante por este mismo chat y lo verificamos a la brevedad.\n\n' +
-                    '_Escribe *menu* para volver._'
-                )
+                conversaciones.set(jid, { paso: PASO.POST_ACCION })
+                return PAGO_TEXTO + '\n\n' + POST_ACCION_TEXTO
 
             case '5':
                 conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
