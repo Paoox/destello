@@ -144,19 +144,8 @@ export default function ChispaList({ chispas = [], adminToken, onRevoked }) {
                                     ? new Date(c.expiresAt).toLocaleDateString('es-MX')
                                     : 'Sin límite'}
                             </td>
-                            <td style={{ padding: 'var(--space-3) var(--space-4)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
                                 <StatusBadge record={c} />
-                                {c.isDemo && (
-                                    <span style={{
-                                        display:      'inline-block',
-                                        padding:      '2px 8px',
-                                        borderRadius: 999,
-                                        background:   '#a855f722',
-                                        color:        '#a855f7',
-                                        fontSize:     'var(--text-xs)',
-                                        fontWeight:   600,
-                                    }}>🎁 demo</span>
-                                )}
                             </td>
                             <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
                                 {!c.revoked && !c.used && (

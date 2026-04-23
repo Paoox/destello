@@ -1,30 +1,37 @@
 /**
  * Destello API — Admin Routes
- *
- * POST /admin/login           → pública — emite adminToken
- * POST /admin/chispas         → genera una chispa (admin)
- * POST /admin/chispas/batch   → genera N chispas (admin)
- * GET  /admin/chispas         → lista todas (admin)
- * GET  /admin/chispas/stats   → estadísticas (admin)
- * DELETE /admin/chispas/:code → revoca (admin)
  */
-import { Router }            from 'express'
-import { adminLogin }        from '../controllers/adminController.js'
+import { Router }     from 'express'
+import * as ctrl      from '../controllers/adminController.js'
+import * as respCtrl  from '../controllers/resplandorController.js'
 import { authenticateAdmin } from '../middleware/authenticateAdmin.js'
-import * as chispaCtrl       from '../controllers/chispasController.js'
 
 const router = Router()
 
-// ── Pública ───────────────────────────────────────────────
-router.post('/login', adminLogin)
+router.post('/login', ctrl.adminLogin)
 
-// ── Protegidas con adminToken ─────────────────────────────
 router.use(authenticateAdmin)
 
-router.post('/chispas',        chispaCtrl.generateChispa)
-router.post('/chispas/batch',  chispaCtrl.generateBatch)
-router.get('/chispas',         chispaCtrl.listChispas)
-router.get('/chispas/stats',   chispaCtrl.getStats)
-router.delete('/chispas/:code', chispaCtrl.revokeChispa)
+// Chispas
+router.post('/chispas',          ctrl.generateChispa)
+router.post('/chispas/batch',    ctrl.generateBatch)
+router.get('/chispas',           ctrl.listChispas)
+router.get('/chispas/stats',     ctrl.getStats)
+router.delete('/chispas/:code',  ctrl.revokeChispa)
+
+// Talleres
+router.get('/talleres',          ctrl.listTalleres)
+router.post('/talleres',         ctrl.createTaller)
+router.put('/talleres/:id',      ctrl.updateTaller)
+
+// Resplandores
+router.post('/resplandores',           respCtrl.generateResplandor)
+router.get('/resplandores',            respCtrl.listResplandores)
+router.get('/resplandores/stats',      respCtrl.getResplandorStats)
+router.delete('/resplandores/:code',   respCtrl.revokeResplandor)
+
+// Lista de espera
+router.get('/lista-espera',                   ctrl.listEspera)
+router.post('/lista-espera/:id/confirmar',    ctrl.confirmarCupo)
 
 export default router

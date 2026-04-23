@@ -86,3 +86,72 @@ export async function apiRevokeChispa(adminToken, code) {
     })
     return handleResponse(res)
 }
+
+// ── Talleres ──────────────────────────────────────────────────────────────────
+
+/**
+ * Lista todos los talleres (sin filtro de estado).
+ */
+export async function apiListTalleres(adminToken) {
+    const res = await fetch('/api/admin/talleres', {
+        headers: authHeaders(adminToken),
+    })
+    return handleResponse(res)
+}
+
+/**
+ * Crea un taller nuevo.
+ * @param {string} adminToken
+ * @param {{ nombre: string, descripcion?: string, precio?: number, horario?: string, categoria?: string }} body
+ */
+export async function apiCreateTaller(adminToken, body) {
+    const res = await fetch('/api/admin/talleres', {
+        method:  'POST',
+        headers: authHeaders(adminToken),
+        body:    JSON.stringify(body),
+    })
+    return handleResponse(res)
+}
+
+/**
+ * Actualiza un taller existente.
+ * @param {string} adminToken
+ * @param {string} id
+ * @param {object} fields
+ */
+export async function apiUpdateTaller(adminToken, id, fields) {
+    const res = await fetch(`/api/admin/talleres/${id}`, {
+        method:  'PUT',
+        headers: authHeaders(adminToken),
+        body:    JSON.stringify(fields),
+    })
+    return handleResponse(res)
+}
+
+// ── Lista de espera ───────────────────────────────────────────────────────────
+
+/**
+ * Lista toda la gente en espera.
+ */
+export async function apiListEspera(adminToken) {
+    const res = await fetch('/api/admin/lista-espera', {
+        headers: authHeaders(adminToken),
+    })
+    return handleResponse(res)
+}
+
+/**
+ * Confirma el cupo de un registro en lista de espera.
+ * Genera una chispa automáticamente.
+ * @param {string} adminToken
+ * @param {string} id  — ID del registro en lista_espera
+ * @param {{ expiresInDays?: number }} body
+ */
+export async function apiConfirmarCupo(adminToken, id, body = {}) {
+    const res = await fetch(`/api/admin/lista-espera/${id}/confirmar`, {
+        method:  'POST',
+        headers: authHeaders(adminToken),
+        body:    JSON.stringify(body),
+    })
+    return handleResponse(res)
+}

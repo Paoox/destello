@@ -1,27 +1,15 @@
 /**
  * Destello API — Taller Service
- * Consultas a la tabla `talleres` en PostgreSQL.
  */
-
 import { query } from '../db.js'
 
-/**
- * Lista solo los talleres con estado 'activo'.
- * Lo usa el bot y la landing page.
- */
 export async function listTalleresActivos() {
     const { rows } = await query(
-        `SELECT * FROM talleres
-         WHERE estado = 'activo'
-         ORDER BY nombre ASC`
+        `SELECT * FROM talleres WHERE estado = 'activo' ORDER BY nombre ASC`
     )
     return rows
 }
 
-/**
- * Lista todos los talleres sin importar estado.
- * Lo usa el panel admin.
- */
 export async function listTodosLosTalleres() {
     const { rows } = await query(
         `SELECT * FROM talleres ORDER BY created_at DESC`
@@ -29,13 +17,39 @@ export async function listTodosLosTalleres() {
     return rows
 }
 
-/**
- * Obtiene un taller por su ID.
- */
 export async function getTallerById(id) {
+    const { rows } = await query(`SELECT * FROM talleres WHERE id = $1`, [id])
+    return rows[0] ?? null
+}
+
+export async function createTaller({ nombre, descripcion, precio, horario, categoria }) {
     const { rows } = await query(
-        `SELECT * FROM talleres WHERE id = $1`,
-        [id]
+        `INSERT INTO talleres (nombre, descripcion, precio, horario, categoria, estado)
+         VALUES ($1, $2, $3, $4, $5, 'activo') RETURNING *`,
+        [nombre, descripcion || null, precio || 0, horario || null, categoria || null]
+    )
+    return rows[0]
+}
+
+export async function updateTaller(id, fields) {
+    const allowed = ['nombre', 'descripcion', 'precio', 'horario', 'categoria', 'estado']
+    const sets    = []
+    const values  = []
+    let   idx     = 1
+
+    for (const key of allowed) {
+        if (fields[key] !== undefined) {
+            sets.push(`${key} = $${idx++}`)
+            values.push(fields[key])
+        }
+    }
+    if (!sets.length) return getTallerById(id)
+
+    values.push(id)
+    const { rows } = await query(
+        `UPDATE talleres SET ${sets.join(', ')}, updated_at = NOW()
+         WHERE id = $${idx} RETURNING *`,
+        values
     )
     return rows[0] ?? null
 }
