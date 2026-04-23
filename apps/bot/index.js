@@ -49,13 +49,14 @@ async function conectar() {
             console.log(`⚠  Conexión cerrada (código ${statusCode}).`)
 
             if (fueLogout) {
-                console.log('⚠  Sesión cerrada. Borra la carpeta ./auth_info/ y reinicia.')
+                console.log('⚠  Sesión cerrada. Borra ./auth_info/ y reinicia el servicio.')
+                process.exit(0)   // salida limpia — systemd NO reinicia
             } else if (fueReemplazado) {
-                console.log('⚠  Sesión reemplazada por otra instancia. Deteniendo para evitar loop.')
-                process.exit(1)
+                console.log('⚠  Sesión reemplazada. Saliendo limpio.')
+                process.exit(0)   // salida limpia — systemd NO reinicia
             } else {
-                console.log('↺  Reconectando en 5s...')
-                setTimeout(conectar, 5000)
+                console.log('✗  Error de red. Saliendo para que systemd reinicie.')
+                process.exit(1)   // error real — systemd SÍ reinicia
             }
         }
 
