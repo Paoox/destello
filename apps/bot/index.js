@@ -49,14 +49,16 @@ async function conectar() {
             console.log(`⚠  Conexión cerrada (código ${statusCode}).`)
 
             if (fueLogout) {
-                console.log('⚠  Sesión cerrada. Borra ./auth_info/ y reinicia el servicio.')
-                process.exit(0)   // salida limpia — systemd NO reinicia
+                console.log('⚠  Sesión cerrada. Borra ./auth_info/ y vuelve a escanear el QR.')
+                process.exit(0)
             } else if (fueReemplazado) {
-                console.log('⚠  Sesión reemplazada. Saliendo limpio.')
-                process.exit(0)   // salida limpia — systemd NO reinicia
+                console.log('⚠  Sesión reemplazada por otra instancia. Saliendo.')
+                process.exit(0)
             } else {
-                console.log('✗  Error de red. Saliendo para que systemd reinicie.')
-                process.exit(1)   // error real — systemd SÍ reinicia
+                // 515 = restart required (normal después del QR y reconexiones)
+                // 408/428 = pérdida de red — reconectar en ambos casos
+                console.log('↺  Reconectando en 5s...')
+                setTimeout(conectar, 5000)
             }
         }
 
@@ -82,7 +84,7 @@ async function conectar() {
 
             if (!texto) continue
 
-            console.log(`📨 jid_raw="${msg.key.remoteJid}" jid_norm="${jid}" texto="${texto}"`)
+            console.log(`📨 ${jid}: "${texto}"`)
 
             try {
                 await sock.sendPresenceUpdate('composing', jid)
