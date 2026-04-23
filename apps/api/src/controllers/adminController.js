@@ -122,6 +122,24 @@ export async function updateTaller(req, res, next) {
 
 // ── Lista de espera ───────────────────────────────────────────────────────────
 
+/**
+ * Confirma el lugar en lista de espera SIN generar código.
+ * Solo actualiza estado → 'confirmado'.
+ * TODO: aquí irá el envío de email con Resend (detalles del taller + formas de pago).
+ */
+export async function confirmarLugar(req, res, next) {
+    try {
+        const { id } = req.params
+        const registro = await listaEsperaService.actualizarEstado(id, 'confirmado')
+        if (!registro) return next(new AppError('Registro no encontrado', 404, 'NOT_FOUND'))
+        res.json({
+            status:  'ok',
+            registro,
+            mensaje: 'Lugar confirmado. Email de confirmación pendiente de configurar.',
+        })
+    } catch (err) { next(err) }
+}
+
 export async function listEspera(_req, res, next) {
     try {
         const lista = await listaEsperaService.listTodas()

@@ -152,11 +152,23 @@ export async function apiListEspera(adminToken) {
 }
 
 /**
+ * Confirma el lugar (solo cambia estado a 'confirmado', sin generar código).
+ * Aquí irá el envío de email de confirmación con Resend.
+ */
+export async function apiConfirmarLugar(adminToken, id) {
+    const res = await fetch(`/api/admin/lista-espera/${id}/confirmar-lugar`, {
+        method:  'POST',
+        headers: authHeaders(adminToken),
+    })
+    return handleResponse(res)
+}
+
+/**
  * Confirma el cupo de un registro en lista de espera.
  * Genera una chispa automáticamente.
  * @param {string} adminToken
  * @param {string} id  — ID del registro en lista_espera
- * @param {{ expiresInDays?: number }} body
+ * @param {{ expiresInDays?: number, tipo?: 'chispa' | 'resplandor' }} body
  */
 export async function apiConfirmarCupo(adminToken, id, body = {}) {
     const res = await fetch(`/api/admin/lista-espera/${id}/confirmar`, {

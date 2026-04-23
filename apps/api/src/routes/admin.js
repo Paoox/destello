@@ -32,7 +32,8 @@ router.get('/resplandores/stats',      respCtrl.getResplandorStats)
 router.delete('/resplandores/:code',   respCtrl.revokeResplandor)
 
 // Lista de espera
-router.get('/lista-espera',                   ctrl.listEspera)
-router.post('/lista-espera/:id/confirmar',    ctrl.confirmarCupo)
+router.get('/lista-espera',                        ctrl.listEspera)
+router.post('/lista-espera/:id/confirmar-lugar',   ctrl.confirmarLugar)   // solo cambia estado
+router.post('/lista-espera/:id/confirmar',         ctrl.confirmarCupo)    // genera chispa o resplandor
 
 export default router

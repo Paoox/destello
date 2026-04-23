@@ -5,7 +5,12 @@ import { query } from '../db.js'
 
 export async function listTodas() {
     const { rows } = await query(
-        `SELECT le.*, t.nombre AS taller_nombre
+        `SELECT le.*,
+                t.nombre AS taller_nombre,
+                EXISTS (
+                    SELECT 1 FROM resplandores r
+                    WHERE LOWER(r.email) = LOWER(le.email)
+                ) AS tiene_resplandor
          FROM lista_espera le
                   JOIN talleres t ON t.id = le.taller_id
          ORDER BY le.created_at DESC`
@@ -52,7 +57,7 @@ export async function getListasPorEmail(email) {
     const { rows } = await query(
         `SELECT le.*, t.nombre AS taller_nombre
          FROM lista_espera le
-         JOIN talleres t ON t.id = le.taller_id
+                  JOIN talleres t ON t.id = le.taller_id
          WHERE le.email = $1
          ORDER BY le.created_at DESC`,
         [email.toLowerCase().trim()]

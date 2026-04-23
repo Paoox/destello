@@ -4,8 +4,8 @@
  * Permite confirmar cupo → genera chispa automáticamente.
  */
 import { useState, useEffect, useCallback } from 'react'
-import { UserList, CheckCircle, Copy, CheckFat, Clock, X, ChartBar } from '@phosphor-icons/react'
-import { apiListEspera, apiConfirmarCupo, apiGetTalleresStats } from '@services/adminApi.js'
+import { UserList, CheckCircle, Copy, CheckFat, Clock, X, ChartBar, Sparkle, Lightning, EnvelopeSimple } from '@phosphor-icons/react'
+import { apiListEspera, apiConfirmarCupo, apiConfirmarLugar, apiGetTalleresStats } from '@services/adminApi.js'
 
 const ESTADO_CONFIG = {
     pendiente:   { label: 'Pendiente',   color: '#f59e0b' },
@@ -30,28 +30,30 @@ function EstadoBadge({ estado }) {
     )
 }
 
-function ChispaResultModal({ chispa, onClose }) {
+function TokenResultModal({ token, onClose }) {
     const [copied, setCopied] = useState(false)
+    const esChispa = token.tipo === 'chispa'
+    const color    = esChispa ? '#f59e0b' : 'var(--color-jade-500)'
 
     const handleCopy = () => {
-        navigator.clipboard.writeText(chispa.code)
+        navigator.clipboard.writeText(token.code)
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
     }
 
     return (
         <div style={{
-            position:   'fixed',
-            inset:      0,
-            background: 'rgba(0,0,0,0.6)',
-            display:    'flex',
-            alignItems: 'center',
+            position:       'fixed',
+            inset:          0,
+            background:     'rgba(0,0,0,0.6)',
+            display:        'flex',
+            alignItems:     'center',
             justifyContent: 'center',
-            zIndex:     1000,
+            zIndex:         1000,
         }}>
             <div style={{
                 background:   'var(--bg-card)',
-                border:       '1px solid var(--color-jade-500)44',
+                border:       `1px solid ${color}44`,
                 borderRadius: 'var(--radius-xl)',
                 padding:      'var(--space-8)',
                 maxWidth:     420,
@@ -59,66 +61,45 @@ function ChispaResultModal({ chispa, onClose }) {
                 textAlign:    'center',
                 position:     'relative',
             }}>
-                <button
-                    onClick={onClose}
-                    style={{
-                        position:   'absolute',
-                        top:        'var(--space-3)',
-                        right:      'var(--space-3)',
-                        background: 'none',
-                        border:     'none',
-                        color:      'var(--text-muted)',
-                        cursor:     'pointer',
-                        padding:    'var(--space-1)',
-                    }}
-                >
+                <button onClick={onClose} style={{ position: 'absolute', top: 'var(--space-3)', right: 'var(--space-3)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 'var(--space-1)' }}>
                     <X size={18} />
                 </button>
 
-                <CheckCircle size={40} weight="fill" color="#22c55e" style={{ marginBottom: 'var(--space-3)' }} />
-                <h3 style={{ fontWeight: 700, marginBottom: 'var(--space-2)' }}>¡Cupo confirmado!</h3>
+                {esChispa
+                    ? <Lightning size={40} weight="fill" color={color} style={{ marginBottom: 'var(--space-3)' }} />
+                    : <Sparkle   size={40} weight="fill" color={color} style={{ marginBottom: 'var(--space-3)' }} />
+                }
+
+                <h3 style={{ fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+                    {esChispa ? '¡Chispa generada!' : '¡Resplandor generado!'}
+                </h3>
                 <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-5)' }}>
-                    La chispa fue generada. Cópiala y envíala al usuario.
+                    {esChispa
+                        ? 'Copia la chispa y envíasela al usuario para acceder al taller.'
+                        : 'Copia el resplandor y envíaselo al usuario para crear su cuenta.'
+                    }
                 </p>
 
                 <div style={{
-                    display:      'flex',
-                    alignItems:   'center',
+                    display:        'flex',
+                    alignItems:     'center',
                     justifyContent: 'center',
-                    gap:          'var(--space-3)',
-                    padding:      'var(--space-4)',
-                    background:   'var(--bg-surface)',
-                    borderRadius: 'var(--radius-lg)',
-                    border:       '1px solid var(--border-default)',
-                    marginBottom: 'var(--space-5)',
+                    gap:            'var(--space-3)',
+                    padding:        'var(--space-4)',
+                    background:     'var(--bg-surface)',
+                    borderRadius:   'var(--radius-lg)',
+                    border:         '1px solid var(--border-default)',
+                    marginBottom:   'var(--space-5)',
                 }}>
-                    <code style={{
-                        fontSize:      'var(--text-2xl)',
-                        fontWeight:    700,
-                        letterSpacing: '0.08em',
-                        color:         'var(--color-jade-500)',
-                    }}>
-                        {chispa.code}
+                    <code style={{ fontSize: 'var(--text-2xl)', fontWeight: 700, letterSpacing: '0.08em', color }}>
+                        {token.code}
                     </code>
                     <button onClick={handleCopy} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
                         {copied ? <CheckFat size={20} color="#22c55e" /> : <Copy size={20} />}
                     </button>
                 </div>
 
-                <button
-                    onClick={onClose}
-                    style={{
-                        padding:      'var(--space-3) var(--space-6)',
-                        background:   'var(--color-jade-500)',
-                        border:       'none',
-                        borderRadius: 'var(--radius-lg)',
-                        color:        'var(--text-primary)',
-                        fontWeight:   600,
-                        fontSize:     'var(--text-sm)',
-                        cursor:       'pointer',
-                        fontFamily:   'var(--font-sans)',
-                    }}
-                >
+                <button onClick={onClose} style={{ padding: 'var(--space-3) var(--space-6)', background: color, border: 'none', borderRadius: 'var(--radius-lg)', color: 'var(--text-primary)', fontWeight: 600, fontSize: 'var(--text-sm)', cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
                     Listo
                 </button>
             </div>
@@ -223,8 +204,9 @@ export default function ListaEsperaPanel({ adminToken }) {
     const [loading,      setLoading]      = useState(false)
     const [loaded,       setLoaded]       = useState(false)
     const [error,        setError]        = useState(null)
-    const [confirming,   setConfirming]   = useState(null) // id del registro en proceso
-    const [lastChispa,   setLastChispa]   = useState(null) // modal resultado
+    const [confirming,   setConfirming]   = useState(null)   // id confirmando lugar
+    const [generating,   setGenerating]   = useState(null)   // id generando código
+    const [lastToken,    setLastToken]    = useState(null)   // { code, tipo } para modal
     const [filtroEstado, setFiltroEstado] = useState('todos')
 
     const fetchLista = useCallback(async () => {
@@ -248,23 +230,45 @@ export default function ListaEsperaPanel({ adminToken }) {
     // Carga automática al montar el componente (al entrar al tab)
     useEffect(() => { fetchLista() }, [fetchLista])
 
-    const handleConfirmar = async (registro) => {
-        if (!confirm(`¿Confirmar cupo para ${registro.nombre || registro.email}?\nSe generará una chispa automáticamente.`)) return
+    const refreshData = async () => {
+        const [fresh, statsData] = await Promise.all([
+            apiListEspera(adminToken),
+            apiGetTalleresStats(adminToken),
+        ])
+        setLista(fresh.lista)
+        setTalStats(statsData.stats)
+    }
+
+    // Botón 1: solo confirmar el lugar (sin código)
+    const handleConfirmarLugar = async (registro) => {
+        if (!confirm(`¿Confirmar lugar para ${registro.nombre || registro.email}?\nSe le enviará un email con los detalles del taller y formas de pago.`)) return
         setConfirming(registro.id)
         try {
-            const data = await apiConfirmarCupo(adminToken, registro.id, { expiresInDays: 30 })
-            setLastChispa(data.chispa)
-            // Refresh lista + stats
-            const [fresh, statsData] = await Promise.all([
-                apiListEspera(adminToken),
-                apiGetTalleresStats(adminToken),
-            ])
-            setLista(fresh.lista)
-            setTalStats(statsData.stats)
+            await apiConfirmarLugar(adminToken, registro.id)
+            await refreshData()
         } catch (err) {
             alert('Error: ' + err.message)
         } finally {
             setConfirming(null)
+        }
+    }
+
+    // Botón 2: generar código de acceso (resplandor o chispa según tiene_resplandor)
+    const handleGenerarAcceso = async (registro) => {
+        const tipo   = registro.tiene_resplandor ? 'chispa' : 'resplandor'
+        const nombre = registro.nombre || registro.email
+        const accion = tipo === 'chispa' ? 'Chispa de taller' : 'Resplandor de cuenta'
+        if (!confirm(`¿Generar ${accion} para ${nombre}?\nSe enviará el código por email y WhatsApp.`)) return
+        setGenerating(registro.id)
+        try {
+            const data = await apiConfirmarCupo(adminToken, registro.id, { tipo, expiresInDays: 30 })
+            const code = data.chispa?.code ?? data.resplandor?.code
+            setLastToken({ code, tipo })
+            await refreshData()
+        } catch (err) {
+            alert('Error: ' + err.message)
+        } finally {
+            setGenerating(null)
         }
     }
 
@@ -453,7 +457,11 @@ export default function ListaEsperaPanel({ adminToken }) {
                                     </td>
                                     <td style={{ padding: 'var(--space-3) var(--space-4)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                                         {r.whatsapp
-                                            ? <a href={`https://wa.me/${r.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" style={{ color: '#25D366' }}>{r.whatsapp}</a>
+                                            ? (() => {
+                                                // Limpiar formato JID de Baileys (@lid, @s.whatsapp.net)
+                                                const clean = r.whatsapp.replace(/@.*$/, '').replace(/\D/g, '')
+                                                return <a href={`https://wa.me/${clean}`} target="_blank" rel="noreferrer" style={{ color: '#25D366' }}>+{clean}</a>
+                                            })()
                                             : <span>—</span>
                                         }
                                     </td>
@@ -463,31 +471,65 @@ export default function ListaEsperaPanel({ adminToken }) {
                                     <td style={{ padding: 'var(--space-3) var(--space-4)', color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: 'var(--text-xs)' }}>
                                         {new Date(r.created_at).toLocaleDateString('es-MX')}
                                     </td>
-                                    <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                                        {r.estado === 'pendiente' && (
+                                    <td style={{ padding: 'var(--space-2) var(--space-4)' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', minWidth: 160 }}>
+
+                                            {/* Botón 1: Confirmar lugar */}
+                                            {r.estado === 'pendiente' && (
+                                                <button
+                                                    onClick={() => handleConfirmarLugar(r)}
+                                                    disabled={confirming === r.id}
+                                                    style={{
+                                                        display:      'flex',
+                                                        alignItems:   'center',
+                                                        gap:          5,
+                                                        padding:      '5px 10px',
+                                                        background:   'var(--color-jade-500)18',
+                                                        border:       '1px solid var(--color-jade-500)66',
+                                                        borderRadius: 'var(--radius-md)',
+                                                        color:        'var(--color-jade-500)',
+                                                        fontSize:     'var(--text-xs)',
+                                                        fontWeight:   600,
+                                                        cursor:       confirming === r.id ? 'wait' : 'pointer',
+                                                        fontFamily:   'var(--font-sans)',
+                                                        whiteSpace:   'nowrap',
+                                                    }}
+                                                >
+                                                    <EnvelopeSimple size={13} weight="fill" />
+                                                    {confirming === r.id ? 'Enviando...' : 'Confirmar lugar'}
+                                                </button>
+                                            )}
+
+                                            {/* Botón 2: Generar código (inteligente) */}
                                             <button
-                                                onClick={() => handleConfirmar(r)}
-                                                disabled={confirming === r.id}
+                                                onClick={() => handleGenerarAcceso(r)}
+                                                disabled={generating === r.id}
                                                 style={{
                                                     display:      'flex',
                                                     alignItems:   'center',
-                                                    gap:          4,
-                                                    padding:      '4px 12px',
-                                                    background:   confirming === r.id ? 'var(--bg-surface)' : 'var(--color-jade-500)22',
-                                                    border:       '1px solid var(--color-jade-500)',
+                                                    gap:          5,
+                                                    padding:      '5px 10px',
+                                                    background:   generating === r.id
+                                                        ? 'var(--bg-surface)'
+                                                        : r.tiene_resplandor
+                                                            ? '#f59e0b18'
+                                                            : 'var(--color-jade-500)18',
+                                                    border:       `1px solid ${r.tiene_resplandor ? '#f59e0b88' : 'var(--color-jade-500)88'}`,
                                                     borderRadius: 'var(--radius-md)',
-                                                    color:        'var(--color-jade-500)',
+                                                    color:        r.tiene_resplandor ? '#f59e0b' : 'var(--color-jade-500)',
                                                     fontSize:     'var(--text-xs)',
                                                     fontWeight:   600,
-                                                    cursor:       confirming === r.id ? 'wait' : 'pointer',
+                                                    cursor:       generating === r.id ? 'wait' : 'pointer',
                                                     fontFamily:   'var(--font-sans)',
                                                     whiteSpace:   'nowrap',
                                                 }}
                                             >
-                                                <CheckCircle size={14} weight="fill" />
-                                                {confirming === r.id ? 'Procesando...' : 'Confirmar cupo'}
+                                                {r.tiene_resplandor
+                                                    ? <><Lightning size={13} weight="fill" />{generating === r.id ? 'Generando...' : 'Crear Chispa'}</>
+                                                    : <><Sparkle   size={13} weight="fill" />{generating === r.id ? 'Generando...' : 'Crear Resplandor'}</>
+                                                }
                                             </button>
-                                        )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -497,11 +539,11 @@ export default function ListaEsperaPanel({ adminToken }) {
                 </div>
             ))}
 
-            {/* Modal resultado chispa */}
-            {lastChispa && (
-                <ChispaResultModal
-                    chispa={lastChispa}
-                    onClose={() => setLastChispa(null)}
+            {/* Modal resultado token (chispa o resplandor) */}
+            {lastToken && (
+                <TokenResultModal
+                    token={lastToken}
+                    onClose={() => setLastToken(null)}
                 />
             )}
         </div>
