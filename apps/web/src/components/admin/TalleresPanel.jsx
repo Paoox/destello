@@ -87,18 +87,6 @@ function RankingDemanda({ stats }) {
                                     }}>
                                         {s.nombre}
                                     </span>
-                                    {s.categoria && (
-                                        <span style={{
-                                            fontSize:    'var(--text-xs)',
-                                            color:       'var(--text-muted)',
-                                            background:  'var(--bg-surface)',
-                                            padding:     '1px 7px',
-                                            borderRadius: 999,
-                                            flexShrink:  0,
-                                        }}>
-                                            {s.categoria}
-                                        </span>
-                                    )}
                                 </div>
                                 <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexShrink: 0 }}>
                                     {pendientes > 0 && (

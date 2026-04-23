@@ -84,12 +84,11 @@ export async function getTalleresStats(_req, res, next) {
                 t.id,
                 t.nombre,
                 t.estado,
-                t.categoria,
                 COUNT(le.id) FILTER (WHERE le.estado = 'pendiente')  AS pendientes,
                 COUNT(le.id) FILTER (WHERE le.estado = 'confirmado') AS confirmados,
                 COUNT(le.id)                                          AS total_espera
             FROM talleres t
-            LEFT JOIN lista_espera le ON le.taller_id = t.id::text
+                     LEFT JOIN lista_espera le ON le.taller_id = t.id::text
             GROUP BY t.id
             ORDER BY total_espera DESC, t.nombre ASC
         `)
