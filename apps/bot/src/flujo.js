@@ -50,16 +50,12 @@ const PASO = {
 
 /**
  * Extrae el número de teléfono local (10 dígitos) del JID de WhatsApp.
- * WhatsApp México usa dos formatos posibles:
- *   "521XXXXXXXXXX@s.whatsapp.net" → 52 (país) + 1 (celular) + 10 dígitos = 13 chars
- *   "52XXXXXXXXXX@s.whatsapp.net"  → 52 (país) + 10 dígitos = 12 chars (formato antiguo)
- * Ambos casos deben devolver los 10 dígitos locales.
+ * Ejemplo: "521234567890@s.whatsapp.net" → "1234567890"
+ * Strips el código de país 52 (México) si está presente.
  */
 function extractWhatsapp(jid) {
     const raw = jid.replace('@s.whatsapp.net', '').replace('@c.us', '')
-    // Caso moderno: 52 (país) + 1 (celular) + 10 dígitos = 13 chars → quitar "521"
-    if (raw.startsWith('521') && raw.length === 13) return raw.slice(3)
-    // Caso antiguo: 52 (país) + 10 dígitos = 12 chars → quitar "52"
+    // Quita el código de país 52 si da exactamente 12 dígitos → 10 locales
     if (raw.startsWith('52') && raw.length === 12) return raw.slice(2)
     return raw
 }
