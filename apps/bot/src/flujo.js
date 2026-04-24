@@ -41,6 +41,7 @@ const PASO = {
     REG_NOMBRE:        'REG_NOMBRE',
     REG_APELLIDO:      'REG_APELLIDO',
     REG_CORREO_NUEVO:  'REG_CORREO_NUEVO',
+    REG_WHATSAPP:      'REG_WHATSAPP',   // ← pedir número cuando el JID es @lid
     REG_TALLER:        'REG_TALLER',
     // Sin código
     SIN_CODIGO:        'SIN_CODIGO',
@@ -50,11 +51,12 @@ const PASO = {
 
 /**
  * Extrae el número de teléfono local (10 dígitos) del JID de WhatsApp.
- * WhatsApp México usa dos formatos:
  *   "521XXXXXXXXXX@s.whatsapp.net" → 13 dígitos → quitar "521" → 10 locales
  *   "52XXXXXXXXXX@s.whatsapp.net"  → 12 dígitos → quitar "52"  → 10 locales
+ *   "XXXXXXXXXXXXXXX@lid"          → ID interno de WA, NO extraíble → devuelve null
  */
 function extractWhatsapp(jid) {
+    if (!jid || jid.includes('@lid')) return null
     const raw = jid.replace('@s.whatsapp.net', '').replace('@c.us', '')
     if (raw.startsWith('521') && raw.length === 13) return raw.slice(3)
     if (raw.startsWith('52') && raw.length === 12) return raw.slice(2)
@@ -355,20 +357,61 @@ export async function procesarMensaje(jid, texto) {
             )
         }
 
-        // Usuario nuevo → registrar con el número de WhatsApp correcto
+        // Intentar extraer WhatsApp del JID
         const whatsapp = extractWhatsapp(jid)
+
+        // Registrar usuario (si whatsapp es null por @lid queda pendiente)
         await registrarUsuario({ email: msg, nombre: conv.nombre, whatsapp })
+
+        // Si no pudimos sacar el número, pedírselo explícitamente
+        if (!whatsapp) {
+            conversaciones.set(jid, { ...conv, paso: PASO.REG_WHATSAPP, correo: msg })
+            return (
+                '✅ *¡Datos guardados!*\n\n' +
+                'Para poder contactarte, ¿cuál es tu número de WhatsApp de *10 dígitos*?\n\n' +
+                '_Ejemplo: 5512345678_'
+            )
+        }
 
         const talleres = await getTalleresActivos()
         conversaciones.set(jid, {
             ...conv,
             paso:        PASO.REG_TALLER,
             correo:      msg,
+            whatsapp,
             talleres,
             tienePerfil: false,
         })
         return (
             '✅ *¡Registro guardado!*\n\n' +
+            '¿A qué taller deseas registrarte en la lista de espera?\n\n' +
+            menuTalleres(talleres)
+        )
+    }
+
+    // ── REGISTRO: número de WhatsApp (cuando JID es @lid) ────
+    if (conv.paso === PASO.REG_WHATSAPP) {
+        const numero = msg.replace(/\D/g, '')
+        if (numero.length !== 10) {
+            return (
+                '⚠️ El número debe tener exactamente *10 dígitos*.\n\n' +
+                'Escríbelo sin espacios ni guiones, ej: _5512345678_'
+            )
+        }
+
+        // Actualizar el número en la BD
+        await registrarUsuario({ email: conv.correo, nombre: conv.nombre, whatsapp: numero })
+
+        const talleres = await getTalleresActivos()
+        conversaciones.set(jid, {
+            ...conv,
+            paso:        PASO.REG_TALLER,
+            whatsapp:    numero,
+            talleres,
+            tienePerfil: false,
+        })
+        return (
+            '¡Listo! 📱\n\n' +
             '¿A qué taller deseas registrarte en la lista de espera?\n\n' +
             menuTalleres(talleres)
         )
@@ -401,7 +444,8 @@ export async function procesarMensaje(jid, texto) {
             )
         }
 
-        const whatsapp  = extractWhatsapp(jid)
+        // Usar el número guardado en conv (puede ser el del JID o el que escribió el usuario)
+        const whatsapp  = conv.whatsapp || extractWhatsapp(jid)
         const resultado = await agregarALista({
             email:    correo,
             tallerId: tallerElegido.id,

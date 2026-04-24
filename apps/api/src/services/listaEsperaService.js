@@ -76,8 +76,10 @@ export async function getPendientesPorEmail(email) {
         `SELECT c.code, t.nombre AS taller_nombre
          FROM chispas c
                   JOIN talleres t ON t.id = c.taller_id
-         WHERE LOWER(c.email) = $1
-           AND c.estado = 'activa'`,
+         WHERE LOWER(c.usuario_email) = $1
+           AND c.used = FALSE
+           AND c.revoked = FALSE
+           AND (c.expires_at IS NULL OR c.expires_at > NOW())`,
         [emailNorm]
     )
 
@@ -85,7 +87,9 @@ export async function getPendientesPorEmail(email) {
         `SELECT code, email
          FROM resplandores
          WHERE LOWER(email) = $1
-           AND estado = 'activo'`,
+           AND used = FALSE
+           AND revoked = FALSE
+           AND (expires_at IS NULL OR expires_at > NOW())`,
         [emailNorm]
     )
 
