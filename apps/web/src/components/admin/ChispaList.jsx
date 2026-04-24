@@ -1,19 +1,35 @@
 /**
  * Destello Admin — ChispaList
- * Tabla de chispas con filtros, datos del usuario y botón de revocar.
+ * Lista completa de chispas con filtros por estado y botón de revocar.
+ * Props:
+ *   chispas     — array de ChispaRecord (jalado desde PageAdmin)
+ *   adminToken  — JWT del admin para revocar
+ *   onRevoked   — callback para refrescar datos en PageAdmin
  */
-import { useState }        from 'react'
-import { XCircle, Funnel } from '@phosphor-icons/react'
+import { useState } from 'react'
+import { XCircle, Copy, CheckFat, MagnifyingGlass } from '@phosphor-icons/react'
+import { apiRevokeChispa } from '@services/adminApi.js'
 
-function StatusBadge({ record }) {
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function getEstado(c) {
+    if (c.revoked) return 'revocada'
+    if (c.used)    return 'usada'
     const now = new Date()
-    let label, color
+    if (c.expiresAt && new Date(c.expiresAt) <= now) return 'expirada'
+    return 'activa'
+}
 
-    if (record.revoked)                                                { label = 'Revocada'; color = 'var(--color-error)' }
-    else if (record.used)                                              { label = 'Usada';    color = '#3b82f6' }
-    else if (record.expiresAt && new Date(record.expiresAt) < now)    { label = 'Expirada'; color = '#f59e0b' }
-    else                                                               { label = 'Activa';   color = '#22c55e' }
+const ESTADO_CFG = {
+    activa:   { color: '#22c55e',           label: 'Activa'   },
+    usada:    { color: '#3b82f6',           label: 'Usada'    },
+    expirada: { color: '#f59e0b',           label: 'Expirada' },
+    revocada: { color: 'var(--color-error)', label: 'Revocada' },
+}
 
+function EstadoBadge({ chispa }) {
+    const estado = getEstado(chispa)
+    const { color, label } = ESTADO_CFG[estado]
     return (
         <span style={{
             display:      'inline-block',
@@ -30,16 +46,39 @@ function StatusBadge({ record }) {
     )
 }
 
-const HEADERS = ['Código', 'Usuario', 'Correo', 'Taller', 'Vigencia', 'Estado', 'Acción']
+function formatFecha(date) {
+    if (!date) return '—'
+    return new Date(date).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+// ── Componente principal ───────────────────────────────────────────────────────
+
+const FILTROS = [
+    { id: 'todas',    label: 'Todas'    },
+    { id: 'activa',   label: 'Activas'  },
+    { id: 'usada',    label: 'Usadas'   },
+    { id: 'expirada', label: 'Expiradas'},
+    { id: 'revocada', label: 'Revocadas'},
+]
 
 export default function ChispaList({ chispas = [], adminToken, onRevoked }) {
-    const [filter,   setFilter]   = useState('all')
-    const [revoking, setRevoking] = useState(null)
+    const [filtro,     setFiltro]    = useState('todas')
+    const [search,     setSearch]    = useState('')
+    const [revoking,   setRevoking]  = useState(null)   // code en proceso
+    const [copiedCode, setCopied]    = useState(null)
 
-    const filtered = chispas.filter(c => {
-        if (filter === 'active')  return !c.used && !c.revoked
-        if (filter === 'used')    return c.used
-        if (filter === 'revoked') return c.revoked
+    // Filtrar
+    const visible = chispas.filter(c => {
+        if (filtro !== 'todas' && getEstado(c) !== filtro) return false
+        if (search.trim()) {
+            const q = search.trim().toLowerCase()
+            return (
+                c.code?.toLowerCase().includes(q) ||
+                c.usuarioNombre?.toLowerCase().includes(q) ||
+                c.usuarioEmail?.toLowerCase().includes(q) ||
+                c.tallerNombre?.toLowerCase().includes(q)
+            )
+        }
         return true
     })
 
@@ -47,17 +86,19 @@ export default function ChispaList({ chispas = [], adminToken, onRevoked }) {
         if (!confirm(`¿Revocar la chispa ${code}? Esta acción no se puede deshacer.`)) return
         setRevoking(code)
         try {
-            const res = await fetch(`/api/admin/chispas/${code}`, {
-                method:  'DELETE',
-                headers: { 'Authorization': `Bearer ${adminToken}` },
-            })
-            if (!res.ok) throw new Error('Error al revocar')
+            await apiRevokeChispa(adminToken, code)
             onRevoked?.()
         } catch (err) {
-            alert(err.message)
+            alert('Error al revocar: ' + err.message)
         } finally {
             setRevoking(null)
         }
+    }
+
+    const handleCopy = (code) => {
+        navigator.clipboard.writeText(code)
+        setCopied(code)
+        setTimeout(() => setCopied(null), 2000)
     }
 
     return (
@@ -67,57 +108,109 @@ export default function ChispaList({ chispas = [], adminToken, onRevoked }) {
             borderRadius: 'var(--radius-xl)',
             overflow:     'hidden',
         }}>
-            {/* Header con filtros */}
+            {/* Header con filtros y buscador */}
             <div style={{
-                display:        'flex',
-                alignItems:     'center',
-                justifyContent: 'space-between',
-                padding:        'var(--space-5) var(--space-6)',
-                borderBottom:   '1px solid var(--border-subtle)',
-                gap:            'var(--space-3)',
-                flexWrap:       'wrap',
+                padding:       'var(--space-4) var(--space-5)',
+                borderBottom:  '1px solid var(--border-subtle)',
+                display:       'flex',
+                flexDirection: 'column',
+                gap:           'var(--space-3)',
             }}>
-                <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Funnel size={18} />
-                    Todas las chispas ({filtered.length})
-                </h3>
+                {/* Fila 1: título + contador */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
+                        Lista de chispas
+                    </span>
+                    <span style={{
+                        fontSize:     'var(--text-xs)',
+                        color:        'var(--text-muted)',
+                        background:   'var(--bg-surface)',
+                        border:       '1px solid var(--border-default)',
+                        borderRadius: 999,
+                        padding:      '2px 10px',
+                    }}>
+                        {visible.length} de {chispas.length}
+                    </span>
+                </div>
 
-                <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                    {['all', 'active', 'used', 'revoked'].map(f => (
-                        <button
-                            key={f}
-                            onClick={() => setFilter(f)}
-                            style={{
-                                padding:     '4px 12px',
-                                borderRadius: 999,
-                                border:       '1px solid',
-                                borderColor:  filter === f ? 'var(--color-jade-500)' : 'var(--border-default)',
-                                background:   filter === f ? 'var(--color-jade-500)22' : 'transparent',
-                                color:        filter === f ? 'var(--color-jade-500)' : 'var(--text-muted)',
-                                fontSize:     'var(--text-xs)',
-                                fontWeight:   filter === f ? 600 : 400,
-                                cursor:       'pointer',
-                                fontFamily:   'var(--font-sans)',
-                            }}
-                        >
-                            {{ all: 'Todas', active: 'Activas', used: 'Usadas', revoked: 'Revocadas' }[f]}
-                        </button>
-                    ))}
+                {/* Fila 2: tabs de filtro */}
+                <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+                    {FILTROS.map(f => {
+                        const count = f.id === 'todas'
+                            ? chispas.length
+                            : chispas.filter(c => getEstado(c) === f.id).length
+                        return (
+                            <button
+                                key={f.id}
+                                onClick={() => setFiltro(f.id)}
+                                style={{
+                                    padding:      '3px 10px',
+                                    borderRadius: 999,
+                                    border:       '1px solid',
+                                    borderColor:  filtro === f.id ? 'var(--color-jade-500)' : 'var(--border-default)',
+                                    background:   filtro === f.id ? 'var(--color-jade-500)22' : 'transparent',
+                                    color:        filtro === f.id ? 'var(--color-jade-500)' : 'var(--text-muted)',
+                                    fontSize:     'var(--text-xs)',
+                                    fontWeight:   filtro === f.id ? 600 : 400,
+                                    cursor:       'pointer',
+                                    fontFamily:   'var(--font-sans)',
+                                    whiteSpace:   'nowrap',
+                                }}
+                            >
+                                {f.label}{count > 0 ? ` (${count})` : ''}
+                            </button>
+                        )
+                    })}
+                </div>
+
+                {/* Fila 3: buscador */}
+                <div style={{ position: 'relative' }}>
+                    <MagnifyingGlass
+                        size={14}
+                        style={{
+                            position:      'absolute',
+                            left:          10,
+                            top:           '50%',
+                            transform:     'translateY(-50%)',
+                            color:         'var(--text-muted)',
+                            pointerEvents: 'none',
+                        }}
+                    />
+                    <input
+                        type="text"
+                        placeholder="Buscar por código, usuario, taller..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        style={{
+                            width:         '100%',
+                            paddingLeft:   30,
+                            paddingRight:  'var(--space-3)',
+                            paddingTop:    'var(--space-2)',
+                            paddingBottom: 'var(--space-2)',
+                            background:    'var(--bg-surface)',
+                            border:        '1px solid var(--border-default)',
+                            borderRadius:  'var(--radius-lg)',
+                            color:         'var(--text-primary)',
+                            fontSize:      'var(--text-sm)',
+                            fontFamily:    'var(--font-sans)',
+                            outline:       'none',
+                            boxSizing:     'border-box',
+                        }}
+                    />
                 </div>
             </div>
 
             {/* Tabla */}
             <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
                     <thead>
                     <tr style={{ background: 'var(--bg-surface)' }}>
-                        {HEADERS.map(h => (
+                        {['Código', 'Usuario', 'Taller', 'Vigencia', 'Estado', ''].map(h => (
                             <th key={h} style={{
                                 padding:    'var(--space-3) var(--space-4)',
                                 textAlign:  'left',
                                 color:      'var(--text-muted)',
                                 fontWeight: 500,
-                                fontSize:   'var(--text-xs)',
                                 whiteSpace: 'nowrap',
                             }}>
                                 {h}
@@ -126,109 +219,148 @@ export default function ChispaList({ chispas = [], adminToken, onRevoked }) {
                     </tr>
                     </thead>
                     <tbody>
-                    {filtered.length === 0 ? (
+                    {visible.length === 0 && (
                         <tr>
-                            <td colSpan={HEADERS.length} style={{
-                                padding:   'var(--space-8)',
+                            <td colSpan={6} style={{
+                                padding:   'var(--space-10)',
                                 textAlign: 'center',
                                 color:     'var(--text-muted)',
                             }}>
-                                No hay chispas en este filtro
+                                {chispas.length === 0
+                                    ? 'Aún no hay chispas generadas'
+                                    : 'No hay chispas con este filtro'
+                                }
                             </td>
                         </tr>
-                    ) : filtered.map(c => (
-                        <tr key={c.code} style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                    )}
+                    {visible.map(c => {
+                        const estado   = getEstado(c)
+                        const isActive = estado === 'activa'
+                        return (
+                            <tr key={c.code} style={{ borderTop: '1px solid var(--border-subtle)' }}>
 
-                            {/* Código */}
-                            <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                                <code style={{ fontWeight: 700, letterSpacing: '0.05em', color: 'var(--color-jade-500)' }}>
-                                    {c.code}
-                                </code>
-                            </td>
+                                {/* Código */}
+                                <td style={{ padding: 'var(--space-3) var(--space-4)', whiteSpace: 'nowrap' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <code style={{
+                                            fontWeight:    700,
+                                            letterSpacing: '0.05em',
+                                            color:         'var(--color-jade-500)',
+                                        }}>
+                                            {c.code}
+                                        </code>
+                                        <button
+                                            onClick={() => handleCopy(c.code)}
+                                            title="Copiar código"
+                                            style={{
+                                                background: 'none', border: 'none',
+                                                cursor: 'pointer', color: 'var(--text-muted)', padding: 2,
+                                            }}
+                                        >
+                                            {copiedCode === c.code
+                                                ? <CheckFat size={12} color="#22c55e" />
+                                                : <Copy size={12} />
+                                            }
+                                        </button>
+                                        {c.isDemo && (
+                                            <span style={{
+                                                fontSize:     'var(--text-xs)',
+                                                color:        '#D97706',
+                                                background:   '#D9770622',
+                                                border:       '1px solid #D97706',
+                                                borderRadius: 999,
+                                                padding:      '0px 6px',
+                                                fontWeight:   600,
+                                            }}>
+                                                demo
+                                            </span>
+                                        )}
+                                    </div>
+                                </td>
 
-                            {/* Nombre del usuario */}
-                            <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                                {c.usuarioNombre
-                                    ? <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{c.usuarioNombre}</span>
-                                    : <span style={{ color: 'var(--text-disabled)', fontStyle: 'italic' }}>—</span>
-                                }
-                            </td>
-
-                            {/* Correo */}
-                            <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                                {c.usuarioEmail
-                                    ? <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{c.usuarioEmail}</span>
-                                    : <span style={{ color: 'var(--text-disabled)', fontStyle: 'italic' }}>—</span>
-                                }
-                            </td>
-
-                            {/* Taller */}
-                            <td style={{ padding: 'var(--space-3) var(--space-4)', color: 'var(--text-muted)', maxWidth: 160 }}>
-                                    <span style={{
-                                        display:      'block',
-                                        overflow:     'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace:   'nowrap',
-                                    }}>
-                                        {c.tallerNombre || c.tallerId}
-                                    </span>
-                            </td>
-
-                            {/* Vigencia */}
-                            <td style={{ padding: 'var(--space-3) var(--space-4)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                                {c.expiresAt
-                                    ? new Date(c.expiresAt).toLocaleDateString('es-MX')
-                                    : 'Sin límite'}
-                            </td>
-
-                            {/* Estado */}
-                            <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                                <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-                                    <StatusBadge record={c} />
-                                    {c.isDemo && (
-                                        <span style={{
-                                            display:      'inline-block',
-                                            padding:      '2px 8px',
-                                            borderRadius: 999,
-                                            background:   '#a855f722',
-                                            color:        '#a855f7',
-                                            fontSize:     'var(--text-xs)',
-                                            fontWeight:   600,
-                                            whiteSpace:   'nowrap',
-                                        }}>🎁 demo</span>
+                                {/* Usuario */}
+                                <td style={{ padding: 'var(--space-3) var(--space-4)', maxWidth: 160 }}>
+                                    {c.usuarioNombre || c.usuarioEmail ? (
+                                        <div>
+                                            {c.usuarioNombre && (
+                                                <p style={{
+                                                    fontWeight: 600, margin: 0,
+                                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                }}>
+                                                    {c.usuarioNombre}
+                                                </p>
+                                            )}
+                                            {c.usuarioEmail && (
+                                                <p style={{
+                                                    color: 'var(--text-muted)', margin: 0,
+                                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                }}>
+                                                    {c.usuarioEmail}
+                                                </p>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <span style={{ color: 'var(--text-disabled)', fontStyle: 'italic' }}>
+                                            Sin asignar
+                                        </span>
                                     )}
-                                </div>
-                            </td>
+                                </td>
 
-                            {/* Acción */}
-                            <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                                {!c.revoked && !c.used && (
-                                    <button
-                                        onClick={() => handleRevoke(c.code)}
-                                        disabled={revoking === c.code}
-                                        style={{
-                                            display:      'flex',
-                                            alignItems:   'center',
-                                            gap:          4,
-                                            padding:      '4px 10px',
-                                            background:   'none',
-                                            border:       '1px solid var(--color-error)',
-                                            borderRadius: 'var(--radius-md)',
-                                            color:        'var(--color-error)',
-                                            fontSize:     'var(--text-xs)',
-                                            cursor:       revoking === c.code ? 'wait' : 'pointer',
-                                            fontFamily:   'var(--font-sans)',
-                                            opacity:      revoking === c.code ? 0.6 : 1,
-                                            whiteSpace:   'nowrap',
-                                        }}
-                                    >
-                                        <XCircle size={14} />
-                                        {revoking === c.code ? 'Revocando...' : 'Revocar'}
-                                    </button>
-                                )}
-                            </td>
-                        </tr>
-                    ))}
+                                {/* Taller */}
+                                <td style={{ padding: 'var(--space-3) var(--space-4)', color: 'var(--text-muted)', maxWidth: 140 }}>
+                                    <span style={{
+                                        display: 'block', overflow: 'hidden',
+                                        textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    }}>
+                                        {c.tallerNombre || c.tallerId || '—'}
+                                    </span>
+                                </td>
+
+                                {/* Vigencia */}
+                                <td style={{ padding: 'var(--space-3) var(--space-4)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                    {c.expiresAt
+                                        ? formatFecha(c.expiresAt)
+                                        : <span style={{ opacity: 0.5 }}>Sin límite</span>
+                                    }
+                                </td>
+
+                                {/* Estado */}
+                                <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                                    <EstadoBadge chispa={c} />
+                                </td>
+
+                                {/* Acción */}
+                                <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                                    {isActive && (
+                                        <button
+                                            onClick={() => handleRevoke(c.code)}
+                                            disabled={revoking === c.code}
+                                            title="Revocar chispa"
+                                            style={{
+                                                display:      'flex',
+                                                alignItems:   'center',
+                                                gap:          4,
+                                                padding:      '3px 10px',
+                                                background:   'none',
+                                                border:       '1px solid var(--color-error)',
+                                                borderRadius: 'var(--radius-md)',
+                                                color:        'var(--color-error)',
+                                                fontSize:     'var(--text-xs)',
+                                                fontWeight:   600,
+                                                cursor:       revoking === c.code ? 'wait' : 'pointer',
+                                                fontFamily:   'var(--font-sans)',
+                                                opacity:      revoking === c.code ? 0.5 : 1,
+                                                whiteSpace:   'nowrap',
+                                            }}
+                                        >
+                                            <XCircle size={12} />
+                                            {revoking === c.code ? 'Revocando...' : 'Revocar'}
+                                        </button>
+                                    )}
+                                </td>
+                            </tr>
+                        )
+                    })}
                     </tbody>
                 </table>
             </div>

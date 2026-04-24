@@ -1,244 +1,235 @@
 /**
- * Destello API — Chispa Service
+ * Destello API — Chispa Service (PostgreSQL)
  * ─────────────────────────────────────────────────────────────────────────────
- * Lógica PURA de negocio para chispas (códigos de acceso de pago).
- * Sin dependencias de Express → se puede testear de forma completamente aislada.
+ * Lógica de negocio para chispas (códigos de acceso a talleres).
+ * Persiste en la tabla `chispas` de PostgreSQL.
  *
- * En producción: reemplazar el Map en memoria por queries a la tabla
- * `chispas` en PostgreSQL (mismas firmas de función, solo cambiar el body).
- * ─────────────────────────────────────────────────────────────────────────────
+ * Tabla esperada:
+ *   code           TEXT PRIMARY KEY
+ *   taller_id      TEXT NOT NULL
+ *   taller_nombre  TEXT
+ *   usuario_email  TEXT
+ *   usuario_nombre TEXT
+ *   usuario_wa     TEXT
+ *   pago_id        TEXT
+ *   created_by     TEXT NOT NULL
+ *   created_at     TIMESTAMPTZ DEFAULT NOW()
+ *   expires_at     TIMESTAMPTZ
+ *   used           BOOLEAN DEFAULT FALSE
+ *   used_at        TIMESTAMPTZ
+ *   revoked        BOOLEAN DEFAULT FALSE
+ *   is_demo        BOOLEAN DEFAULT FALSE
  *
- * Flujo completo:
- *   Admin genera chispa → código viaja al comprador (email / whatsapp)
- *   → Comprador la ingresa en PageLogin → loginWithCode llama validateChispa
- *   → Si válida: emite JWT y da acceso al taller
+ * Si alguna columna no existe aún, corre en pgAdmin:
+ *   ALTER TABLE chispas
+ *     ADD COLUMN IF NOT EXISTS usuario_nombre TEXT,
+ *     ADD COLUMN IF NOT EXISTS taller_nombre  TEXT,
+ *     ADD COLUMN IF NOT EXISTS usuario_wa     TEXT;
  */
 
-import crypto from 'node:crypto'
+import crypto      from 'node:crypto'
+import { query }   from '../db/db.js'
 
-// ── Storage en memoria ────────────────────────────────────────────────────────
-// TODO (producción): reemplazar por pg pool y tabla `chispas`
-//   CREATE TABLE chispas (
-//     code         TEXT PRIMARY KEY,
-//     taller_id    TEXT NOT NULL,
-//     created_by   TEXT NOT NULL,
-//     created_at   TIMESTAMPTZ DEFAULT NOW(),
-//     expires_at   TIMESTAMPTZ,
-//     used         BOOLEAN DEFAULT FALSE,
-//     used_by      TEXT,
-//     revoked      BOOLEAN DEFAULT FALSE
-//   );
-const store = new Map() // Map<code, ChispaRecord>
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// ── Tipos (JSDoc) ─────────────────────────────────────────────────────────────
-/**
- * @typedef {Object} ChispaRecord
- * @property {string}      code            Código único, ej: DEST-A1B2-C3D4
- * @property {string}      tallerId        ID del taller al que da acceso
- * @property {string|null} tallerNombre    Nombre legible del taller
- * @property {string}      createdBy       ID del admin que la generó
- * @property {Date}        createdAt
- * @property {Date|null}   expiresAt       null = sin expiración
- * @property {boolean}     used            true si ya fue canjeada
- * @property {string|null} usedBy          userId que la canjeó
- * @property {boolean}     revoked         true si fue revocada manualmente
- * @property {boolean}     isDemo          true si fue regalada como demo/cortesía
- * @property {string|null} usuarioNombre   Nombre del destinatario
- * @property {string|null} usuarioEmail    Correo del destinatario
- * @property {string|null} usuarioWa       WhatsApp del destinatario (10 dígitos)
- */
-
-// ── Helpers internos ─────────────────────────────────────────────────────────
-
-/**
- * Genera un segmento de 4 caracteres alfanuméricos en mayúsculas.
- * Usa crypto.randomBytes → seguridad criptográfica real.
- * @returns {string} ej: "A1B2"
- */
 function randomSegment() {
-    // 3 bytes → 6 chars hex → tomamos 4
     return crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 4)
 }
 
-/**
- * Construye el código completo: PREFIX-XXXX-XXXX
- * @param {string} prefix  Ej: 'DEST', 'ZEN', 'GAST'
- * @returns {string}       Ej: 'DEST-A1B2-C3D4'
- */
 function buildCode(prefix = 'DEST') {
     return `${prefix}-${randomSegment()}-${randomSegment()}`
 }
 
-/**
- * Garantiza que el código sea único dentro del store.
- * Reintenta en la (muy improbable) colisión.
- * @param {string} prefix
- * @returns {string}
- */
-function uniqueCode(prefix) {
+async function uniqueCode(prefix) {
     let code
     let attempts = 0
     do {
         code = buildCode(prefix)
+        const { rows } = await query('SELECT 1 FROM chispas WHERE code = $1', [code])
+        if (rows.length === 0) return code
         attempts++
         if (attempts > 10) throw new Error('No se pudo generar código único')
-    } while (store.has(code))
-    return code
+    } while (true)
 }
 
-// ── API pública del servicio ──────────────────────────────────────────────────
+// ── API pública ───────────────────────────────────────────────────────────────
 
 /**
- * Crea y almacena una nueva chispa.
+ * Crea y persiste una nueva chispa.
  *
  * @param {Object}      opts
- * @param {string}      opts.tallerId        ID del taller (requerido)
- * @param {string}      opts.createdBy       ID del admin que la crea
- * @param {number|null} opts.expiresInDays   Días hasta expiración (null = sin límite)
- * @param {string}      [opts.prefix]        Prefijo del código (default: 'DEST')
- * @returns {ChispaRecord}
+ * @param {string}      opts.tallerId
+ * @param {string|null} opts.tallerNombre
+ * @param {string}      opts.createdBy
+ * @param {number|null} opts.expiresInDays   null = sin límite
+ * @param {string}      [opts.prefix]        default: 'DEST'
+ * @param {boolean}     [opts.isDemo]
+ * @param {string|null} [opts.usuarioNombre]
+ * @param {string|null} [opts.usuarioEmail]
+ * @param {string|null} [opts.usuarioWa]     10 dígitos MX
+ * @returns {Promise<Object>} registro guardado
  */
-export function createChispa({
-                                 tallerId, tallerNombre = null, createdBy,
-                                 expiresInDays = 30, prefix = 'DEST', isDemo = false,
-                                 usuarioNombre = null, usuarioEmail = null, usuarioWa = null,
-                             }) {
-    if (!tallerId)  throw new Error('tallerId es requerido')
-    if (!createdBy) throw new Error('createdBy es requerido')
+export async function createChispa({
+                                       tallerId,
+                                       tallerNombre  = null,
+                                       createdBy     = 'admin',
+                                       expiresInDays = 30,
+                                       prefix        = 'DEST',
+                                       isDemo        = false,
+                                       usuarioNombre = null,
+                                       usuarioEmail  = null,
+                                       usuarioWa     = null,
+                                   }) {
+    if (!tallerId) throw new Error('tallerId es requerido')
 
-    const code      = uniqueCode(prefix.toUpperCase())
-    // expiresInDays === null → sin vigencia (acceso permanente)
+    const code      = await uniqueCode(prefix.toUpperCase())
     const expiresAt = expiresInDays != null
         ? new Date(Date.now() + expiresInDays * 86_400_000)
         : null
 
-    /** @type {ChispaRecord} */
-    const record = {
-        code,
-        tallerId,
-        tallerNombre,
-        createdBy,
-        createdAt: new Date(),
-        expiresAt,
-        used:    false,
-        usedBy:  null,
-        revoked: false,
-        isDemo:  Boolean(isDemo),
-        usuarioNombre: usuarioNombre || null,
-        usuarioEmail:  usuarioEmail  || null,
-        usuarioWa:     usuarioWa     || null,
-    }
+    const { rows } = await query(
+        `INSERT INTO chispas
+            (code, taller_id, taller_nombre,
+             usuario_email, usuario_nombre, usuario_wa,
+             created_by, expires_at, is_demo,
+             used, revoked, created_at)
+         VALUES
+            ($1,  $2,  $3,
+             $4,  $5,  $6,
+             $7,  $8,  $9,
+             FALSE, FALSE, NOW())
+         RETURNING *`,
+        [
+            code,
+            tallerId,
+            tallerNombre  || null,
+            usuarioEmail  || null,
+            usuarioNombre || null,
+            usuarioWa     || null,
+            createdBy,
+            expiresAt,
+            Boolean(isDemo),
+        ]
+    )
 
-    store.set(code, record)
-    return record
+    return rows[0]
 }
 
 /**
- * Valida una chispa.
- * Si es válida Y se proporciona userId, la marca como usada (one-time use).
+ * Lista todas las chispas con filtros opcionales.
+ * Ordenadas por fecha de creación descendente.
  *
- * @param {string}      code     Código a validar (case-insensitive)
- * @param {string|null} [userId] Si se pasa, la chispa queda marcada como usada
- * @returns {{ valid: boolean, record?: ChispaRecord, reason?: string }}
- *
- * Razones de fallo posibles:
- *   'INVALID_CODE'  → no existe en el store
- *   'REVOKED'       → fue revocada manualmente
- *   'ALREADY_USED'  → ya fue canjeada
- *   'EXPIRED'       → pasó la fecha de expiración
+ * @param {Object}  [filters]
+ * @param {string}  [filters.tallerId]
+ * @param {boolean} [filters.activeOnly]
+ * @returns {Promise<Object[]>}
  */
-export function validateChispa(code, userId = null) {
-    const normalized = code?.toUpperCase().trim()
-    const record     = store.get(normalized)
+export async function listChispas({ tallerId, activeOnly } = {}) {
+    const conditions = []
+    const params     = []
 
-    if (!record)                                      return { valid: false, reason: 'INVALID_CODE' }
-    if (record.revoked)                               return { valid: false, reason: 'REVOKED' }
-    if (record.used)                                  return { valid: false, reason: 'ALREADY_USED' }
-    if (record.expiresAt && record.expiresAt < new Date()) {
+    if (tallerId) {
+        params.push(tallerId)
+        conditions.push(`taller_id = $${params.length}`)
+    }
+
+    if (activeOnly) {
+        conditions.push(`used = FALSE AND revoked = FALSE AND (expires_at IS NULL OR expires_at > NOW())`)
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+
+    const { rows } = await query(
+        `SELECT * FROM chispas ${where} ORDER BY created_at DESC`,
+        params
+    )
+    return rows
+}
+
+/**
+ * Obtiene una chispa por código (case-insensitive).
+ *
+ * @param {string} code
+ * @returns {Promise<Object|null>}
+ */
+export async function getChispa(code) {
+    const { rows } = await query(
+        'SELECT * FROM chispas WHERE code = $1',
+        [code?.toUpperCase().trim()]
+    )
+    return rows[0] ?? null
+}
+
+/**
+ * Estadísticas globales del estado de chispas.
+ *
+ * @returns {Promise<Object>}
+ */
+export async function getStats() {
+    const { rows } = await query(`
+        SELECT
+            COUNT(*)                                                                         AS total,
+            COUNT(*) FILTER (WHERE used = FALSE AND revoked = FALSE
+                              AND (expires_at IS NULL OR expires_at > NOW()))                AS active,
+            COUNT(*) FILTER (WHERE used = TRUE)                                             AS used,
+            COUNT(*) FILTER (WHERE revoked = TRUE)                                          AS revoked,
+            COUNT(*) FILTER (WHERE used = FALSE AND revoked = FALSE
+                              AND expires_at IS NOT NULL AND expires_at <= NOW())            AS expired,
+            COUNT(*) FILTER (WHERE is_demo = TRUE)                                          AS demo
+        FROM chispas
+    `)
+
+    const r = rows[0]
+    return {
+        total:   Number(r.total),
+        active:  Number(r.active),
+        used:    Number(r.used),
+        revoked: Number(r.revoked),
+        expired: Number(r.expired),
+        demo:    Number(r.demo),
+    }
+}
+
+/**
+ * Valida una chispa. Si se pasa userId, la marca como usada.
+ *
+ * @param {string}      code
+ * @param {string|null} [userId]
+ * @returns {Promise<{ valid: boolean, record?: Object, reason?: string }>}
+ */
+export async function validateChispa(code, userId = null) {
+    const normalized = code?.toUpperCase().trim()
+    const record     = await getChispa(normalized)
+
+    if (!record)        return { valid: false, reason: 'INVALID_CODE' }
+    if (record.revoked) return { valid: false, reason: 'REVOKED' }
+    if (record.used)    return { valid: false, reason: 'ALREADY_USED' }
+    if (record.expires_at && new Date(record.expires_at) < new Date()) {
         return { valid: false, reason: 'EXPIRED' }
     }
 
-    // Marcar como usada si se proporciona userId
     if (userId) {
-        record.used   = true
-        record.usedBy = userId
-        store.set(normalized, record)
+        await query(
+            `UPDATE chispas SET used = TRUE, used_at = NOW(), used_by = $2 WHERE code = $1`,
+            [normalized, userId]
+        )
+        record.used    = true
+        record.used_by = userId
     }
 
     return { valid: true, record }
 }
 
 /**
- * Revoca una chispa permanentemente (no la elimina, queda en el historial).
+ * Revoca una chispa permanentemente.
  *
  * @param {string} code
- * @returns {boolean} true si existía y fue revocada, false si no existía
+ * @returns {Promise<boolean>}
  */
-export function revokeChispa(code) {
-    const normalized = code?.toUpperCase().trim()
-    const record     = store.get(normalized)
-    if (!record) return false
-
-    record.revoked = true
-    store.set(normalized, record)
-    return true
-}
-
-/**
- * Lista todas las chispas con filtros opcionales.
- * Ordenadas por fecha de creación descendente (más reciente primero).
- *
- * @param {Object}  [filters]
- * @param {string}  [filters.tallerId]    Filtra por taller
- * @param {boolean} [filters.activeOnly]  Solo las no usadas y no revocadas
- * @returns {ChispaRecord[]}
- */
-export function listChispas({ tallerId, activeOnly } = {}) {
-    let records = [...store.values()]
-
-    if (tallerId)   records = records.filter(r => r.tallerId === tallerId)
-    if (activeOnly) records = records.filter(r => !r.used && !r.revoked)
-
-    return records.sort((a, b) => b.createdAt - a.createdAt)
-}
-
-/**
- * Obtiene una chispa por código exacto.
- *
- * @param {string} code
- * @returns {ChispaRecord|null}
- */
-export function getChispa(code) {
-    return store.get(code?.toUpperCase().trim()) ?? null
-}
-
-/**
- * Elimina una chispa del store (solo para tests o datos de prueba).
- * En producción: usar revokeChispa en su lugar.
- *
- * @param {string} code
- * @returns {boolean}
- */
-export function deleteChispa(code) {
-    return store.delete(code?.toUpperCase().trim())
-}
-
-/**
- * Retorna estadísticas básicas del store.
- * Útil para un dashboard de administración.
- *
- * @returns {{ total: number, active: number, used: number, revoked: number, expired: number }}
- */
-export function getStats() {
-    const now     = new Date()
-    const records = [...store.values()]
-
-    return {
-        total:   records.length,
-        active:  records.filter(r => !r.used && !r.revoked && (!r.expiresAt || r.expiresAt > now)).length,
-        used:    records.filter(r => r.used).length,
-        revoked: records.filter(r => r.revoked).length,
-        expired: records.filter(r => !r.used && !r.revoked && r.expiresAt && r.expiresAt <= now).length,
-        demo:    records.filter(r => r.isDemo).length,
-    }
+export async function revokeChispa(code) {
+    const { rows } = await query(
+        `UPDATE chispas SET revoked = TRUE WHERE code = $1 RETURNING code`,
+        [code?.toUpperCase().trim()]
+    )
+    return rows.length > 0
 }
