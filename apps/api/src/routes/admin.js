@@ -91,7 +91,20 @@ router.patch('/lista-espera/:id', async (req, res, next) => {
     } catch (err) { next(err) }
 })
 
+router.get('/resplandores/all', async (_req, res, next) => {
+    try {
+        const { rows } = await query(
+            `SELECT r.*, u.nombre AS usuario_nombre
+             FROM resplandores r
+             LEFT JOIN usuarios u ON u.email = r.usuario_email
+             ORDER BY r.created_at DESC`
+        )
+        res.json({ status: 'ok', resplandores: rows })
+    } catch (err) { next(err) }
+})
+
 // ── Resplandores (admin) ──────────────────────────────────
+
 
 /**
  * GET /admin/resplandores?email=xxx
