@@ -156,6 +156,13 @@ const SALUDO_INICIAL =
     '4️⃣  Medios de pago\n' +
     '5️⃣  Tengo una duda'
 
+function fmtFecha(iso) {
+    if (!iso) return null
+    const d = new Date(iso)
+    if (isNaN(d)) return null
+    return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+}
+
 function menuTalleres(talleres) {
     if (!talleres.length) {
         return '😔 Por el momento no hay talleres disponibles. ¡Pronto abriremos nuevas fechas!'
@@ -164,9 +171,11 @@ function menuTalleres(talleres) {
     return (
         '*Talleres disponibles:*\n\n' +
         talleres.map((t, i) => {
-            const precio  = t.precio > 0 ? `  💰 $${t.precio} MXN` : ''
-            const horario = t.horario    ? `  🕐 ${t.horario}`     : ''
-            return `${emojis[i]}  *${t.nombre}*${precio}${horario}`
+            const precio  = t.precio > 0 ? `\n   💰 $${Number(t.precio).toLocaleString('es-MX')} MXN` : '\n   💰 Gratis'
+            const horario = t.horario     ? `\n   🕐 ${t.horario}` : ''
+            const fecha   = fmtFecha(t.fecha_inicio) ? `\n   📅 ${fmtFecha(t.fecha_inicio)}` : ''
+            const prox    = t.estado === 'proximamente' ? ' _(Próximamente)_' : ''
+            return `${emojis[i]}  *${t.nombre}*${prox}${precio}${horario}${fecha}`
         }).join('\n\n')
     )
 }
