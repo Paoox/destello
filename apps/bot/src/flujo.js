@@ -39,7 +39,7 @@ const PASO = {
     REG_TIPO:          'REG_TIPO',
     REG_CORREO_PERFIL: 'REG_CORREO_PERFIL',
     REG_NOMBRE:        'REG_NOMBRE',
-    REG_APELLIDO:      'REG_APELLIDO',   // ← nuevo: separar nombre y apellido
+    REG_APELLIDO:      'REG_APELLIDO',
     REG_CORREO_NUEVO:  'REG_CORREO_NUEVO',
     REG_TALLER:        'REG_TALLER',
     // Sin código
@@ -50,16 +50,13 @@ const PASO = {
 
 /**
  * Extrae el número de teléfono local (10 dígitos) del JID de WhatsApp.
- * WhatsApp México usa dos formatos posibles:
- *   "521XXXXXXXXXX@s.whatsapp.net" → 52 (país) + 1 (celular) + 10 dígitos = 13 chars
- *   "52XXXXXXXXXX@s.whatsapp.net"  → 52 (país) + 10 dígitos = 12 chars (formato antiguo)
- * Ambos casos deben devolver los 10 dígitos locales.
+ * WhatsApp México usa dos formatos:
+ *   "521XXXXXXXXXX@s.whatsapp.net" → 13 dígitos → quitar "521" → 10 locales
+ *   "52XXXXXXXXXX@s.whatsapp.net"  → 12 dígitos → quitar "52"  → 10 locales
  */
 function extractWhatsapp(jid) {
     const raw = jid.replace('@s.whatsapp.net', '').replace('@c.us', '')
-    // Caso moderno: 52 (país) + 1 (celular) + 10 dígitos = 13 chars → quitar "521"
     if (raw.startsWith('521') && raw.length === 13) return raw.slice(3)
-    // Caso antiguo: 52 (país) + 10 dígitos = 12 chars → quitar "52"
     if (raw.startsWith('52') && raw.length === 12) return raw.slice(2)
     return raw
 }
@@ -251,7 +248,7 @@ export async function procesarMensaje(jid, texto) {
         )
     }
 
-    // ── REGISTRO: correo de usuario con perfil ────────────────
+    // ── REGISTRO: correo de usuario con perfil existente ──────
     if (conv.paso === PASO.REG_CORREO_PERFIL) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
         if (!emailRegex.test(msg)) {
@@ -261,7 +258,6 @@ export async function procesarMensaje(jid, texto) {
         const { existe, usuario } = await buscarUsuario(msg)
 
         if (!existe) {
-            // No está en la BD — ofrecemos registrarlo
             conversaciones.set(jid, { ...conv, paso: PASO.REG_NOMBRE, correo: msg })
             return (
                 `⚠️ No encontramos ningún perfil con *${msg}*.\n\n` +
@@ -285,9 +281,9 @@ export async function procesarMensaje(jid, texto) {
         const talleres = await getTalleresActivos()
         conversaciones.set(jid, {
             ...conv,
-            paso:     PASO.REG_TALLER,
-            correo:   msg,
-            nombre:   usuario.nombre,
+            paso:        PASO.REG_TALLER,
+            correo:      msg,
+            nombre:      usuario.nombre,
             talleres,
             tienePerfil: true,
         })
@@ -298,10 +294,9 @@ export async function procesarMensaje(jid, texto) {
         )
     }
 
-    // ── REGISTRO: nombre (primer paso) ────────────────────────
+    // ── REGISTRO: nombre ──────────────────────────────────────
     if (conv.paso === PASO.REG_NOMBRE) {
-        // Caso: venía del flujo "sí tengo perfil" pero no lo encontramos
-        // → primero preguntamos si quiere registrarse
+        // Venía del flujo "sí tengo perfil" pero no lo encontramos → confirmar registro
         if (conv.correo && !conv.preguntarNombre) {
             if (['1', 'si', 'sí'].includes(msg.toLowerCase())) {
                 conversaciones.set(jid, { ...conv, paso: PASO.REG_NOMBRE, preguntarNombre: true })
@@ -313,7 +308,7 @@ export async function procesarMensaje(jid, texto) {
             }
         }
 
-        // Recibió el nombre — ahora pedir apellido
+        // Guardar nombre y pedir apellido
         conversaciones.set(jid, { ...conv, paso: PASO.REG_APELLIDO, nombre: msg.trim() })
         return (
             `Hola, *${msg.trim()}*! 😊\n\n` +
@@ -322,7 +317,7 @@ export async function procesarMensaje(jid, texto) {
         )
     }
 
-    // ── REGISTRO: apellido (segundo paso) ─────────────────────
+    // ── REGISTRO: apellido ────────────────────────────────────
     if (conv.paso === PASO.REG_APELLIDO) {
         const nombreCompleto = `${conv.nombre} ${msg.trim()}`
         conversaciones.set(jid, { ...conv, paso: PASO.REG_CORREO_NUEVO, nombre: nombreCompleto })
@@ -340,16 +335,16 @@ export async function procesarMensaje(jid, texto) {
             return '⚠️ Ese correo no parece válido. Escríbelo completo, ej: _tunombre@gmail.com_'
         }
 
-        // Verificar si ya existe
         const { existe, usuario } = await buscarUsuario(msg)
 
+        // Ya existe y está activo → ir directo a talleres
         if (existe && usuario.estado === 'activo') {
             const talleres = await getTalleresActivos()
             conversaciones.set(jid, {
                 ...conv,
-                paso:     PASO.REG_TALLER,
-                correo:   msg,
-                nombre:   usuario.nombre,
+                paso:        PASO.REG_TALLER,
+                correo:      msg,
+                nombre:      usuario.nombre,
                 talleres,
                 tienePerfil: true,
             })
@@ -360,15 +355,15 @@ export async function procesarMensaje(jid, texto) {
             )
         }
 
-        // Guardar usuario nuevo
+        // Usuario nuevo → registrar con el número de WhatsApp correcto
         const whatsapp = extractWhatsapp(jid)
         await registrarUsuario({ email: msg, nombre: conv.nombre, whatsapp })
 
         const talleres = await getTalleresActivos()
         conversaciones.set(jid, {
             ...conv,
-            paso:     PASO.REG_TALLER,
-            correo:   msg,
+            paso:        PASO.REG_TALLER,
+            correo:      msg,
             talleres,
             tienePerfil: false,
         })
@@ -388,7 +383,6 @@ export async function procesarMensaje(jid, texto) {
             return '😔 No hay talleres disponibles en este momento.\n\n' + MENU_TEXTO()
         }
 
-        // Buscar por número o nombre
         const input = msg.toLowerCase().trim()
         let tallerElegido = null
 
@@ -397,9 +391,7 @@ export async function procesarMensaje(jid, texto) {
             tallerElegido = talleres[num - 1]
         }
         if (!tallerElegido) {
-            tallerElegido = talleres.find(t =>
-                t.nombre.toLowerCase().includes(input)
-            )
+            tallerElegido = talleres.find(t => t.nombre.toLowerCase().includes(input))
         }
 
         if (!tallerElegido) {
@@ -409,7 +401,6 @@ export async function procesarMensaje(jid, texto) {
             )
         }
 
-        // Registrar en lista de espera
         const whatsapp  = extractWhatsapp(jid)
         const resultado = await agregarALista({
             email:    correo,
@@ -417,8 +408,6 @@ export async function procesarMensaje(jid, texto) {
             nombre,
             whatsapp,
         })
-
-        conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
 
         conversaciones.set(jid, { paso: PASO.POST_ACCION })
 
@@ -485,7 +474,7 @@ export async function procesarMensaje(jid, texto) {
         )
     }
 
-    // ── POST ACCIÓN: ¿volver al menú o salir? ────────────────
+    // ── POST ACCIÓN ───────────────────────────────────────────
     if (conv.paso === PASO.POST_ACCION) {
         const resp = msg.toLowerCase().trim()
 
@@ -502,7 +491,7 @@ export async function procesarMensaje(jid, texto) {
         return POST_ACCION_TEXTO
     }
 
-    // Fallback — mostrar menú
+    // Fallback
     conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
     return MENU_TEXTO()
 }

@@ -65,22 +65,28 @@ export async function getListasPorEmail(email) {
     return rows
 }
 
+/**
+ * Devuelve chispas activas y resplandores activos pendientes para un email.
+ * Usado por el bot cuando el alumno dice "no me llegó mi código".
+ */
 export async function getPendientesPorEmail(email) {
+    const emailNorm = email.toLowerCase().trim()
+
     const { rows: chispas } = await query(
         `SELECT c.code, t.nombre AS taller_nombre
          FROM chispas c
-         JOIN talleres t ON t.id = c.taller_id
-         WHERE LOWER(c.email) = LOWER($1)
+                  JOIN talleres t ON t.id = c.taller_id
+         WHERE LOWER(c.email) = $1
            AND c.estado = 'activa'`,
-        [email.trim()]
+        [emailNorm]
     )
 
     const { rows: resplandores } = await query(
         `SELECT code, email
          FROM resplandores
-         WHERE LOWER(email) = LOWER($1)
+         WHERE LOWER(email) = $1
            AND estado = 'activo'`,
-        [email.trim()]
+        [emailNorm]
     )
 
     return { chispas, resplandores }
