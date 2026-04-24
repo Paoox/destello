@@ -27,8 +27,13 @@ function toSlug(nombre) {
 export async function listTalleresActivos() {
     const { rows } = await query(
         `SELECT * FROM talleres
-         WHERE estado = 'activo'
-         ORDER BY nombre ASC`
+         WHERE estado IN ('activo', 'proximamente')
+         ORDER BY
+             CASE estado
+                 WHEN 'activo'       THEN 1
+                 WHEN 'proximamente' THEN 2
+                 END,
+             nombre ASC`
     )
     return rows
 }
@@ -78,10 +83,10 @@ export async function crearTaller(data) {
 
     const { rows } = await query(
         `INSERT INTO talleres
-             (id, nombre, descripcion, precio, horario,
-              fecha_inicio, fecha_fin, cupo_maximo, imagen_url, estado, categoria)
+         (id, nombre, descripcion, precio, horario,
+          fecha_inicio, fecha_fin, cupo_maximo, imagen_url, estado, categoria)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         RETURNING *`,
+             RETURNING *`,
         [slug, nombre, descripcion, precio, horario,
             fecha_inicio || null, fecha_fin || null,
             cupo_maximo  || null, imagen_url || null, estado, categoria || null]
@@ -121,7 +126,7 @@ export async function actualizarTaller(id, data) {
              categoria   = COALESCE($11, categoria),
              updated_at  = NOW()
          WHERE id = $1
-         RETURNING *`,
+             RETURNING *`,
         [id, nombre, descripcion, precio ?? null, horario,
             fecha_inicio || null, fecha_fin    || null,
             cupo_maximo  || null, imagen_url   || null,
