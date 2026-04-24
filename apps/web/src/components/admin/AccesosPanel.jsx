@@ -124,6 +124,9 @@ export default function AccesosPanel({ adminToken }) {
     const [userTab,      setUserTab]      = useState('resplandores')
     const [globalSearch, setGlobalSearch] = useState('')
 
+    // ── Stats
+    const [stats, setStats] = useState(null)
+
     // ── Carga inicial
     useEffect(() => {
         fetch('/api/tallers')
@@ -133,6 +136,10 @@ export default function AccesosPanel({ adminToken }) {
 
         API('/chispas', adminToken)
             .then(d => setAllChispas(d.chispas ?? []))
+            .catch(() => {})
+
+        API('/chispas/stats', adminToken)
+            .then(d => setStats(d.stats ?? null))
             .catch(() => {})
     }, [adminToken])
 
@@ -148,17 +155,24 @@ export default function AccesosPanel({ adminToken }) {
 
     const refreshChispas = useCallback(() => {
         API('/chispas', adminToken).then(d => setAllChispas(d.chispas ?? [])).catch(() => {})
+        API('/chispas/stats', adminToken).then(d => setStats(d.stats ?? null)).catch(() => {})
     }, [adminToken])
 
     const refreshAllResps = useCallback(() => { setAllResps([]) }, [])
 
+    const [searchError, setSearchError] = useState(null)
+
     const recargarUsuario = useCallback(async (email) => {
+        setSearchError(null)
         try {
             const data = await API(`/resplandores?email=${encodeURIComponent(email)}`, adminToken)
             setUsuarioResps(data.resplandores ?? [])
             if (data.usuario) { setUsuario(data.usuario); setUsuarioStatus('found') }
             else { setUsuario(null); setUsuarioStatus('not_found') }
-        } catch { /* silent */ }
+        } catch (err) {
+            setUsuarioStatus('idle')
+            setSearchError(err.message ?? 'Error al buscar — revisa que el backend esté corriendo')
+        }
     }, [adminToken])
 
     // ── Búsqueda por email (debounced)
@@ -281,6 +295,25 @@ export default function AccesosPanel({ adminToken }) {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
 
+            {/* ══ STATS ═════════════════════════════════════════════════════ */}
+            {stats && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 'var(--space-3)' }}>
+                    {[
+                        { label: 'Total',     value: stats.total,   color: 'var(--text-primary)' },
+                        { label: 'Activas',   value: stats.active,  color: '#22c55e' },
+                        { label: 'Usadas',    value: stats.used,    color: '#3b82f6' },
+                        { label: 'Expiradas', value: stats.expired, color: '#f59e0b' },
+                        { label: 'Revocadas', value: stats.revoked, color: '#ef4444' },
+                        { label: 'Demo',      value: stats.demo,    color: '#d97706' },
+                    ].map(s => (
+                        <div key={s.label} style={{ ...sCard, padding: 'var(--space-4)', textAlign: 'center' }}>
+                            <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</p>
+                            <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</p>
+                        </div>
+                    ))}
+                </div>
+            )}
+
             {/* ══ BUSCADOR ══════════════════════════════════════════════════ */}
             <div style={sCard}>
                 <p style={{ margin: '0 0 8px', fontWeight: 700, fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -299,6 +332,7 @@ export default function AccesosPanel({ adminToken }) {
                 </div>
 
                 {usuarioStatus === 'searching' && <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '6px 0 0' }}>Buscando...</p>}
+                {searchError && <p style={{ color: 'var(--color-error)', fontSize: 12, margin: '6px 0 0' }}>⚠ {searchError}</p>}
 
                 {/* Usuario ENCONTRADO — tiene cuenta */}
                 {usuarioStatus === 'found' && usuario && (
@@ -747,8 +781,8 @@ export default function AccesosPanel({ adminToken }) {
                                                             <CopyBtn text={r.code} />
                                                         </span>
                                                 </td>
-                                                <td style={{ ...sTd, fontWeight: 600, fontSize: 12 }}>{r.usuario_nombre ?? '—'}</td>
-                                                <td style={{ ...sTd, color: 'var(--text-muted)', fontSize: 12 }}>{r.usuario_email}</td>
+                                                <td style={{ ...sTd, fontWeight: 600, fontSize: 12 }}>{r.nombre ?? r.usuario_nombre ?? '—'}</td>
+                                                <td style={{ ...sTd, color: 'var(--text-muted)', fontSize: 12 }}>{r.email}</td>
                                                 <td style={{ ...sTd, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{r.created_at ? new Date(r.created_at).toLocaleDateString('es-MX') : '—'}</td>
                                                 <td style={sTd}><Pill estado={est} /></td>
                                                 <td style={sTd}>

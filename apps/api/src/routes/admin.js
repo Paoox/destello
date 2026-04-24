@@ -96,7 +96,7 @@ router.get('/resplandores/all', async (_req, res, next) => {
         const { rows } = await query(
             `SELECT r.*, u.nombre AS usuario_nombre
              FROM resplandores r
-             LEFT JOIN usuarios u ON u.email = r.usuario_email
+             LEFT JOIN usuarios u ON u.email = r.email
              ORDER BY r.created_at DESC`
         )
         res.json({ status: 'ok', resplandores: rows })
@@ -122,7 +122,7 @@ router.get('/resplandores', async (req, res, next) => {
         const usuario = users[0] ?? null
 
         const { rows: resplandores } = await query(
-            `SELECT * FROM resplandores WHERE usuario_email = $1 ORDER BY created_at DESC`,
+            `SELECT * FROM resplandores WHERE email = $1 ORDER BY created_at DESC`,
             [email.toLowerCase().trim()]
         )
 
@@ -145,7 +145,7 @@ router.post('/resplandores', async (req, res, next) => {
         // Verificar si ya tiene un resplandor activo o expirado (no revocado, no usado)
         const { rows: existentes } = await query(
             `SELECT * FROM resplandores
-             WHERE usuario_email = $1 AND revoked = FALSE AND used = FALSE`,
+             WHERE email = $1 AND revoked = FALSE AND used = FALSE`,
             [emailNorm]
         )
         if (existentes.length > 0) {
@@ -168,7 +168,7 @@ router.post('/resplandores', async (req, res, next) => {
 
         // Guardar resplandor
         const { rows } = await query(
-            `INSERT INTO resplandores (code, usuario_email, created_at)
+            `INSERT INTO resplandores (code, email, created_at)
              VALUES ($1, $2, NOW())
              RETURNING *`,
             [code, emailNorm]
@@ -193,14 +193,14 @@ router.post('/resplandores/:code/reenviar', async (req, res, next) => {
     try {
         const { rows } = await query(
             `SELECT r.*, u.nombre FROM resplandores r
-             JOIN usuarios u ON u.email = r.usuario_email
+             JOIN usuarios u ON u.email = r.email
              WHERE r.code = $1`,
             [req.params.code]
         )
         if (!rows.length) throw new AppError('Resplandor no encontrado', 404, 'NOT_FOUND')
         const r = rows[0]
 
-        await sendResplandor({ to: r.usuario_email, nombre: r.nombre ?? '', code: r.code })
+        await sendResplandor({ to: r.email, nombre: r.nombre ?? '', code: r.code })
         res.json({ status: 'ok', message: `Resplandor reenviado a ${r.usuario_email}` })
     } catch (err) { next(err) }
 })
