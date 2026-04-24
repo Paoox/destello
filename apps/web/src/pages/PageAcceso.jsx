@@ -1,5 +1,5 @@
 /**
- * PageAcceso — Validación de Chispa de acceso
+ * PageAcceso — Validación de Resplandor de acceso
  * El usuario ingresa su código único antes de crear su cuenta.
  * Si el código es válido → navega a /login
  */
@@ -30,7 +30,7 @@ export default function PageAcceso() {
         setIsLoading(true)
 
         try {
-            const res = await fetch('/api/chispas/validate', {
+            const res = await fetch('/api/auth/resplandor/validate', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({ code: codigo.trim().toUpperCase() }),
@@ -39,13 +39,13 @@ export default function PageAcceso() {
             const data = await res.json()
 
             if (!res.ok) {
-                setError(data.message || 'Chispa inválida o expirada. Verifica tu código.')
+                setError(data.message || 'Resplandor inválido o expirado. Verifica tu código.')
                 return
             }
 
-            // Guardamos el código validado para que Login lo use si es necesario
-            sessionStorage.setItem('destello_chispa', codigo.trim().toUpperCase())
-            navigate('/login')
+            // Guardamos el código y el email validados para que Login los use
+            sessionStorage.setItem('destello_resplandor', codigo.trim().toUpperCase())
+            navigate('/login', { state: { email: data.email, nombre: data.nombre } })
 
         } catch {
             setError('Sin conexión. Verifica tu internet e intenta de nuevo.')
