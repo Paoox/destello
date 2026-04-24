@@ -21,10 +21,11 @@ const REASON_MESSAGES = {
 // ── Rutas de administración (requieren JWT) ───────────────────────────────────
 
 /**
- * POST /chispas/generate
+ * POST /admin/chispas
  * Genera una nueva chispa para un taller dado.
  *
- * Body: { tallerId, expiresInDays?, prefix? }
+ * Body: { tallerId, tallerNombre?, expiresInDays?, isDemo?, prefix?,
+ *         usuarioNombre?, usuarioEmail?, usuarioWa? }
  * Response: { status, chispa }
  */
 export async function generateChispa(req, res, next) {
@@ -38,7 +39,8 @@ export async function generateChispa(req, res, next) {
             throw new AppError('tallerId es requerido', 400, 'BAD_REQUEST')
         }
 
-        const record = chispaService.createChispa({
+        // ← await aquí: el servicio es async (PostgreSQL)
+        const record = await chispaService.createChispa({
             tallerId,
             tallerNombre:  tallerNombre  || null,
             createdBy:     req.user?.userId ?? 'admin',
@@ -57,8 +59,8 @@ export async function generateChispa(req, res, next) {
 }
 
 /**
- * POST /chispas/generate/batch
- * Genera N chispas de una vez para el mismo taller.
+ * POST /admin/chispas/batch
+ * Genera N chispas de golpe.
  *
  * Body: { tallerId, quantity, expiresInDays?, prefix? }
  * Response: { status, chispas, total }
@@ -66,20 +68,21 @@ export async function generateChispa(req, res, next) {
 export async function generateBatch(req, res, next) {
     try {
         const { tallerId, quantity = 1, expiresInDays, prefix } = req.body
-
         if (!tallerId)          throw new AppError('tallerId es requerido', 400, 'BAD_REQUEST')
         if (quantity < 1 || quantity > 500) {
             throw new AppError('quantity debe estar entre 1 y 500', 400, 'BAD_REQUEST')
         }
 
-        const chispas = Array.from({ length: quantity }, () =>
-            chispaService.createChispa({
+        const chispas = []
+        for (let i = 0; i < quantity; i++) {
+            // ← await en cada iteración
+            chispas.push(await chispaService.createChispa({
                 tallerId,
                 createdBy:    req.user?.userId ?? 'admin',
                 expiresInDays: expiresInDays ?? 30,
                 prefix,
-            })
-        )
+            }))
+        }
 
         res.status(201).json({ status: 'ok', chispas, total: chispas.length })
     } catch (err) {
@@ -88,54 +91,70 @@ export async function generateBatch(req, res, next) {
 }
 
 /**
- * GET /chispas
+ * GET /admin/chispas
  * Lista todas las chispas con filtros opcionales.
  *
  * Query: ?tallerId=&activeOnly=true
  * Response: { status, chispas, total }
  */
-export async function listChispas(req, res) {
-    const { tallerId, activeOnly } = req.query
-    const records = chispaService.listChispas({
-        tallerId,
-        activeOnly: activeOnly === 'true',
-    })
-    res.json({ status: 'ok', chispas: records, total: records.length })
+export async function listChispas(req, res, next) {
+    try {
+        const { tallerId, activeOnly } = req.query
+        const chispas = await chispaService.listChispas({
+            tallerId,
+            activeOnly: activeOnly === 'true',
+        })
+        res.json({ status: 'ok', chispas, total: chispas.length })
+    } catch (err) {
+        next(err)
+    }
 }
 
 /**
- * GET /chispas/stats
+ * GET /admin/chispas/stats
  * Estadísticas del estado global de chispas.
  *
  * Response: { status, stats }
  */
-export async function getStats(_req, res) {
-    const stats = chispaService.getStats()
-    res.json({ status: 'ok', stats })
+export async function getStats(_req, res, next) {
+    try {
+        const stats = await chispaService.getStats()
+        res.json({ status: 'ok', stats })
+    } catch (err) {
+        next(err)
+    }
 }
 
 /**
- * GET /chispas/:code
+ * GET /admin/chispas/:code
  * Obtiene el detalle de una chispa por código.
  *
  * Response: { status, chispa }
  */
 export async function getChispa(req, res, next) {
-    const record = chispaService.getChispa(req.params.code)
-    if (!record) return next(new AppError('Chispa no encontrada', 404, 'NOT_FOUND'))
-    res.json({ status: 'ok', chispa: record })
+    try {
+        const record = await chispaService.getChispa(req.params.code)
+        if (!record) return next(new AppError('Chispa no encontrada', 404, 'NOT_FOUND'))
+        res.json({ status: 'ok', chispa: record })
+    } catch (err) {
+        next(err)
+    }
 }
 
 /**
- * DELETE /chispas/:code
+ * DELETE /admin/chispas/:code
  * Revoca una chispa. No la borra — queda en el historial como revocada.
  *
  * Response: { status, message }
  */
 export async function revokeChispa(req, res, next) {
-    const ok = chispaService.revokeChispa(req.params.code)
-    if (!ok) return next(new AppError('Chispa no encontrada', 404, 'NOT_FOUND'))
-    res.json({ status: 'ok', message: `Chispa ${req.params.code} revocada exitosamente` })
+    try {
+        const ok = await chispaService.revokeChispa(req.params.code)
+        if (!ok) return next(new AppError('Chispa no encontrada', 404, 'NOT_FOUND'))
+        res.json({ status: 'ok', message: `Chispa ${req.params.code} revocada exitosamente` })
+    } catch (err) {
+        next(err)
+    }
 }
 
 // ── Ruta pública (sin JWT) ────────────────────────────────────────────────────
@@ -143,21 +162,16 @@ export async function revokeChispa(req, res, next) {
 /**
  * POST /chispas/validate
  * Valida un código ingresado por el usuario.
- * Esta ruta es PÚBLICA — la usa el flow de login antes de emitir el JWT.
  *
  * Body: { code }
  * Response: { status, record } | AppError 401
- *
- * Nota: validateChispa en el servicio marca la chispa como usada.
- * Si solo quieres verificar sin consumirla, no pases userId.
  */
 export async function validateChispa(req, res, next) {
     try {
         const { code } = req.body
         if (!code) throw new AppError('Código requerido', 400, 'BAD_REQUEST')
 
-        // No pasamos userId todavía — el consumo real ocurre en authController.loginWithCode
-        const result = chispaService.validateChispa(code)
+        const result = await chispaService.validateChispa(code)
 
         if (!result.valid) {
             const message = REASON_MESSAGES[result.reason] ?? 'Código inválido'
