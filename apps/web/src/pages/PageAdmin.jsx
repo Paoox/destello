@@ -10,7 +10,7 @@ import { ArrowClockwise, SignOut, Sparkle, BookOpen, ClockCounterClockwise } fro
 import { useAdminSession }                   from '@hooks/useAdminSession.js'
 import AdminAuthOverlay                      from '@components/admin/AdminAuthOverlay.jsx'
 import AccesosPanel                          from '@components/admin/AccesosPanel.jsx'
-import TalleresAdmin                         from '@components/admin/TalleresAdmin.jsx'
+import TalleresAdmin                         from '@components/admin/TalleresPanel.jsx'
 import ListaEsperaAdmin                      from '@components/admin/ListaEsperaAdmin.jsx'
 
 const TABS = [
@@ -155,10 +155,9 @@ export default function PageAdmin() {
                 )}
 
                 {/* Tab: Talleres */}
-                {activeTab === 'talleres' && (
+                {activeTab === 'talleres' && isAuthenticated && (
                     <TalleresAdmin
                         adminToken={adminToken}
-                        onChanged={() => {}}
                     />
                 )}
 

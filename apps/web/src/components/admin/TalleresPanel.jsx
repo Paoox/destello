@@ -1,14 +1,13 @@
 /**
  * Destello Admin — TalleresPanel
- * CRUD de talleres: crear, editar, ver lista.
+ * CRUD de talleres conectado a la tabla real.
  *
- * Campos por taller:
- *   nombre, descripcion, categoria, precio,
- *   horarioInicio + horarioFin → se guarda como "9:00 AM – 12:00 PM"
- *   fecha_disponible (DATE), estado (activo | proximamente | lleno)
+ * Columnas reales:
+ *   id (slug), nombre, descripcion, precio, horario (texto "9:00 AM – 12:00 PM"),
+ *   fecha_inicio (DATE), fecha_fin (DATE), cupo_maximo, imagen_url, estado
  */
 import { useState, useEffect, useCallback } from 'react'
-import { BookOpen, PencilSimple, CheckCircle, Plus, X, TrendUp, CaretDown } from '@phosphor-icons/react'
+import { BookOpen, PencilSimple, Plus, X, TrendUp } from '@phosphor-icons/react'
 import { apiListTalleres, apiCreateTaller, apiUpdateTaller, apiGetTalleresStats } from '@services/adminApi.js'
 
 // ── Opciones ──────────────────────────────────────────────────────────────────
@@ -28,32 +27,38 @@ const ESTADOS = [
 ]
 
 function getEstadoCfg(val) {
-    return ESTADOS.find(e => e.value === val) ?? { color: '#6b7280', label: val }
+    return ESTADOS.find(e => e.value === val) ?? { color: '#6b7280', label: val ?? '—' }
 }
 
 const EMPTY_FORM = {
-    nombre:           '',
-    descripcion:      '',
-    precio:           '',
-    horarioInicio:    '9:00 AM',
-    horarioFin:       '12:00 PM',
-    fecha_disponible: '',
-    estado:           'activo',
-    categoria:        '',
+    nombre:        '',
+    descripcion:   '',
+    precio:        '',
+    horarioInicio: '9:00 AM',
+    horarioFin:    '12:00 PM',
+    fecha_inicio:  '',
+    fecha_fin:     '',
+    cupo_maximo:   '',
+    imagen_url:    '',
+    estado:        'activo',
+    categoria:     '',
 }
 
-/** Combina los dos campos de hora en el string que va a la BD */
+/** "9:00 AM" + "12:00 PM" → "9:00 AM – 12:00 PM" */
 function buildHorario(inicio, fin) {
-    if (!inicio || !fin) return null
+    if (!inicio && !fin) return null
+    if (!fin)    return inicio
+    if (!inicio) return fin
     return `${inicio} – ${fin}`
 }
 
-/** Parsea "9:00 AM – 12:00 PM" de vuelta a { inicio, fin } */
+/** "9:00 AM – 12:00 PM" → { inicio: "9:00 AM", fin: "12:00 PM" } */
 function parseHorario(horario) {
     if (!horario) return { inicio: '9:00 AM', fin: '12:00 PM' }
     const parts = horario.split(' – ')
     if (parts.length === 2) return { inicio: parts[0].trim(), fin: parts[1].trim() }
-    return { inicio: '9:00 AM', fin: '12:00 PM' }
+    // horario de una sola hora
+    return { inicio: horario.trim(), fin: '12:00 PM' }
 }
 
 /** Formatea fecha ISO a "15 may 2026" */
@@ -62,6 +67,12 @@ function fmtFecha(iso) {
     const d = new Date(iso)
     if (isNaN(d)) return null
     return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+/** Extrae solo "YYYY-MM-DD" de un ISO o DATE string */
+function toDateInput(val) {
+    if (!val) return ''
+    return String(val).split('T')[0]
 }
 
 // ── Subcomponentes ────────────────────────────────────────────────────────────
@@ -124,7 +135,7 @@ function RankingDemanda({ stats }) {
     )
 }
 
-// ── Formulario de edición / creación (reutilizable) ───────────────────────────
+// ── Formulario (crear y editar) ───────────────────────────────────────────────
 
 function TallerForm({ form, onChange, onSubmit, submitting, submitLabel, error, onCancel }) {
     return (
@@ -134,8 +145,7 @@ function TallerForm({ form, onChange, onSubmit, submitting, submitLabel, error, 
                 <div>
                     <label style={sLabel}>Nombre *</label>
                     <input
-                        type="text"
-                        required
+                        type="text" required
                         placeholder="Ej: Auriculoterapia Nivel 1"
                         value={form.nombre}
                         onChange={e => onChange('nombre', e.target.value)}
@@ -145,9 +155,7 @@ function TallerForm({ form, onChange, onSubmit, submitting, submitLabel, error, 
                 <div>
                     <label style={sLabel}>Precio (MXN)</label>
                     <input
-                        type="number"
-                        min={0}
-                        placeholder="0"
+                        type="number" min={0} placeholder="0"
                         value={form.precio}
                         onChange={e => onChange('precio', e.target.value)}
                         style={sInput}
@@ -155,73 +163,91 @@ function TallerForm({ form, onChange, onSubmit, submitting, submitLabel, error, 
                 </div>
                 <div>
                     <label style={sLabel}>Estado</label>
-                    <select
-                        value={form.estado}
-                        onChange={e => onChange('estado', e.target.value)}
-                        style={sInput}
-                    >
-                        {ESTADOS.map(e => (
-                            <option key={e.value} value={e.value}>{e.label}</option>
-                        ))}
+                    <select value={form.estado} onChange={e => onChange('estado', e.target.value)} style={sInput}>
+                        {ESTADOS.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
                     </select>
                 </div>
             </div>
 
-            {/* Fila 2: horario inicio + horario fin + fecha */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+            {/* Fila 2: horario inicio + fin */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
                 <div>
                     <label style={sLabel}>Horario — inicia a las</label>
-                    <select
-                        value={form.horarioInicio}
-                        onChange={e => onChange('horarioInicio', e.target.value)}
-                        style={sInput}
-                    >
+                    <select value={form.horarioInicio} onChange={e => onChange('horarioInicio', e.target.value)} style={sInput}>
                         {HORAS.map(h => <option key={h} value={h}>{h}</option>)}
                     </select>
                 </div>
                 <div>
                     <label style={sLabel}>Horario — termina a las</label>
-                    <select
-                        value={form.horarioFin}
-                        onChange={e => onChange('horarioFin', e.target.value)}
-                        style={sInput}
-                    >
+                    <select value={form.horarioFin} onChange={e => onChange('horarioFin', e.target.value)} style={sInput}>
                         {HORAS.map(h => <option key={h} value={h}>{h}</option>)}
                     </select>
                 </div>
+            </div>
+
+            {/* Fila 3: fecha inicio + fecha fin + cupo */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
                 <div>
-                    <label style={sLabel}>Fecha disponible</label>
+                    <label style={sLabel}>Fecha inicio</label>
                     <input
                         type="date"
-                        value={form.fecha_disponible}
-                        onChange={e => onChange('fecha_disponible', e.target.value)}
+                        value={form.fecha_inicio}
+                        onChange={e => onChange('fecha_inicio', e.target.value)}
+                        style={sInput}
+                    />
+                </div>
+                <div>
+                    <label style={sLabel}>Fecha fin <span style={{ fontWeight: 400, opacity: 0.6 }}>(opcional)</span></label>
+                    <input
+                        type="date"
+                        value={form.fecha_fin}
+                        onChange={e => onChange('fecha_fin', e.target.value)}
+                        style={sInput}
+                    />
+                </div>
+                <div>
+                    <label style={sLabel}>Cupo máximo <span style={{ fontWeight: 400, opacity: 0.6 }}>(opcional)</span></label>
+                    <input
+                        type="number" min={1} placeholder="Sin límite"
+                        value={form.cupo_maximo}
+                        onChange={e => onChange('cupo_maximo', e.target.value)}
                         style={sInput}
                     />
                 </div>
             </div>
 
-            {/* Fila 3: categoría + descripción */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+            {/* Fila 4: categoria + imagen url */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
                 <div>
-                    <label style={sLabel}>Categoría</label>
+                    <label style={sLabel}>Categoría <span style={{ fontWeight: 400, opacity: 0.6 }}>(opcional)</span></label>
                     <input
-                        type="text"
-                        placeholder="Ej: Bienestar, Arte…"
+                        type="text" placeholder="Ej: Bienestar, Arte…"
                         value={form.categoria}
                         onChange={e => onChange('categoria', e.target.value)}
                         style={sInput}
                     />
                 </div>
                 <div>
-                    <label style={sLabel}>Descripción</label>
-                    <textarea
-                        placeholder="Breve descripción del taller…"
-                        value={form.descripcion}
-                        onChange={e => onChange('descripcion', e.target.value)}
-                        rows={2}
-                        style={{ ...sInput, resize: 'vertical' }}
+                    <label style={sLabel}>URL de imagen <span style={{ fontWeight: 400, opacity: 0.6 }}>(opcional)</span></label>
+                    <input
+                        type="url" placeholder="https://..."
+                        value={form.imagen_url}
+                        onChange={e => onChange('imagen_url', e.target.value)}
+                        style={sInput}
                     />
                 </div>
+            </div>
+
+            {/* Fila 5: descripción */}
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+                <label style={sLabel}>Descripción</label>
+                <textarea
+                    placeholder="Breve descripción del taller…"
+                    value={form.descripcion}
+                    onChange={e => onChange('descripcion', e.target.value)}
+                    rows={2}
+                    style={{ ...sInput, resize: 'vertical' }}
+                />
             </div>
 
             {error && (
@@ -243,11 +269,7 @@ function TallerForm({ form, onChange, onSubmit, submitting, submitLabel, error, 
                     {submitting ? 'Guardando...' : submitLabel}
                 </button>
                 {onCancel && (
-                    <button
-                        type="button"
-                        onClick={onCancel}
-                        style={sBtnSecondary}
-                    >
+                    <button type="button" onClick={onCancel} style={sBtnSecondary}>
                         Cancelar
                     </button>
                 )}
@@ -278,13 +300,20 @@ export default function TalleresPanel({ adminToken }) {
     const fetchTalleres = useCallback(async () => {
         setLoading(true); setError(null)
         try {
-            const [talData, statsData] = await Promise.all([
+            // Stats puede no existir aún — no bloqueamos si falla
+            const [talData, statsData] = await Promise.allSettled([
                 apiListTalleres(adminToken),
                 apiGetTalleresStats(adminToken),
             ])
-            setTalleres(talData.talleres)
-            setTalStats(statsData.stats)
-            setLoaded(true)
+            if (talData.status === 'fulfilled') {
+                setTalleres(talData.value.talleres ?? [])
+                setLoaded(true)
+            } else {
+                setError(talData.reason?.message ?? 'Error cargando talleres')
+            }
+            if (statsData.status === 'fulfilled') {
+                setTalStats(statsData.value.stats ?? [])
+            }
         } catch (err) { setError(err.message) }
         finally { setLoading(false) }
     }, [adminToken])
@@ -297,19 +326,21 @@ export default function TalleresPanel({ adminToken }) {
         setEditingId(taller.id)
         setSaveError(null)
         setEditForm({
-            nombre:           taller.nombre,
-            descripcion:      taller.descripcion || '',
-            precio:           taller.precio ?? '',
-            horarioInicio:    inicio,
-            horarioFin:       fin,
-            fecha_disponible: taller.fecha_disponible ? taller.fecha_disponible.split('T')[0] : '',
-            estado:           taller.estado || 'activo',
-            categoria:        taller.categoria || '',
+            nombre:        taller.nombre,
+            descripcion:   taller.descripcion || '',
+            precio:        taller.precio ?? '',
+            horarioInicio: inicio,
+            horarioFin:    fin,
+            fecha_inicio:  toDateInput(taller.fecha_inicio),
+            fecha_fin:     toDateInput(taller.fecha_fin),
+            cupo_maximo:   taller.cupo_maximo ?? '',
+            imagen_url:    taller.imagen_url || '',
+            estado:        taller.estado || 'activo',
+            categoria:     taller.categoria || '',
         })
     }
 
     const cancelEdit = () => { setEditingId(null); setEditForm({}); setSaveError(null) }
-
     const handleEditChange = (field, value) => setEditForm(p => ({ ...p, [field]: value }))
 
     const handleSave = async (e) => {
@@ -317,13 +348,16 @@ export default function TalleresPanel({ adminToken }) {
         setSaving(true); setSaveError(null)
         try {
             const body = {
-                nombre:           editForm.nombre.trim(),
-                descripcion:      editForm.descripcion || null,
-                precio:           editForm.precio !== '' ? Number(editForm.precio) : null,
-                horario:          buildHorario(editForm.horarioInicio, editForm.horarioFin),
-                fecha_disponible: editForm.fecha_disponible || null,
-                estado:           editForm.estado,
-                categoria:        editForm.categoria || null,
+                nombre:       editForm.nombre.trim(),
+                descripcion:  editForm.descripcion || null,
+                precio:       editForm.precio !== '' ? Number(editForm.precio) : null,
+                horario:      buildHorario(editForm.horarioInicio, editForm.horarioFin),
+                fecha_inicio: editForm.fecha_inicio || null,
+                fecha_fin:    editForm.fecha_fin    || null,
+                cupo_maximo:  editForm.cupo_maximo !== '' ? Number(editForm.cupo_maximo) : null,
+                imagen_url:   editForm.imagen_url   || null,
+                estado:       editForm.estado,
+                categoria:    editForm.categoria    || null,
             }
             const data = await apiUpdateTaller(adminToken, editingId, body)
             setTalleres(prev => prev.map(t => t.id === editingId ? data.taller : t))
@@ -341,13 +375,16 @@ export default function TalleresPanel({ adminToken }) {
         setCreating(true); setCreateError(null)
         try {
             const body = {
-                nombre:           createForm.nombre.trim(),
-                descripcion:      createForm.descripcion || null,
-                precio:           createForm.precio !== '' ? Number(createForm.precio) : 0,
-                horario:          buildHorario(createForm.horarioInicio, createForm.horarioFin),
-                fecha_disponible: createForm.fecha_disponible || null,
-                estado:           createForm.estado,
-                categoria:        createForm.categoria || null,
+                nombre:       createForm.nombre.trim(),
+                descripcion:  createForm.descripcion || null,
+                precio:       createForm.precio !== '' ? Number(createForm.precio) : 0,
+                horario:      buildHorario(createForm.horarioInicio, createForm.horarioFin),
+                fecha_inicio: createForm.fecha_inicio || null,
+                fecha_fin:    createForm.fecha_fin    || null,
+                cupo_maximo:  createForm.cupo_maximo !== '' ? Number(createForm.cupo_maximo) : null,
+                imagen_url:   createForm.imagen_url   || null,
+                estado:       createForm.estado,
+                categoria:    createForm.categoria    || null,
             }
             const data = await apiCreateTaller(adminToken, body)
             setTalleres(prev => [data.taller, ...prev])
@@ -357,10 +394,10 @@ export default function TalleresPanel({ adminToken }) {
         finally { setCreating(false) }
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ── Render ────────────────────────────────────────────────
     return (
         <div>
-            {/* ── Header ── */}
+            {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-5)', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <BookOpen size={20} color="var(--color-jade-500)" weight="fill" />
@@ -382,17 +419,13 @@ export default function TalleresPanel({ adminToken }) {
                         {showCreate ? <X size={13} /> : <Plus size={13} />}
                         {showCreate ? 'Cancelar' : 'Nuevo taller'}
                     </button>
-                    <button
-                        onClick={fetchTalleres}
-                        disabled={loading}
-                        style={{ ...sBtnSecondary, opacity: loading ? 0.5 : 1 }}
-                    >
+                    <button onClick={fetchTalleres} disabled={loading} style={{ ...sBtnSecondary, opacity: loading ? 0.5 : 1 }}>
                         {loading ? 'Cargando...' : '↺ Actualizar'}
                     </button>
                 </div>
             </div>
 
-            {/* ── Formulario nuevo taller ── */}
+            {/* Formulario nuevo taller */}
             {showCreate && (
                 <div style={{ ...sCard, borderColor: 'var(--color-jade-500)44', marginBottom: 'var(--space-5)' }}>
                     <h3 style={{ fontWeight: 700, margin: '0 0 var(--space-4)', fontSize: 'var(--text-base)' }}>
@@ -410,7 +443,7 @@ export default function TalleresPanel({ adminToken }) {
                 </div>
             )}
 
-            {/* ── Ranking demanda ── */}
+            {/* Ranking demanda */}
             {loaded && <RankingDemanda stats={talStats} />}
 
             {error && (
@@ -419,14 +452,14 @@ export default function TalleresPanel({ adminToken }) {
                 </p>
             )}
 
-            {/* ── Tabla ── */}
+            {/* Tabla */}
             {loaded && talleres.length > 0 && (
                 <div style={{ ...sCard, padding: 0, overflow: 'hidden' }}>
                     <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
                             <thead>
                             <tr style={{ background: 'var(--bg-surface)' }}>
-                                {['Nombre', 'Horario', 'Fecha', 'Precio', 'Estado', 'Acción'].map(h => (
+                                {['Nombre', 'Horario', 'Fechas', 'Precio', 'Estado', 'Acción'].map(h => (
                                     <th key={h} style={sTh}>{h}</th>
                                 ))}
                             </tr>
@@ -434,27 +467,26 @@ export default function TalleresPanel({ adminToken }) {
                             <tbody>
                             {talleres.map(t => (
                                 <>
-                                    {/* Fila lectura */}
-                                    <tr
-                                        key={t.id}
-                                        style={{
-                                            borderTop: '1px solid var(--border-subtle)',
-                                            background: editingId === t.id ? 'var(--color-jade-500)08' : undefined,
-                                        }}
-                                    >
+                                    <tr key={t.id} style={{
+                                        borderTop: '1px solid var(--border-subtle)',
+                                        background: editingId === t.id ? 'var(--color-jade-500)08' : undefined,
+                                    }}>
                                         <td style={{ ...sTd, fontWeight: 600 }}>
                                             {t.nombre}
                                             {t.descripcion && (
                                                 <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
-                                                    {t.descripcion.slice(0, 60)}{t.descripcion.length > 60 ? '…' : ''}
+                                                    {t.descripcion.slice(0, 55)}{t.descripcion.length > 55 ? '…' : ''}
                                                 </p>
                                             )}
                                         </td>
                                         <td style={{ ...sTd, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                                             {t.horario || <span style={{ opacity: 0.35 }}>—</span>}
                                         </td>
-                                        <td style={{ ...sTd, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                                            {fmtFecha(t.fecha_disponible) || <span style={{ opacity: 0.35 }}>—</span>}
+                                        <td style={{ ...sTd, color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>
+                                            {t.fecha_inicio
+                                                ? <>{fmtFecha(t.fecha_inicio)}{t.fecha_fin ? <><br /><span style={{ opacity: 0.6 }}>→ {fmtFecha(t.fecha_fin)}</span></> : null}</>
+                                                : <span style={{ opacity: 0.35 }}>—</span>
+                                            }
                                         </td>
                                         <td style={{ ...sTd, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                                             {t.precio != null && Number(t.precio) > 0
@@ -487,11 +519,8 @@ export default function TalleresPanel({ adminToken }) {
 
                                     {/* Panel de edición expandido */}
                                     {editingId === t.id && (
-                                        <tr key={`${t.id}-edit`} style={{ borderTop: 'none' }}>
-                                            <td
-                                                colSpan={6}
-                                                style={{ padding: '0 var(--space-4) var(--space-4)', background: 'var(--color-jade-500)05' }}
-                                            >
+                                        <tr key={`${t.id}-edit`}>
+                                            <td colSpan={6} style={{ padding: '0 var(--space-4) var(--space-4)', background: 'var(--color-jade-500)05' }}>
                                                 <div style={{
                                                     background: 'var(--bg-card)',
                                                     border: '1px solid var(--color-jade-500)33',
@@ -540,12 +569,10 @@ const sCard = {
     borderRadius: 'var(--radius-xl)',
     padding: 'var(--space-5)',
 }
-
 const sLabel = {
     display: 'block', fontSize: 11, color: 'var(--text-muted)',
     marginBottom: 4, fontWeight: 600,
 }
-
 const sInput = {
     width: '100%', padding: 'var(--space-3)',
     background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
@@ -553,32 +580,26 @@ const sInput = {
     fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)',
     outline: 'none', boxSizing: 'border-box',
 }
-
 const sBtnPrimary = {
     padding: 'var(--space-2) var(--space-4)',
     background: 'var(--color-jade-500)',
     border: '1px solid transparent',
     borderRadius: 'var(--radius-lg)',
-    color: '#fff',
-    fontSize: 12, fontWeight: 600,
+    color: '#fff', fontSize: 12, fontWeight: 600,
     cursor: 'pointer', fontFamily: 'var(--font-sans)',
     transition: 'opacity 0.15s',
 }
-
 const sBtnSecondary = {
     padding: 'var(--space-2) var(--space-4)',
     background: 'var(--bg-surface)',
     border: '1px solid var(--border-default)',
     borderRadius: 'var(--radius-lg)',
-    color: 'var(--text-muted)',
-    fontSize: 12, fontWeight: 500,
+    color: 'var(--text-muted)', fontSize: 12, fontWeight: 500,
     cursor: 'pointer', fontFamily: 'var(--font-sans)',
 }
-
 const sTh = {
     padding: 'var(--space-3) var(--space-4)',
     textAlign: 'left', color: 'var(--text-muted)',
     fontWeight: 500, fontSize: 11, whiteSpace: 'nowrap',
 }
-
 const sTd = { padding: 'var(--space-3) var(--space-4)', verticalAlign: 'middle' }
