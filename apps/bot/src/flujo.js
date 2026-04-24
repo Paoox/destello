@@ -35,6 +35,8 @@ const PAGO_TEXTO =
 // ── Estados de conversación ───────────────────────────────────
 const PASO = {
     MENU:              'MENU',
+    // Ver talleres (opción 2 del menú)
+    VER_TALLERES:      'VER_TALLERES',
     // Flujo registro
     REG_TIPO:          'REG_TIPO',
     REG_CORREO_PERFIL: 'REG_CORREO_PERFIL',
@@ -129,6 +131,13 @@ const POST_ACCION_TEXTO =
     '1️⃣  Volver al menú\n' +
     '2️⃣  Salir'
 
+const VER_TALLERES_OPCIONES =
+    '─────────────────────\n' +
+    '¿Qué te gustaría hacer?\n\n' +
+    '1️⃣  Registrarme a la lista de espera\n' +
+    '2️⃣  Volver al menú\n' +
+    '3️⃣  Salir'
+
 const ADIOS_TEXTO =
     '¡Hasta pronto! 👋✨\n\n' +
     'Cuando quieras, escríbeme y con gusto te ayudo.\n\n' +
@@ -146,7 +155,7 @@ const SALUDO_INICIAL =
 
 function menuTalleres(talleres) {
     if (!talleres.length) {
-        return '😔 Por el momento no hay talleres disponibles. ¡Pronto abriremos nuevas fechas! Escribe *menu* para volver.'
+        return '😔 Por el momento no hay talleres disponibles. ¡Pronto abriremos nuevas fechas!'
     }
     const emojis = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣']
     return (
@@ -196,8 +205,15 @@ export async function procesarMensaje(jid, texto) {
 
             case '2': {
                 const talleres = await getTalleresActivos()
-                conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
-                return menuTalleres(talleres) + '\n\n_Escribe *menu* para volver._'
+                if (!talleres.length) {
+                    conversaciones.set(jid, { paso: PASO.POST_ACCION })
+                    return (
+                        '😔 Por el momento no hay talleres disponibles. ¡Pronto abriremos nuevas fechas!\n\n' +
+                        POST_ACCION_TEXTO
+                    )
+                }
+                conversaciones.set(jid, { paso: PASO.VER_TALLERES, talleres })
+                return menuTalleres(talleres) + '\n\n' + VER_TALLERES_OPCIONES
             }
 
             case '3':
@@ -212,16 +228,42 @@ export async function procesarMensaje(jid, texto) {
                 return PAGO_TEXTO + '\n\n' + POST_ACCION_TEXTO
 
             case '5':
-                conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+                conversaciones.set(jid, { paso: PASO.POST_ACCION })
                 return (
                     '💬 *¿Tienes una duda?*\n\n' +
                     'Próximamente tendremos una sección de preguntas frecuentes.\n\n' +
                     'Por ahora escríbenos tu duda aquí y te respondemos a la brevedad. 😊\n\n' +
-                    '_Escribe *menu* para volver._'
+                    POST_ACCION_TEXTO
                 )
 
             default:
                 return MENU_TEXTO()
+        }
+    }
+
+    // ── VER TALLERES: opciones post-lista ─────────────────────
+    if (conv.paso === PASO.VER_TALLERES) {
+        switch (msg.trim()) {
+            case '1':
+                // Toma el mismo flujo que la opción 1 del menú
+                conversaciones.set(jid, { paso: PASO.REG_TIPO })
+                return (
+                    '¡Perfecto! Primero dime:\n\n' +
+                    '¿Ya tienes un perfil en Destello?\n\n' +
+                    '1️⃣  Sí, ya tengo perfil\n' +
+                    '2️⃣  No, soy nuevo/a'
+                )
+
+            case '2':
+                conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+                return MENU_TEXTO()
+
+            case '3':
+                conversaciones.delete(jid)
+                return ADIOS_TEXTO
+
+            default:
+                return VER_TALLERES_OPCIONES
         }
     }
 
