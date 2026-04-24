@@ -8,6 +8,7 @@
  * GET    /admin/chispas/stats      → estadísticas (admin)
  * DELETE /admin/chispas/:code      → revoca (admin)
  *
+ * GET    /admin/talleres/stats     → conteos lista de espera por taller (admin)
  * GET    /admin/talleres           → lista todos (admin)
  * POST   /admin/talleres           → crea taller nuevo (admin)
  * PUT    /admin/talleres/:id       → actualiza taller (admin)
@@ -16,7 +17,7 @@
  * PATCH  /admin/lista-espera/:id   → actualiza estado (admin)
  */
 import { Router }            from 'express'
-import { adminLogin }        from '../controllers/adminController.js'
+import { adminLogin, getTalleresStats } from '../controllers/adminController.js'
 import { authenticateAdmin } from '../middleware/authenticateAdmin.js'
 import * as chispaCtrl       from '../controllers/chispasController.js'
 import { listTodosLosTalleres, crearTaller, actualizarTaller, getTallerById } from '../services/tallerService.js'
@@ -40,7 +41,9 @@ router.get('/chispas',          chispaCtrl.listChispas)
 router.get('/chispas/stats',    chispaCtrl.getStats)
 router.delete('/chispas/:code', chispaCtrl.revokeChispa)
 
-// Talleres
+// Talleres — stats ANTES de /:id para evitar conflicto de rutas
+router.get('/talleres/stats', getTalleresStats)
+
 router.get('/talleres', async (_req, res, next) => {
     try {
         const talleres = await listTodosLosTalleres()
