@@ -17,12 +17,19 @@
  *   - Las Chispas pueden ser muchas (una por taller comprado)
  *   - Chispa vigente → rooms del Habitat activas
  *   - Chispa vencida → rooms bloqueadas automáticamente
+ *
+ * ESTADOS de usuarioStatus:
+ *   - 'idle'      → sin búsqueda
+ *   - 'searching' → buscando
+ *   - 'found'     → tiene cuenta activa (estado = 'activo', pasó por Resplandor)
+ *   - 'espera'    → registrado por el bot (estado = 'espera'), aún necesita Resplandor
+ *   - 'not_found' → no existe en la tabla usuarios
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
     Sun, Sparkle, MagnifyingGlass, CheckCircle, WarningCircle,
     Copy, CheckFat, Envelope, XCircle, ArrowClockwise,
-    WhatsappLogo, User, Lock, Info,
+    WhatsappLogo, User, Lock, Info, Clock,
 } from '@phosphor-icons/react'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -103,7 +110,7 @@ export default function AccesosPanel({ adminToken }) {
     // ── Estado de búsqueda
     const [emailInput,    setEmailInput]    = useState('')
     const [usuario,       setUsuario]       = useState(null)
-    const [usuarioStatus, setUsuarioStatus] = useState('idle') // idle|searching|found|not_found
+    const [usuarioStatus, setUsuarioStatus] = useState('idle') // idle|searching|found|espera|not_found
     const [usuarioResps,  setUsuarioResps]  = useState([])
     const debounceRef = useRef(null)
 
@@ -167,8 +174,15 @@ export default function AccesosPanel({ adminToken }) {
         try {
             const data = await API(`/resplandores?email=${encodeURIComponent(email)}`, adminToken)
             setUsuarioResps(data.resplandores ?? [])
-            if (data.usuario) { setUsuario(data.usuario); setUsuarioStatus('found') }
-            else { setUsuario(null); setUsuarioStatus('not_found') }
+            if (data.usuario) {
+                setUsuario(data.usuario)
+                // 'found'  = cuenta activa (pasó por Resplandor → estado 'activo')
+                // 'espera' = registrado por el bot, aún sin cuenta confirmada (estado 'espera')
+                setUsuarioStatus(data.usuario.estado === 'activo' ? 'found' : 'espera')
+            } else {
+                setUsuario(null)
+                setUsuarioStatus('not_found')
+            }
         } catch (err) {
             setUsuarioStatus('idle')
             setSearchError(err.message ?? 'Error al buscar — revisa que el backend esté corriendo')
@@ -285,11 +299,16 @@ export default function AccesosPanel({ adminToken }) {
         ? 'Sin vigencia'
         : VIGENCIA_OPTS.find(o => o.value === chispaForm.expiresInDays)?.label ?? `${chispaForm.expiresInDays} días`
     const waMsg = lastCode?.tipo === 'chispa' && usuario
-        ? `¡Hola ${(usuario.nombre ?? '').split(' ')[0]}! ⚡\nAquí está tu Chispa de acceso:\n\n*${lastCode.code}*\n\nTaller: ${chispaForm.tallerNombre}\nVigencia: ${vigLabel}\n\nÚsala en: https://destello.mx/acceso`
+        ? `¡Hola ${(usuario.nombre ?? '').split(' ')[0]}! ⚡\nAquí está tu Chispa de acceso:\n\n*${lastCode.code}*\n\nTaller: ${chispaForm.tallerNombre}\nVigencia: ${vigLabel}\n\nÚsala en: https://destello.courses/acceso`
         : ''
     const waNumber = (usuario?.whatsapp ?? '').replace(/\D/g, '').slice(-10)
 
-    const searchActive = usuarioStatus === 'found' || usuarioStatus === 'not_found'
+    // searchActive = cualquier estado que ya tiene resultado
+    const searchActive = usuarioStatus === 'found' || usuarioStatus === 'espera' || usuarioStatus === 'not_found'
+
+    // Helpers semánticos para las cards
+    const needsResplandor = usuarioStatus === 'not_found' || usuarioStatus === 'espera'
+    const hasFullAccount  = usuarioStatus === 'found'
 
     // ─────────────────────────────────────────────────────────────────────────
     return (
@@ -334,7 +353,7 @@ export default function AccesosPanel({ adminToken }) {
                 {usuarioStatus === 'searching' && <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '6px 0 0' }}>Buscando...</p>}
                 {searchError && <p style={{ color: 'var(--color-error)', fontSize: 12, margin: '6px 0 0' }}>⚠ {searchError}</p>}
 
-                {/* Usuario ENCONTRADO — tiene cuenta */}
+                {/* Usuario ENCONTRADO — cuenta activa */}
                 {usuarioStatus === 'found' && usuario && (
                     <div style={{ ...sStatusBox('#16a34a'), marginTop: 10, gap: 10 }}>
                         <CheckCircle size={20} color="#16a34a" weight="fill" style={{ flexShrink: 0 }} />
@@ -347,7 +366,6 @@ export default function AccesosPanel({ adminToken }) {
                                 {usuario.whatsapp ? ` · WA: ${usuario.whatsapp}` : ''}
                             </p>
                         </div>
-                        {/* Estado del Resplandor */}
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                             <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cuenta</span>
                             <Pill estado="activo" />
@@ -357,6 +375,29 @@ export default function AccesosPanel({ adminToken }) {
                                     <Pill estado="usado" />
                                 </>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Usuario EN ESPERA — registrado por el bot, sin cuenta aún */}
+                {usuarioStatus === 'espera' && usuario && (
+                    <div style={{ ...sStatusBox('#8b5cf6'), marginTop: 10, gap: 10 }}>
+                        <Clock size={20} color="#8b5cf6" weight="fill" style={{ flexShrink: 0 }} />
+                        <div style={{ flex: 1 }}>
+                            <p style={{ margin: 0, fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
+                                {usuario.nombre || 'Sin nombre'}
+                            </p>
+                            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                                {usuario.email}
+                                {usuario.whatsapp ? ` · WA: ${usuario.whatsapp}` : ''}
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                            <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>En espera</span>
+                            <span style={{
+                                display: 'inline-block', padding: '2px 10px', borderRadius: 999,
+                                background: '#8b5cf622', color: '#8b5cf6', fontSize: 11, fontWeight: 700,
+                            }}>Bot ✓</span>
                         </div>
                     </div>
                 )}
@@ -387,8 +428,8 @@ export default function AccesosPanel({ adminToken }) {
                     {/* ── CARD RESPLANDOR (☀ ámbar) ──────────────────────── */}
                     <div style={{
                         ...sCard,
-                        borderColor: usuarioStatus === 'not_found' ? '#d9770666' : 'var(--border-default)',
-                        opacity:     usuarioStatus === 'found' ? 0.4 : 1,
+                        borderColor: needsResplandor ? '#d9770666' : 'var(--border-default)',
+                        opacity:     hasFullAccount ? 0.4 : 1,
                         transition:  'opacity 0.2s, border-color 0.2s',
                     }}>
                         <h4 style={{ margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 'var(--text-sm)' }}>
@@ -396,13 +437,15 @@ export default function AccesosPanel({ adminToken }) {
                             Resplandor
                         </h4>
                         <p style={{ margin: '0 0 var(--space-4)', fontSize: 11, color: 'var(--text-muted)' }}>
-                            {usuarioStatus === 'found'
+                            {hasFullAccount
                                 ? 'Ya usó su Resplandor y tiene cuenta. Usa la Chispa →'
-                                : 'Invitación única para crear cuenta en Destello.'
+                                : usuarioStatus === 'espera'
+                                    ? 'Se registró por el bot. Envíale un Resplandor para que cree su cuenta.'
+                                    : 'Invitación única para crear cuenta en Destello.'
                             }
                         </p>
 
-                        {usuarioStatus === 'not_found' && (
+                        {needsResplandor && (
                             <>
                                 {/* Historial de resplandores de este correo */}
                                 {usuarioResps.length > 0 && (
@@ -457,8 +500,8 @@ export default function AccesosPanel({ adminToken }) {
                     {/* ── CARD CHISPA (⚡ jade) ──────────────────────────── */}
                     <div style={{
                         ...sCard,
-                        borderColor: usuarioStatus === 'found' ? 'var(--color-jade-500)66' : 'var(--border-default)',
-                        opacity:     usuarioStatus === 'not_found' ? 0.4 : 1,
+                        borderColor: hasFullAccount ? 'var(--color-jade-500)66' : 'var(--border-default)',
+                        opacity:     needsResplandor ? 0.4 : 1,
                         transition:  'opacity 0.2s, border-color 0.2s',
                     }}>
                         <h4 style={{ margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 'var(--text-sm)' }}>
@@ -466,13 +509,13 @@ export default function AccesosPanel({ adminToken }) {
                             Chispa
                         </h4>
                         <p style={{ margin: '0 0 var(--space-4)', fontSize: 11, color: 'var(--text-muted)' }}>
-                            {usuarioStatus === 'not_found'
+                            {needsResplandor
                                 ? 'Primero necesita su Resplandor para crear cuenta ←'
                                 : 'Llave de acceso a un taller específico.'
                             }
                         </p>
 
-                        {usuarioStatus === 'found' && (
+                        {hasFullAccount && (
                             <form onSubmit={crearChispa} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                                 {/* Taller */}
                                 <div>
@@ -541,7 +584,7 @@ export default function AccesosPanel({ adminToken }) {
                             </form>
                         )}
 
-                        {usuarioStatus === 'not_found' && (
+                        {needsResplandor && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 12 }}>
                                 <Lock size={14} /> Disponible cuando el usuario tenga cuenta.
                             </div>
@@ -596,7 +639,7 @@ export default function AccesosPanel({ adminToken }) {
             )}
 
             {/* ══ HISTORIAL DEL USUARIO ══════════════════════════════════════ */}
-            {searchActive && (usuarioResps.length > 0 || usuarioChispas.length > 0 || usuarioStatus === 'found') && (
+            {searchActive && (usuarioResps.length > 0 || usuarioChispas.length > 0 || hasFullAccount) && (
                 <div style={sCard}>
                     <p style={{ margin: '0 0 var(--space-3)', fontWeight: 700, fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center', gap: 6 }}>
                         <User size={15} color="var(--text-muted)" />
