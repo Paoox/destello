@@ -6,7 +6,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate }                       from 'react-router-dom'
-import { ArrowClockwise, SignOut, Sparkles, BookOpen, ClockCounterClockwise } from '@phosphor-icons/react'
+import { ArrowClockwise, SignOut, Sparkle, BookOpen, ClockCounterClockwise } from '@phosphor-icons/react'
 import { useAdminSession }                   from '@hooks/useAdminSession.js'
 import AdminAuthOverlay                      from '@components/admin/AdminAuthOverlay.jsx'
 import AccesosPanel                          from '@components/admin/AccesosPanel.jsx'
@@ -14,7 +14,7 @@ import TalleresAdmin                         from '@components/admin/TalleresAdm
 import ListaEsperaAdmin                      from '@components/admin/ListaEsperaAdmin.jsx'
 
 const TABS = [
-    { id: 'accesos',      label: 'Accesos',         Icon: Sparkles },
+    { id: 'accesos',      label: 'Accesos',         Icon: Sparkle },
     { id: 'talleres',     label: 'Talleres',         Icon: BookOpen },
     { id: 'lista-espera', label: 'Lista de espera',  Icon: ClockCounterClockwise },
 ]
