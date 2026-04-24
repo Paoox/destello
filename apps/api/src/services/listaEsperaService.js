@@ -64,3 +64,24 @@ export async function getListasPorEmail(email) {
     )
     return rows
 }
+
+export async function getPendientesPorEmail(email) {
+    const { rows: chispas } = await query(
+        `SELECT c.code, t.nombre AS taller_nombre
+         FROM chispas c
+         JOIN talleres t ON t.id = c.taller_id
+         WHERE LOWER(c.email) = LOWER($1)
+           AND c.estado = 'activa'`,
+        [email.trim()]
+    )
+
+    const { rows: resplandores } = await query(
+        `SELECT code, email
+         FROM resplandores
+         WHERE LOWER(email) = LOWER($1)
+           AND estado = 'activo'`,
+        [email.trim()]
+    )
+
+    return { chispas, resplandores }
+}

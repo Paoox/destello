@@ -13,6 +13,7 @@ import tallersRouter from './routes/tallers.js'
 import healthRouter  from './routes/health.js'
 import chispasRouter from './routes/chispas.js'
 import adminRouter   from './routes/admin.js'
+import botRouter from './routes/bot.js'
 
 import { errorHandler }  from './middleware/errorHandler.js'
 import { requestLogger } from './middleware/requestLogger.js'
@@ -35,7 +36,8 @@ app.use(requestLogger)
 // Rutas públicas
 app.use('/health',  healthRouter)
 app.use('/auth',    authRouter)
-app.use('/tallers', tallersRouter)   // público — bot y landing
+app.use('/tallers', tallersRouter)
+app.use('/bot', botRouter)// público — bot y landing
 app.use('/chispas', chispasRouter)
 
 // Rutas protegidas
