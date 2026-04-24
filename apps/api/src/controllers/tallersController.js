@@ -1,13 +1,14 @@
 /**
- * Destello API — Tallers Controller
+ * Destello API — Tallers Controller (rutas públicas)
  */
 import * as tallerService      from '../services/tallerService.js'
 import * as listaEsperaService from '../services/listaEsperaService.js'
 import { AppError }            from '../middleware/errorHandler.js'
 
+/** GET /tallers — landing page: activo + próximamente + lleno */
 export async function listTallers(_req, res, next) {
   try {
-    const talleres = await tallerService.listTalleresActivos()
+    const talleres = await tallerService.listTalleresPublicos()
     res.json({ status: 'ok', tallers: talleres })
   } catch (err) { next(err) }
 }

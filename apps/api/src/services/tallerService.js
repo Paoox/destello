@@ -24,6 +24,7 @@ function toSlug(nombre) {
  * Lista solo los talleres con estado 'activo'.
  * Lo usa el bot y la landing page.
  */
+/** Para el bot: solo activo y próximamente (lleno se oculta) */
 export async function listTalleresActivos() {
     const { rows } = await query(
         `SELECT * FROM talleres
@@ -32,7 +33,23 @@ export async function listTalleresActivos() {
              CASE estado
                  WHEN 'activo'       THEN 1
                  WHEN 'proximamente' THEN 2
-                 END,
+             END,
+             nombre ASC`
+    )
+    return rows
+}
+
+/** Para la landing: activo + próximamente + lleno (con sold out badge) */
+export async function listTalleresPublicos() {
+    const { rows } = await query(
+        `SELECT * FROM talleres
+         WHERE estado IN ('activo', 'proximamente', 'lleno')
+         ORDER BY
+             CASE estado
+                 WHEN 'activo'       THEN 1
+                 WHEN 'proximamente' THEN 2
+                 WHEN 'lleno'        THEN 3
+             END,
              nombre ASC`
     )
     return rows
@@ -83,10 +100,10 @@ export async function crearTaller(data) {
 
     const { rows } = await query(
         `INSERT INTO talleres
-         (id, nombre, descripcion, precio, horario,
-          fecha_inicio, fecha_fin, cupo_maximo, imagen_url, estado, categoria)
+             (id, nombre, descripcion, precio, horario,
+              fecha_inicio, fecha_fin, cupo_maximo, imagen_url, estado, categoria)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-             RETURNING *`,
+         RETURNING *`,
         [slug, nombre, descripcion, precio, horario,
             fecha_inicio || null, fecha_fin || null,
             cupo_maximo  || null, imagen_url || null, estado, categoria || null]
@@ -126,7 +143,7 @@ export async function actualizarTaller(id, data) {
              categoria   = COALESCE($11, categoria),
              updated_at  = NOW()
          WHERE id = $1
-             RETURNING *`,
+         RETURNING *`,
         [id, nombre, descripcion, precio ?? null, horario,
             fecha_inicio || null, fecha_fin    || null,
             cupo_maximo  || null, imagen_url   || null,

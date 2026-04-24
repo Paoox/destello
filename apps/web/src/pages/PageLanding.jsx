@@ -3,7 +3,7 @@
  * Landing pública. Llega después del intro.
  * CTAs: conseguir Chispa (WhatsApp) o activar Chispa (/acceso)
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
     Sparkle, Lightning, Users, BookOpen,
@@ -23,18 +23,17 @@ const STATS = [
     { value: '12',    label: 'Países alcanzados',      Icon: GlobeHemisphereWest },
 ]
 
-// ── Pilares de metodología ────────────────────────────────────
 const PILARES = [
     {
         Icon: Cube,
         titulo: 'Aulas 3D en vivo',
-        texto: 'Entra a un espacio inmersivo diseñado para que aprendas haciendo. No videos grabados, clases reales en tiempo real.',
+        texto: 'Olvídate de videos pregrabados. Nuestras aulas son espacios 3D interactivos donde el maestro y los alumnos comparten el mismo entorno virtual en tiempo real.',
         acento: 'jade',
     },
     {
         Icon: Lightning,
-        titulo: 'Gamificación real',
-        texto: 'Gana puntos, desbloquea logros y sube de nivel conforme avanzas. Aprender se convierte en algo que quieres hacer cada día.',
+        titulo: 'Aprendizaje activo',
+        texto: 'Gamificación, retos y proyectos reales integrados en cada clase. No memorices — practica, experimenta y construye desde el primer día.',
         acento: 'amber',
     },
     {
@@ -45,15 +44,23 @@ const PILARES = [
     },
 ]
 
-// ── Talleres muestra ──────────────────────────────────────────
-const TALLERES = [
-    { nombre: 'Auriculoterapia Nivel 1', categoria: 'Horizonte Zen', color: '#0D7377' },
-    { nombre: 'Automaquillaje Artístico', categoria: 'Bienestar', color: '#D97706' },
-    { nombre: 'Iridología Básica', categoria: 'Horizonte Zen', color: '#0D7377' },
-    { nombre: 'Elaboración de Gomitas', categoria: 'Habilidades', color: '#8B5CF6' },
-    { nombre: 'Kinestep', categoria: 'Horizonte Zen', color: '#0D7377' },
-    { nombre: 'Dibujo desde Cero', categoria: 'Arte', color: '#EC4899' },
-]
+// ── Helpers ───────────────────────────────────────────────────
+const CAT_COLOR = {
+    'Horizonte Zen': '#0D7377',
+    'Bienestar':     '#10B981',
+    'Arte':          '#EC4899',
+    'Habilidades':   '#8B5CF6',
+    'Fitness':       '#F59E0B',
+    'Cocina':        '#EF4444',
+}
+function colorCat(cat) { return CAT_COLOR[cat] ?? '#0D7377' }
+
+function fmtFecha(iso) {
+    if (!iso) return null
+    const d = new Date(iso)
+    if (isNaN(d)) return null
+    return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+}
 
 // ── Subcomponentes ────────────────────────────────────────────
 function StatItem({ value, label, Icon }) {
@@ -101,29 +108,127 @@ function PilarCard({ Icon, titulo, texto, acento }) {
     )
 }
 
-function TallerChip({ nombre, categoria, color }) {
+function TallerChip({ t }) {
+    const [hovered, setHovered] = useState(false)
+    const lleno = t.estado === 'lleno'
+    const prox  = t.estado === 'proximamente'
+    const color = colorCat(t.categoria)
+    const fecha = fmtFecha(t.fecha_inicio)
+
     return (
-        <div style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-xl)',
-            padding: 'var(--space-4) var(--space-5)',
-            display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-            cursor: 'default',
-        }}>
-            <div style={{
-                width: 10, height: 10, borderRadius: '50%',
-                background: color, flexShrink: 0,
-                boxShadow: `0 0 8px ${color}88`,
-            }} />
-            <div>
-                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    {nombre}
+        <div
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+                position: 'relative',
+                background: 'var(--bg-card)',
+                border: `1px solid ${lleno ? 'rgba(239,68,68,0.2)' : 'var(--border-subtle)'}`,
+                borderRadius: 'var(--radius-xl)',
+                padding: 'var(--space-4) var(--space-5)',
+                cursor: 'default',
+                opacity: lleno ? 0.72 : 1,
+                transition: 'opacity 0.2s, border-color 0.2s',
+                overflow: 'hidden',
+            }}
+        >
+            {/* Badge PRÓXIMO / LLENO */}
+            {(prox || lleno) && (
+                <span style={{
+                    position: 'absolute', top: 10, right: 10,
+                    padding: '2px 8px', borderRadius: 999,
+                    fontSize: 10, fontWeight: 700, letterSpacing: '0.05em',
+                    background: lleno ? 'rgba(239,68,68,0.15)' : 'rgba(139,92,246,0.15)',
+                    color:      lleno ? '#ef4444'              : '#8b5cf6',
+                    border: `1px solid ${lleno ? 'rgba(239,68,68,0.3)' : 'rgba(139,92,246,0.3)'}`,
+                }}>
+                    {lleno ? 'LLENO' : 'PRÓXIMO'}
+                </span>
+            )}
+
+            {/* Overlay sold-out al hacer hover */}
+            {lleno && hovered && (
+                <div style={{
+                    position: 'absolute', inset: 0,
+                    background: 'rgba(239,68,68,0.08)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    borderRadius: 'inherit',
+                    pointerEvents: 'none',
+                }}>
+                    <span style={{
+                        background: '#ef4444', color: '#fff',
+                        fontWeight: 800, fontSize: 13, letterSpacing: '0.12em',
+                        padding: '6px 20px', borderRadius: 999,
+                        transform: 'rotate(-3deg)',
+                        boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
+                    }}>
+                        SOLD OUT
+                    </span>
                 </div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                    {categoria}
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                {/* Dot indicador de categoría */}
+                <div style={{
+                    width: 10, height: 10, borderRadius: '50%',
+                    background: lleno ? '#6b7280' : color,
+                    flexShrink: 0, marginTop: 5,
+                    boxShadow: lleno ? 'none' : `0 0 8px ${color}88`,
+                }} />
+
+                <div style={{ flex: 1, minWidth: 0, paddingRight: (prox || lleno) ? 52 : 0 }}>
+                    {/* Nombre */}
+                    <div style={{
+                        fontSize: 'var(--text-sm)', fontWeight: 600,
+                        color: lleno ? 'var(--text-muted)' : 'var(--text-primary)',
+                        marginBottom: 2, lineHeight: 1.3,
+                    }}>
+                        {t.nombre}
+                    </div>
+
+                    {/* Categoría */}
+                    {t.categoria && (
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>
+                            {t.categoria}
+                        </div>
+                    )}
+
+                    {/* Precio · Horario · Fecha */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 'var(--space-1)' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            💰 {t.precio > 0 ? `$${Number(t.precio).toLocaleString('es-MX')} MXN` : 'Gratis'}
+                        </span>
+                        {t.horario && (
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                🕐 {t.horario}
+                            </span>
+                        )}
+                        {fecha && (
+                            <span style={{ fontSize: 11, color: prox ? '#8b5cf6' : 'var(--text-muted)' }}>
+                                📅 {fecha}
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
+        </div>
+    )
+}
+
+// Skeleton mientras carga
+function TallerSkeleton() {
+    return (
+        <div style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-xl)', padding: 'var(--space-4) var(--space-5)',
+            display: 'flex', flexDirection: 'column', gap: 8,
+        }}>
+            {[80, 55, 65].map(w => (
+                <div key={w} style={{
+                    height: 12, width: `${w}%`, borderRadius: 6,
+                    background: 'var(--bg-surface)',
+                    animation: 'pulse 1.5s ease-in-out infinite',
+                }} />
+            ))}
         </div>
     )
 }
@@ -134,8 +239,10 @@ export default function PageLanding() {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     const logo = prefersDark ? logoDark : logoLight
 
-    const [waHovered,  setWaHovered]  = useState(false)
+    const [waHovered,   setWaHovered]   = useState(false)
     const [codeHovered, setCodeHovered] = useState(false)
+    const [talleres,    setTalleres]    = useState([])
+    const [talLoading,  setTalLoading]  = useState(true)
 
     const irWhatsApp = () => {
         window.open(
@@ -143,6 +250,14 @@ export default function PageLanding() {
             '_blank'
         )
     }
+
+    useEffect(() => {
+        fetch('/api/tallers')
+            .then(r => r.json())
+            .then(d => { if (d.status === 'ok') setTalleres(d.tallers ?? []) })
+            .catch(() => {})
+            .finally(() => setTalLoading(false))
+    }, [])
 
     return (
         <div style={{
@@ -390,7 +505,14 @@ export default function PageLanding() {
                         gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
                         gap: 'var(--space-3)',
                     }}>
-                        {TALLERES.map(t => <TallerChip key={t.nombre} {...t} />)}
+                        {talLoading
+                            ? [1,2,3,4,5,6].map(n => <TallerSkeleton key={n} />)
+                            : talleres.length > 0
+                                ? talleres.map(t => <TallerChip key={t.id} t={t} />)
+                                : <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', gridColumn: '1/-1' }}>
+                                    Pronto abriremos nuevas fechas ✦
+                                </p>
+                        }
                     </div>
                 </div>
             </section>
@@ -442,7 +564,6 @@ export default function PageLanding() {
                             position: 'relative', overflow: 'hidden',
                             display: 'flex', flexDirection: 'column', gap: 'var(--space-4)',
                         }}>
-                            {/* Glow de fondo */}
                             <div style={{
                                 position: 'absolute', bottom: -60, right: -60,
                                 width: 220, height: 220, borderRadius: '50%',
@@ -450,9 +571,7 @@ export default function PageLanding() {
                                 pointerEvents: 'none',
                             }} />
 
-                            {/* Badge paso + icono */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                                {/* Icono */}
                                 <div style={{
                                     width: 56, height: 56, borderRadius: 'var(--radius-xl)',
                                     background: 'rgba(13,115,119,0.15)',
@@ -492,7 +611,6 @@ export default function PageLanding() {
                                 </p>
                             </div>
 
-                            {/* Formato de código */}
                             <div style={{
                                 display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
                                 padding: 'var(--space-3) var(--space-4)',
@@ -628,58 +746,24 @@ export default function PageLanding() {
             </span>
                         {' '}en tu primer taller.
                     </p>
-                    <div style={{
-                        display: 'flex', flexWrap: 'wrap',
-                        gap: 'var(--space-3)', justifyContent: 'center',
-                    }}>
-                        <button
-                            onClick={irWhatsApp}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 8,
-                                padding: 'var(--space-4) var(--space-6)',
-                                background: '#25D366', border: 'none',
-                                borderRadius: 'var(--radius-full)',
-                                color: '#fff', fontFamily: 'var(--font-sans)',
-                                fontWeight: 700, fontSize: 'var(--text-base)', cursor: 'pointer',
-                                transition: 'all 0.18s ease',
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.background = '#1aab59'; e.currentTarget.style.transform = 'translateY(-2px)' }}
-                            onMouseLeave={e => { e.currentTarget.style.background = '#25D366'; e.currentTarget.style.transform = 'translateY(0)' }}
-                        >
-                            <WhatsappLogo size={20} weight="fill" />
-                            Quiero mi Chispa
-                        </button>
-                        <button
-                            onClick={() => navigate('/acceso')}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 8,
-                                padding: 'var(--space-4) var(--space-6)',
-                                background: 'var(--color-jade-500)', border: 'none',
-                                borderRadius: 'var(--radius-full)',
-                                color: '#FAF7F2', fontFamily: 'var(--font-sans)',
-                                fontWeight: 600, fontSize: 'var(--text-base)', cursor: 'pointer',
-                                transition: 'all 0.18s ease',
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.background = '#0a8a8f'; e.currentTarget.style.transform = 'translateY(-2px)' }}
-                            onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-jade-500)'; e.currentTarget.style.transform = 'translateY(0)' }}
-                        >
-                            Ya tengo mi Chispa
-                            <ArrowRight size={18} />
-                        </button>
-                    </div>
+                    <button
+                        onClick={irWhatsApp}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 8,
+                            padding: 'var(--space-4) var(--space-8)',
+                            background: '#25D366', border: 'none',
+                            borderRadius: 'var(--radius-full)',
+                            color: '#fff', fontFamily: 'var(--font-sans)',
+                            fontWeight: 700, fontSize: 'var(--text-base)',
+                            cursor: 'pointer',
+                            boxShadow: '0 4px 20px rgba(37,211,102,0.3)',
+                        }}
+                    >
+                        <WhatsappLogo size={20} weight="fill" />
+                        Quiero mi Chispa ✦
+                    </button>
                 </div>
             </section>
-
-            {/* Footer mínimo */}
-            <footer style={{
-                padding: 'var(--space-6)',
-                textAlign: 'center',
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-disabled)',
-                borderTop: '1px solid var(--border-subtle)',
-            }}>
-                © 2026 Destello · Todos los derechos reservados
-            </footer>
 
         </div>
     )
