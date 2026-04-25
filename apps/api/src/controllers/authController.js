@@ -122,28 +122,49 @@ export async function registerUser(req, res, next) {
       )
     }
 
-    // 2. Verificar que no exista cuenta con ese email
+    // 2. Verificar si ya existe cuenta con ese email
     const { rows: existing } = await query(
-        `SELECT id FROM usuarios WHERE email = $1`,
+        `SELECT id, password FROM usuarios WHERE email = $1`,
         [email.toLowerCase().trim()]
     )
-    if (existing.length > 0) {
-      throw new AppError(
-          'Ya existe una cuenta con ese correo. Inicia sesión.',
-          409,
-          'EMAIL_ALREADY_EXISTS',
-      )
-    }
 
-    // 3. Crear usuario con contraseña hasheada
-    const hash = await bcrypt.hash(password, 12)
-    const { rows } = await query(
-        `INSERT INTO usuarios (email, nombre, password, estado)
+    let user
+
+    if (existing.length > 0) {
+      // Existe registro — distinguir si tiene cuenta completa o es un shell sin contraseña
+      if (existing[0].password) {
+        // Tiene contraseña → cuenta real, no puede re-registrarse
+        throw new AppError(
+            'Ya existe una cuenta con ese correo. Inicia sesión.',
+            409,
+            'EMAIL_ALREADY_EXISTS',
+        )
+      }
+
+      // Sin contraseña → registro incompleto (p.ej. creado por bot/admin sin pass)
+      // Completar el registro actualizando nombre y contraseña
+      const hash = await bcrypt.hash(password, 12)
+      const { rows } = await query(
+          `UPDATE usuarios
+         SET nombre   = COALESCE($2, nombre),
+             password = $3,
+             estado   = 'activo'
+         WHERE email = $1
+         RETURNING id, email, nombre, estado`,
+          [email.toLowerCase().trim(), nombre?.trim() || null, hash]
+      )
+      user = rows[0]
+    } else {
+      // 3a. Usuario nuevo — crear con contraseña hasheada
+      const hash = await bcrypt.hash(password, 12)
+      const { rows } = await query(
+          `INSERT INTO usuarios (email, nombre, password, estado)
          VALUES ($1, $2, $3, 'activo')
-           RETURNING id, email, nombre, estado, created_at`,
-        [email.toLowerCase().trim(), nombre?.trim() || null, hash]
-    )
-    const user = rows[0]
+         RETURNING id, email, nombre, estado`,
+          [email.toLowerCase().trim(), nombre?.trim() || null, hash]
+      )
+      user = rows[0]
+    }
 
     // 4. Consumir resplandor
     await resplandorService.consumeResplandor(resplandorCode, user.email)

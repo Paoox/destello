@@ -1,20 +1,26 @@
 /**
  * Destello — PageLogin
- * Inicio de sesión / registro con OAuth + email+contraseña.
  *
- * Si viene de /acceso (resplandor válido), location.state trae { email, nombre }
- * y sessionStorage guarda 'destello_resplandor' con el código.
- * En ese caso se abre automáticamente en modo registro con el email pre-llenado.
+ * Dos modos completamente separados:
+ *
+ * MODO REGISTRO (viene de /acceso con resplandor válido):
+ *   - Sin tabs, sin OAuth
+ *   - Solo formulario: nombre, email (bloqueado), contraseña, confirmar
+ *   - Llama a POST /api/auth/register y consume el resplandor
+ *
+ * MODO LOGIN (acceso directo a /login):
+ *   - Sin opción de registrarse (eso va por /acceso)
+ *   - OAuth + email+contraseña
+ *   - Llama a POST /api/auth/login
  */
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
-import { Eye, EyeSlash, ArrowRight } from '@phosphor-icons/react'
+import { Eye, EyeSlash, ArrowRight, CheckCircle, XCircle } from '@phosphor-icons/react'
 import { useAuthStore } from '@store/useAuthStore.js'
 import logoLight from '../Images/destello-logo-512.png'
 import logoDark  from '../Images/destello-logo-dark-512.png'
 
-// ── Iconos de marcas (SVG oficiales) ─────────────────────────────────────────
-
+// ── Iconos OAuth ──────────────────────────────────────────────────────────────
 function IconGoogle() {
     return (
         <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -25,7 +31,6 @@ function IconGoogle() {
         </svg>
     )
 }
-
 function IconFacebook() {
     return (
         <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -33,16 +38,13 @@ function IconFacebook() {
         </svg>
     )
 }
-
 function IconInstagram() {
     return (
         <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <defs>
                 <linearGradient id="ig-grad" x1="0%" y1="100%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#FFDC80"/>
-                    <stop offset="25%" stopColor="#FCAF45"/>
-                    <stop offset="50%" stopColor="#F77737"/>
-                    <stop offset="75%" stopColor="#C13584"/>
+                    <stop offset="0%" stopColor="#FFDC80"/><stop offset="25%" stopColor="#FCAF45"/>
+                    <stop offset="50%" stopColor="#F77737"/><stop offset="75%" stopColor="#C13584"/>
                     <stop offset="100%" stopColor="#833AB4"/>
                 </linearGradient>
             </defs>
@@ -55,31 +57,20 @@ function IconInstagram() {
 function OAuthButton({ icon: Icon, label, onClick }) {
     const [hovered, setHovered] = useState(false)
     return (
-        <button
-            onClick={onClick}
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            style={{
-                display:        'flex',
-                alignItems:     'center',
-                justifyContent: 'center',
-                gap:            10,
-                width:          '100%',
-                padding:        'var(--space-3)',
-                background:     hovered ? 'var(--bg-surface)' : 'transparent',
-                border:         '1px solid var(--border-default)',
-                borderColor:    hovered ? 'var(--border-muted, var(--color-jade-500))' : 'var(--border-default)',
-                borderRadius:   'var(--radius-lg)',
-                color:          'var(--text-primary)',
-                fontSize:       'var(--text-sm)',
-                fontFamily:     'var(--font-sans)',
-                fontWeight:     500,
-                cursor:         'pointer',
-                transition:     'all 0.15s',
-            }}
-        >
-            <Icon />
-            {label}
+        <button onClick={onClick}
+                onMouseEnter={() => setHovered(true)}
+                onMouseLeave={() => setHovered(false)}
+                style={{
+                    display:'flex', alignItems:'center', justifyContent:'center', gap:10,
+                    width:'100%', padding:'var(--space-3)',
+                    background: hovered ? 'var(--bg-surface)' : 'transparent',
+                    border:'1px solid var(--border-default)',
+                    borderColor: hovered ? 'var(--color-jade-500)' : 'var(--border-default)',
+                    borderRadius:'var(--radius-lg)', color:'var(--text-primary)',
+                    fontSize:'var(--text-sm)', fontFamily:'var(--font-sans)', fontWeight:500,
+                    cursor:'pointer', transition:'all 0.15s',
+                }}>
+            <Icon />{label}
         </button>
     )
 }
@@ -87,370 +78,348 @@ function OAuthButton({ icon: Icon, label, onClick }) {
 // ── Divider ───────────────────────────────────────────────────────────────────
 function Divider({ label = 'o continúa con email' }) {
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', margin: 'var(--space-4) 0' }}>
-            <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }} />
-            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{label}</span>
-            <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }} />
+        <div style={{ display:'flex', alignItems:'center', gap:'var(--space-3)', margin:'var(--space-4) 0' }}>
+            <div style={{ flex:1, height:1, background:'var(--border-subtle)' }}/>
+            <span style={{ color:'var(--text-muted)', fontSize:'var(--text-xs)', whiteSpace:'nowrap' }}>{label}</span>
+            <div style={{ flex:1, height:1, background:'var(--border-subtle)' }}/>
         </div>
     )
 }
 
-// ── Input con label ───────────────────────────────────────────────────────────
-function Field({ label, type = 'text', placeholder, value, onChange, right, readOnly }) {
+// ── Field con label ───────────────────────────────────────────────────────────
+function Field({ label, type='text', placeholder, value, onChange, right, readOnly, hint }) {
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontWeight: 500 }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            <label style={{ fontSize:'var(--text-xs)', color:'var(--text-muted)', fontWeight:500 }}>
                 {label}
             </label>
-            <div style={{ position: 'relative' }}>
+            <div style={{ position:'relative' }}>
                 <input
-                    type={type}
-                    placeholder={placeholder}
-                    value={value}
-                    onChange={onChange}
-                    readOnly={readOnly}
+                    type={type} placeholder={placeholder} value={value}
+                    onChange={onChange} readOnly={readOnly}
                     style={{
-                        width:        '100%',
-                        padding:      right ? 'var(--space-3) 44px var(--space-3) var(--space-3)' : 'var(--space-3)',
-                        background:   readOnly ? 'var(--bg-dark)' : 'var(--bg-surface)',
-                        border:       '1px solid var(--border-default)',
-                        borderRadius: 'var(--radius-lg)',
-                        color:        readOnly ? 'var(--text-muted)' : 'var(--text-primary)',
-                        fontSize:     'var(--text-sm)',
-                        fontFamily:   'var(--font-sans)',
-                        outline:      'none',
-                        boxSizing:    'border-box',
-                        opacity:      readOnly ? 0.7 : 1,
-                        cursor:       readOnly ? 'default' : 'text',
+                        width:'100%',
+                        padding: right ? 'var(--space-3) 44px var(--space-3) var(--space-3)' : 'var(--space-3)',
+                        background: readOnly ? 'var(--bg-dark)' : 'var(--bg-surface)',
+                        border:'1px solid var(--border-default)',
+                        borderRadius:'var(--radius-lg)',
+                        color: readOnly ? 'var(--text-muted)' : 'var(--text-primary)',
+                        fontSize:'var(--text-sm)', fontFamily:'var(--font-sans)',
+                        outline:'none', boxSizing:'border-box',
+                        opacity: readOnly ? 0.7 : 1, cursor: readOnly ? 'default' : 'text',
                     }}
                 />
                 {right && (
-                    <div style={{
-                        position:  'absolute',
-                        right:     12,
-                        top:       '50%',
-                        transform: 'translateY(-50%)',
-                    }}>
+                    <div style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)' }}>
                         {right}
                     </div>
                 )}
+            </div>
+            {hint && <p style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--text-disabled)' }}>{hint}</p>}
+        </div>
+    )
+}
+
+// ── Validación de contraseña ──────────────────────────────────────────────────
+function PasswordRules({ password }) {
+    const rules = [
+        { label: 'Mínimo 8 caracteres',       ok: password.length >= 8 },
+        { label: 'Al menos una mayúscula',     ok: /[A-Z]/.test(password) },
+        { label: 'Al menos un número',         ok: /[0-9]/.test(password) },
+    ]
+    if (!password) return null
+    return (
+        <div style={{ display:'flex', flexDirection:'column', gap:3, marginTop:2 }}>
+            {rules.map(r => (
+                <div key={r.label} style={{ display:'flex', alignItems:'center', gap:5,
+                    fontSize:'var(--text-xs)', color: r.ok ? '#10B981' : 'var(--text-disabled)' }}>
+                    {r.ok
+                        ? <CheckCircle size={13} weight="fill" />
+                        : <XCircle size={13} weight="fill" />}
+                    {r.label}
+                </div>
+            ))}
+        </div>
+    )
+}
+
+function passwordIsStrong(p) {
+    return p.length >= 8 && /[A-Z]/.test(p) && /[0-9]/.test(p)
+}
+
+// ── Wrapper visual compartido ─────────────────────────────────────────────────
+function PageShell({ children }) {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    const logo = prefersDark ? logoDark : logoLight
+    return (
+        <div style={{
+            position:'fixed', inset:0, display:'flex', alignItems:'flex-start',
+            justifyContent:'center', background:'var(--bg-dark)',
+            padding:'var(--space-8) var(--space-6)', boxSizing:'border-box', overflowY:'auto',
+        }}>
+            <div style={{
+                position:'fixed', top:'35%', left:'50%', transform:'translate(-50%,-50%)',
+                width:600, height:600, borderRadius:'50%', pointerEvents:'none',
+                background:'radial-gradient(circle, rgba(13,115,119,0.08) 0%, transparent 70%)',
+            }}/>
+            <div style={{ maxWidth:420, width:'100%', position:'relative', zIndex:1 }}>
+                <div style={{
+                    background:'var(--bg-card)', border:'1px solid var(--border-default)',
+                    borderRadius:'var(--radius-2xl)', padding:'var(--space-8)', boxShadow:'var(--shadow-lg)',
+                }}>
+                    {/* Logo */}
+                    <div style={{ textAlign:'center', marginBottom:'var(--space-6)' }}>
+                        <img src={logo} alt="Destello" style={{
+                            display:'block', width:52, height:52, margin:'0 auto var(--space-3)',
+                            objectFit:'contain', filter:'drop-shadow(0 0 14px rgba(13,115,119,0.4))',
+                        }}/>
+                        <h1 style={{
+                            fontSize:'var(--text-2xl)', fontWeight:700,
+                            margin:'0 0 var(--space-1)', letterSpacing:'-0.02em', color:'var(--text-primary)',
+                        }}>Destello</h1>
+                        <p style={{ margin:0, fontSize:'var(--text-sm)', color:'var(--text-muted)' }}>
+                            Tu espacio de aprendizaje{' '}
+                            <span style={{ color:'var(--color-amber-600,#D97706)', fontWeight:600 }}>inmersivo</span>
+                        </p>
+                    </div>
+                    {children}
+                </div>
             </div>
         </div>
     )
 }
 
-// ── Página principal ──────────────────────────────────────────────────────────
-export default function PageLogin() {
+// ══════════════════════════════════════════════════════════════════════════════
+// FORMULARIO DE REGISTRO (viene de /acceso con Resplandor)
+// ══════════════════════════════════════════════════════════════════════════════
+function RegisterForm({ email, nombre: nombreInicial, resplandorCode }) {
     const navigate = useNavigate()
-    const location = useLocation()
-    const { login, register, isLoading, error } = useAuthStore()
+    const { register, isLoading } = useAuthStore()
 
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    const logo = prefersDark ? logoDark : logoLight
-
-    // Detectar si venimos de /acceso con resplandor validado
-    const resplandorEmail  = location.state?.email  || ''
-    const resplandorNombre = location.state?.nombre || ''
-    const resplandorCode   = sessionStorage.getItem('destello_resplandor') || ''
-    const vieneDeAcceso    = !!resplandorCode
-
-    // 'login' | 'register'
-    const [mode,            setMode]            = useState(vieneDeAcceso ? 'register' : 'login')
-    const [email,           setEmail]           = useState(resplandorEmail)
-    const [nombre,          setNombre]          = useState(resplandorNombre)
+    const [nombre,          setNombre]          = useState(nombreInicial || '')
     const [password,        setPassword]        = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [showPass,        setShowPass]        = useState(false)
     const [showConfirm,     setShowConfirm]     = useState(false)
-    const [localError,      setLocalError]      = useState(null)
+    const [error,           setError]           = useState(null)
 
-    // Si llega con resplandor después del primer render
-    useEffect(() => {
-        if (vieneDeAcceso) setMode('register')
-        if (resplandorEmail) setEmail(resplandorEmail)
-        if (resplandorNombre) setNombre(resplandorNombre)
-    }, [vieneDeAcceso, resplandorEmail, resplandorNombre])
+    const canSubmit = nombre.trim() && passwordIsStrong(password) && password === confirmPassword && !isLoading
 
-    const handleOAuth = (provider) => {
-        window.location.href = `/api/auth/${provider}`
+    const handleSubmit = async (e) => {
+        e.preventDefault()
+        setError(null)
+        if (password !== confirmPassword) { setError('Las contraseñas no coinciden.'); return }
+        if (!passwordIsStrong(password))  { setError('La contraseña no cumple los requisitos.'); return }
+
+        const result = await register({ email, password, nombre: nombre.trim(), resplandorCode })
+        if (result.ok) {
+            navigate('/home')
+        } else {
+            setError(result.error || 'Error al crear cuenta. Intenta de nuevo.')
+        }
     }
+
+    return (
+        <PageShell>
+            {/* Banner resplandor */}
+            <div style={{
+                background:'rgba(13,115,119,0.08)', border:'1px solid rgba(13,115,119,0.25)',
+                borderRadius:'var(--radius-lg)', padding:'var(--space-3)',
+                marginBottom:'var(--space-5)', fontSize:'var(--text-xs)',
+                color:'var(--text-muted)', textAlign:'center', lineHeight:1.5,
+            }}>
+                ✨ Resplandor válido — Crea tu cuenta para acceder
+            </div>
+
+            <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:'var(--space-3)' }}>
+                <Field
+                    label="Nombre"
+                    placeholder="Tu nombre"
+                    value={nombre}
+                    onChange={e => setNombre(e.target.value)}
+                />
+                <Field
+                    label="Correo electrónico"
+                    type="email"
+                    value={email}
+                    readOnly
+                    hint="Vinculado a tu Resplandor"
+                />
+                <div>
+                    <Field
+                        label="Contraseña"
+                        type={showPass ? 'text' : 'password'}
+                        placeholder="Mínimo 8 caracteres, 1 mayúscula y 1 número"
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        right={
+                            <button type="button" onClick={() => setShowPass(p=>!p)}
+                                    style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', padding:0, display:'flex' }}>
+                                {showPass ? <EyeSlash size={17}/> : <Eye size={17}/>}
+                            </button>
+                        }
+                    />
+                    <PasswordRules password={password}/>
+                </div>
+                <Field
+                    label="Confirmar contraseña"
+                    type={showConfirm ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    right={
+                        <button type="button" onClick={() => setShowConfirm(p=>!p)}
+                                style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', padding:0, display:'flex' }}>
+                            {showConfirm ? <EyeSlash size={17}/> : <Eye size={17}/>}
+                        </button>
+                    }
+                />
+
+                {/* Indicador de contraseñas coinciden */}
+                {confirmPassword && (
+                    <p style={{ margin:0, fontSize:'var(--text-xs)',
+                        color: password === confirmPassword ? '#10B981' : 'var(--color-error)' }}>
+                        {password === confirmPassword ? '✓ Las contraseñas coinciden' : '✗ Las contraseñas no coinciden'}
+                    </p>
+                )}
+
+                {error && (
+                    <p style={{ color:'var(--color-error)', fontSize:'var(--text-xs)', margin:0 }}>{error}</p>
+                )}
+
+                <button type="submit" disabled={!canSubmit} style={{
+                    display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                    width:'100%', marginTop:'var(--space-1)', padding:'var(--space-3)',
+                    background: canSubmit ? 'var(--color-jade-500)' : 'var(--bg-surface)',
+                    border:'1px solid transparent', borderRadius:'var(--radius-lg)',
+                    color: canSubmit ? '#FAF7F2' : 'var(--text-muted)',
+                    fontFamily:'var(--font-sans)', fontWeight:600, fontSize:'var(--text-sm)',
+                    cursor: canSubmit ? 'pointer' : 'not-allowed',
+                    opacity: isLoading ? 0.7 : 1, transition:'background 0.2s',
+                }}>
+                    {isLoading ? 'Creando tu cuenta...' : 'Crear mi cuenta'}
+                    {!isLoading && <ArrowRight size={16}/>}
+                </button>
+            </form>
+        </PageShell>
+    )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FORMULARIO DE LOGIN (usuario con cuenta existente)
+// ══════════════════════════════════════════════════════════════════════════════
+function LoginForm() {
+    const navigate = useNavigate()
+    const { login, isLoading, error } = useAuthStore()
+
+    const [email,    setEmail]    = useState('')
+    const [password, setPassword] = useState('')
+    const [showPass, setShowPass] = useState(false)
+    const [localError, setLocalError] = useState(null)
+
+    const handleOAuth = (provider) => { window.location.href = `/api/auth/${provider}` }
 
     const handleSubmit = async (e) => {
         e.preventDefault()
         setLocalError(null)
-
-        if (mode === 'register') {
-            if (!nombre.trim()) {
-                setLocalError('Por favor ingresa tu nombre.')
-                return
-            }
-            if (password !== confirmPassword) {
-                setLocalError('Las contraseñas no coinciden.')
-                return
-            }
-            if (password.length < 8) {
-                setLocalError('La contraseña debe tener al menos 8 caracteres.')
-                return
-            }
-            if (!resplandorCode) {
-                setLocalError('No se encontró tu código Resplandor. Regresa a /acceso e ingrésalo de nuevo.')
-                return
-            }
-
-            const result = await register({
-                email:          email.trim(),
-                password,
-                nombre:         nombre.trim(),
-                resplandorCode,
-            })
-
-            if (result.ok) {
-                navigate('/home')
-            } else {
-                setLocalError(result.error || 'Error al crear cuenta. Intenta de nuevo.')
-            }
-            return
-        }
-
-        // Login
         await login({ email, password })
-        navigate('/home')
+        // Si login fue exitoso, navega
+        const { token } = useAuthStore.getState()
+        if (token) navigate('/home')
     }
 
     const displayError = localError || error
 
     return (
-        <div style={{
-            position:       'fixed',
-            inset:          0,
-            display:        'flex',
-            alignItems:     'flex-start',
-            justifyContent: 'center',
-            background:     'var(--bg-dark)',
-            padding:        'var(--space-8) var(--space-6)',
-            boxSizing:      'border-box',
-            overflowY:      'auto',
-        }}>
-            {/* Glow de fondo */}
-            <div style={{
-                position:     'fixed',
-                top: '35%', left: '50%',
-                transform:    'translate(-50%, -50%)',
-                width:        600, height: 600,
-                borderRadius: '50%',
-                background:   'radial-gradient(circle, rgba(13,115,119,0.08) 0%, transparent 70%)',
-                pointerEvents: 'none',
-            }} />
-
-            <div style={{ maxWidth: 420, width: '100%', position: 'relative', zIndex: 1 }}>
-                <div style={{
-                    background:   'var(--bg-card)',
-                    border:       '1px solid var(--border-default)',
-                    borderRadius: 'var(--radius-2xl)',
-                    padding:      'var(--space-8)',
-                    boxShadow:    'var(--shadow-lg)',
-                }}>
-
-                    {/* Cabecera */}
-                    <div style={{ textAlign: 'center', marginBottom: 'var(--space-6)' }}>
-                        <img
-                            src={logo}
-                            alt="Destello"
-                            style={{
-                                display:  'block',
-                                width:    52, height: 52,
-                                margin:   '0 auto var(--space-3)',
-                                objectFit: 'contain',
-                                filter:   'drop-shadow(0 0 14px rgba(13,115,119,0.4))',
-                            }}
-                        />
-                        <h1 style={{
-                            fontSize:      'var(--text-2xl)',
-                            fontWeight:    700,
-                            margin:        '0 0 var(--space-1)',
-                            letterSpacing: '-0.02em',
-                            color:         'var(--text-primary)',
-                        }}>
-                            Destello
-                        </h1>
-                        <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-                            Tu espacio de aprendizaje{' '}
-                            <span style={{ color: 'var(--color-amber-600, #D97706)', fontWeight: 600 }}>
-                                inmersivo
-                            </span>
-                        </p>
-                    </div>
-
-                    {/* Tabs login / registro */}
-                    <div style={{
-                        display:      'grid',
-                        gridTemplateColumns: '1fr 1fr',
-                        gap:          4,
-                        background:   'var(--bg-surface)',
-                        borderRadius: 'var(--radius-lg)',
-                        padding:      4,
-                        marginBottom: 'var(--space-5)',
-                    }}>
-                        {['login', 'register'].map(m => (
-                            <button
-                                key={m}
-                                onClick={() => { setMode(m); setLocalError(null) }}
-                                style={{
-                                    padding:      'var(--space-2)',
-                                    borderRadius: 'var(--radius-md)',
-                                    border:       'none',
-                                    background:   mode === m ? 'var(--bg-card)' : 'transparent',
-                                    color:        mode === m ? 'var(--text-primary)' : 'var(--text-muted)',
-                                    fontFamily:   'var(--font-sans)',
-                                    fontWeight:   mode === m ? 600 : 400,
-                                    fontSize:     'var(--text-sm)',
-                                    cursor:       'pointer',
-                                    transition:   'all 0.15s',
-                                    boxShadow:    mode === m ? 'var(--shadow-sm, 0 1px 4px rgba(0,0,0,0.15))' : 'none',
-                                }}
-                            >
-                                {m === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Banner de bienvenida si viene de resplandor */}
-                    {vieneDeAcceso && mode === 'register' && (
-                        <div style={{
-                            background:   'rgba(13,115,119,0.08)',
-                            border:       '1px solid rgba(13,115,119,0.25)',
-                            borderRadius: 'var(--radius-lg)',
-                            padding:      'var(--space-3)',
-                            marginBottom: 'var(--space-4)',
-                            fontSize:     'var(--text-xs)',
-                            color:        'var(--text-muted)',
-                            textAlign:    'center',
-                            lineHeight:   1.5,
-                        }}>
-                            ✨ Resplandor válido. Completa tu registro para acceder.
-                        </div>
-                    )}
-
-                    {/* OAuth — solo en modo login */}
-                    {mode === 'login' && (
-                        <>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                                <OAuthButton icon={IconGoogle}    label="Continuar con Google"    onClick={() => handleOAuth('google')} />
-                                <OAuthButton icon={IconFacebook}  label="Continuar con Facebook"  onClick={() => handleOAuth('facebook')} />
-                                <OAuthButton icon={IconInstagram} label="Continuar con Instagram" onClick={() => handleOAuth('instagram')} />
-                            </div>
-                            <Divider />
-                        </>
-                    )}
-
-                    {/* Formulario email + contraseña */}
-                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-
-                        {/* Nombre — solo en registro */}
-                        {mode === 'register' && (
-                            <Field
-                                label="Nombre"
-                                type="text"
-                                placeholder="Tu nombre"
-                                value={nombre}
-                                onChange={e => setNombre(e.target.value)}
-                            />
-                        )}
-
-                        <Field
-                            label="Correo electrónico"
-                            type="email"
-                            placeholder="tu@email.com"
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                            // Si viene con resplandor el email ya está vinculado, no se puede cambiar (ni en login ni en registro)
-                            readOnly={vieneDeAcceso && !!resplandorEmail}
-                        />
-
-                        <Field
-                            label="Contraseña"
-                            type={showPass ? 'text' : 'password'}
-                            placeholder="••••••••"
-                            value={password}
-                            onChange={e => setPassword(e.target.value)}
-                            right={
-                                <button type="button" onClick={() => setShowPass(p => !p)}
-                                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0, display: 'flex' }}>
-                                    {showPass ? <EyeSlash size={17} /> : <Eye size={17} />}
-                                </button>
-                            }
-                        />
-
-                        {mode === 'register' && (
-                            <Field
-                                label="Confirmar contraseña"
-                                type={showConfirm ? 'text' : 'password'}
-                                placeholder="••••••••"
-                                value={confirmPassword}
-                                onChange={e => setConfirmPassword(e.target.value)}
-                                right={
-                                    <button type="button" onClick={() => setShowConfirm(p => !p)}
-                                            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0, display: 'flex' }}>
-                                        {showConfirm ? <EyeSlash size={17} /> : <Eye size={17} />}
-                                    </button>
-                                }
-                            />
-                        )}
-
-                        {displayError && (
-                            <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-xs)', margin: 0 }}>
-                                {displayError}
-                            </p>
-                        )}
-
-                        {/* Olvidé mi contraseña — solo en login */}
-                        {mode === 'login' && (
-                            <div style={{ textAlign: 'right', marginTop: -6 }}>
-                                <Link
-                                    to="/recuperar-contrasena"
-                                    style={{
-                                        fontSize:   'var(--text-xs)',
-                                        color:      'var(--color-jade-500)',
-                                        fontWeight: 500,
-                                        textDecoration: 'none',
-                                    }}
-                                >
-                                    ¿Olvidaste tu contraseña?
-                                </Link>
-                            </div>
-                        )}
-
-                        <button
-                            type="submit"
-                            disabled={!email || !password || isLoading}
-                            style={{
-                                display:        'flex',
-                                alignItems:     'center',
-                                justifyContent: 'center',
-                                gap:            8,
-                                width:          '100%',
-                                marginTop:      'var(--space-1)',
-                                padding:        'var(--space-3)',
-                                background:     email && password ? 'var(--color-jade-500)' : 'var(--bg-surface)',
-                                border:         '1px solid transparent',
-                                borderRadius:   'var(--radius-lg)',
-                                color:          email && password ? '#FAF7F2' : 'var(--text-muted)',
-                                fontFamily:     'var(--font-sans)',
-                                fontWeight:     600,
-                                fontSize:       'var(--text-sm)',
-                                cursor:         email && password ? 'pointer' : 'not-allowed',
-                                opacity:        isLoading ? 0.7 : 1,
-                                transition:     'background 0.2s',
-                            }}
-                        >
-                            {isLoading
-                                ? 'Un momento...'
-                                : mode === 'login' ? 'Entrar' : 'Crear mi cuenta'}
-                            {!isLoading && <ArrowRight size={16} />}
-                        </button>
-                    </form>
-                </div>
+        <PageShell>
+            {/* OAuth */}
+            <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
+                <OAuthButton icon={IconGoogle}    label="Continuar con Google"    onClick={() => handleOAuth('google')}/>
+                <OAuthButton icon={IconFacebook}  label="Continuar con Facebook"  onClick={() => handleOAuth('facebook')}/>
+                <OAuthButton icon={IconInstagram} label="Continuar con Instagram" onClick={() => handleOAuth('instagram')}/>
             </div>
-        </div>
+
+            <Divider />
+
+            <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:'var(--space-3)' }}>
+                <Field
+                    label="Correo electrónico" type="email" placeholder="tu@email.com"
+                    value={email} onChange={e => setEmail(e.target.value)}
+                />
+                <Field
+                    label="Contraseña"
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    right={
+                        <button type="button" onClick={() => setShowPass(p=>!p)}
+                                style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', padding:0, display:'flex' }}>
+                            {showPass ? <EyeSlash size={17}/> : <Eye size={17}/>}
+                        </button>
+                    }
+                />
+
+                {displayError && (
+                    <p style={{ color:'var(--color-error)', fontSize:'var(--text-xs)', margin:0 }}>{displayError}</p>
+                )}
+
+                <div style={{ textAlign:'right', marginTop:-6 }}>
+                    <Link to="/recuperar-contrasena" style={{
+                        fontSize:'var(--text-xs)', color:'var(--color-jade-500)',
+                        fontWeight:500, textDecoration:'none',
+                    }}>¿Olvidaste tu contraseña?</Link>
+                </div>
+
+                <button type="submit" disabled={!email || !password || isLoading} style={{
+                    display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                    width:'100%', marginTop:'var(--space-1)', padding:'var(--space-3)',
+                    background: email && password ? 'var(--color-jade-500)' : 'var(--bg-surface)',
+                    border:'1px solid transparent', borderRadius:'var(--radius-lg)',
+                    color: email && password ? '#FAF7F2' : 'var(--text-muted)',
+                    fontFamily:'var(--font-sans)', fontWeight:600, fontSize:'var(--text-sm)',
+                    cursor: email && password ? 'pointer' : 'not-allowed',
+                    opacity: isLoading ? 0.7 : 1, transition:'background 0.2s',
+                }}>
+                    {isLoading ? 'Entrando...' : 'Entrar'}
+                    {!isLoading && <ArrowRight size={16}/>}
+                </button>
+            </form>
+
+            {/* Link para ir a /acceso si no tienen cuenta */}
+            <p style={{
+                marginTop:'var(--space-5)', textAlign:'center',
+                fontSize:'var(--text-xs)', color:'var(--text-disabled)',
+            }}>
+                ¿No tienes cuenta?{' '}
+                <Link to="/acceso" style={{
+                    color:'var(--color-jade-500)', fontWeight:600, textDecoration:'none',
+                }}>
+                    Activa tu Resplandor
+                </Link>
+            </p>
+        </PageShell>
     )
+}
+
+// ── Exportación principal — decide qué formulario mostrar ─────────────────────
+export default function PageLogin() {
+    const location = useLocation()
+
+    const resplandorEmail  = location.state?.email  || ''
+    const resplandorNombre = location.state?.nombre || ''
+    const resplandorCode   = sessionStorage.getItem('destello_resplandor') || ''
+    const vieneDeAcceso    = !!resplandorCode
+
+    if (vieneDeAcceso) {
+        return (
+            <RegisterForm
+                email={resplandorEmail}
+                nombre={resplandorNombre}
+                resplandorCode={resplandorCode}
+            />
+        )
+    }
+
+    return <LoginForm />
 }
