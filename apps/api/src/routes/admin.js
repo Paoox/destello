@@ -289,7 +289,7 @@ router.post('/send-wa', async (req, res, next) => {
         }
 
         // Formato JID de WhatsApp para México: 52XXXXXXXXXX@s.whatsapp.net
-        const jid    = `52${numeroLimpio}@s.whatsapp.net`
+        const jid    = `521${numeroLimpio}@s.whatsapp.net`
         const botUrl = process.env.BOT_HTTP_URL || 'http://127.0.0.1:4001'
 
         const botRes = await fetch(`${botUrl}/send`, {
