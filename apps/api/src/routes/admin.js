@@ -15,6 +15,8 @@
  *
  * GET    /admin/lista-espera       → lista de espera completa (admin)
  * PATCH  /admin/lista-espera/:id   → actualiza estado (admin)
+ *
+ * POST   /admin/send-wa            → envía WA desde el bot (admin)
  */
 import { Router }            from 'express'
 import { adminLogin, getTalleresStats } from '../controllers/adminController.js'
@@ -74,7 +76,7 @@ router.get('/lista-espera', async (_req, res, next) => {
         const { rows } = await query(
             `SELECT le.*, t.nombre AS taller_nombre
              FROM lista_espera le
-             LEFT JOIN talleres t ON t.id = le.taller_id
+                      LEFT JOIN talleres t ON t.id = le.taller_id
              ORDER BY le.created_at DESC`
         )
         res.json({ status: 'ok', lista: rows })
@@ -97,9 +99,9 @@ router.patch('/lista-espera/:id', async (req, res, next) => {
 router.get('/resplandores/all', async (_req, res, next) => {
     try {
         const { rows } = await query(
-            `SELECT r.*, u.nombre AS usuario_nombre
+            `SELECT r.*, u.nombre AS usuario_nombre, u.whatsapp AS usuario_whatsapp
              FROM resplandores r
-             LEFT JOIN usuarios u ON u.email = r.email
+                      LEFT JOIN usuarios u ON u.email = r.email
              ORDER BY r.created_at DESC`
         )
         res.json({ status: 'ok', resplandores: rows })
@@ -173,7 +175,7 @@ router.post('/resplandores', async (req, res, next) => {
         const { rows } = await query(
             `INSERT INTO resplandores (code, email, created_at)
              VALUES ($1, $2, NOW())
-             RETURNING *`,
+                 RETURNING *`,
             [code, emailNorm]
         )
         const resplandor = rows[0]
@@ -196,7 +198,7 @@ router.post('/resplandores/:code/reenviar', async (req, res, next) => {
     try {
         const { rows } = await query(
             `SELECT r.*, u.nombre FROM resplandores r
-             JOIN usuarios u ON u.email = r.email
+                                           JOIN usuarios u ON u.email = r.email
              WHERE r.code = $1`,
             [req.params.code]
         )
@@ -204,7 +206,7 @@ router.post('/resplandores/:code/reenviar', async (req, res, next) => {
         const r = rows[0]
 
         await sendResplandor({ to: r.email, nombre: r.nombre ?? '', code: r.code })
-        res.json({ status: 'ok', message: `Resplandor reenviado a ${r.usuario_email}` })
+        res.json({ status: 'ok', message: `Resplandor reenviado a ${r.email}` })
     } catch (err) { next(err) }
 })
 
@@ -257,6 +259,55 @@ router.post('/mail/resplandor', async (req, res, next) => {
 
         await sendResplandor({ to, nombre: nombre || '', code })
         res.json({ status: 'ok', message: `Resplandor enviado a ${to}` })
+    } catch (err) { next(err) }
+})
+
+// ── WhatsApp desde el bot ──────────────────────────────────
+
+/**
+ * POST /admin/send-wa
+ * Envía un mensaje de WhatsApp desde el número del bot (Baileys).
+ * Body: { numero, mensaje }
+ *   numero:  10 dígitos locales MX (ej: 5577888800)
+ *   mensaje: texto a enviar (soporta formato WA con *bold*, etc.)
+ *
+ * Requiere que el bot esté corriendo y BOT_HTTP_URL esté configurado.
+ * Por defecto apunta a http://127.0.0.1:4001 (bot en la misma máquina).
+ */
+router.post('/send-wa', async (req, res, next) => {
+    try {
+        const { numero, mensaje } = req.body
+
+        if (!numero || !mensaje) {
+            throw new AppError('numero y mensaje son requeridos', 400, 'BAD_REQUEST')
+        }
+
+        // Normalizar a 10 dígitos
+        const numeroLimpio = String(numero).replace(/\D/g, '').slice(-10)
+        if (numeroLimpio.length !== 10) {
+            throw new AppError('El número debe tener 10 dígitos (ej: 5577888800)', 400, 'BAD_REQUEST')
+        }
+
+        // Formato JID de WhatsApp para México: 52XXXXXXXXXX@s.whatsapp.net
+        const jid    = `52${numeroLimpio}@s.whatsapp.net`
+        const botUrl = process.env.BOT_HTTP_URL || 'http://127.0.0.1:4001'
+
+        const botRes = await fetch(`${botUrl}/send`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ jid, mensaje }),
+        })
+
+        if (!botRes.ok) {
+            const errData = await botRes.json().catch(() => ({ error: 'Error desconocido del bot' }))
+            throw new AppError(
+                errData.error || 'No se pudo enviar el mensaje por WhatsApp',
+                502,
+                'BOT_ERROR',
+            )
+        }
+
+        res.json({ status: 'ok', message: `Mensaje enviado a ${numeroLimpio}` })
     } catch (err) { next(err) }
 })
 

@@ -134,6 +134,9 @@ export default function AccesosPanel({ adminToken }) {
     // ── Stats
     const [stats, setStats] = useState(null)
 
+    // ── Envío WA desde el bot
+    const [sendingWA, setSendingWA] = useState(null) // key del botón enviando
+
     // ── Carga inicial
     useEffect(() => {
         fetch('/api/tallers')
@@ -176,8 +179,6 @@ export default function AccesosPanel({ adminToken }) {
             setUsuarioResps(data.resplandores ?? [])
             if (data.usuario) {
                 setUsuario(data.usuario)
-                // 'found'  = cuenta activa (pasó por Resplandor → estado 'activo')
-                // 'espera' = registrado por el bot, aún sin cuenta confirmada (estado 'espera')
                 setUsuarioStatus(data.usuario.estado === 'activo' ? 'found' : 'espera')
             } else {
                 setUsuario(null)
@@ -207,7 +208,7 @@ export default function AccesosPanel({ adminToken }) {
     const respActivo    = usuarioResps.find(r => !r.revoked && !r.used && (!r.expires_at || new Date(r.expires_at) > ahora()))
     const respUsado     = usuarioResps.find(r => r.used)
     const respExpirado  = usuarioResps.find(r => !r.revoked && !r.used && r.expires_at && new Date(r.expires_at) <= ahora())
-    const puedeCrearResp = !respActivo  // puede crear si no hay uno activo pendiente
+    const puedeCrearResp = !respActivo
 
     // ── Acciones: Resplandor
     const crearResplandor = async () => {
@@ -277,6 +278,43 @@ export default function AccesosPanel({ adminToken }) {
         } catch (err) { alert(err.message) }
     }
 
+    // ── Acción: Enviar WA desde el bot ────────────────────────────────────────
+    const sendWA = async (numero, mensaje, key = 'default') => {
+        const numeroLimpio = String(numero ?? '').replace(/\D/g, '').slice(-10)
+        if (!numeroLimpio || numeroLimpio.length < 10) {
+            alert('Este usuario no tiene número de WhatsApp registrado.')
+            return
+        }
+        setSendingWA(key)
+        try {
+            await API('/send-wa', adminToken, {
+                method: 'POST',
+                body: JSON.stringify({ numero: numeroLimpio, mensaje }),
+            })
+            setTimeout(() => setSendingWA(prev => prev === key ? null : prev), 1500)
+        } catch (err) {
+            setSendingWA(null)
+            alert('Error al enviar por WhatsApp: ' + err.message)
+        }
+    }
+
+    // ── Mensajes WA predefinidos
+    const primerNombre = (nombre) => (nombre ?? '').split(' ')[0]
+
+    const waMsgChispa = (code, tallerNombre, vigLabel, nombre) =>
+        `¡Hola ${primerNombre(nombre)}! ⚡\n\n` +
+        `Aquí está tu *Chispa* de acceso:\n\n` +
+        `*${code}*\n\n` +
+        `📚 Taller: ${tallerNombre}\n` +
+        `⏳ Vigencia: ${vigLabel}\n\n` +
+        `Úsala en: https://destello.courses/acceso`
+
+    const waMsgResplandor = (code, nombre) =>
+        `¡Hola ${primerNombre(nombre)}! ☀\n\n` +
+        `Aquí está tu *Resplandor* para crear tu cuenta en Destello:\n\n` +
+        `*${code}*\n\n` +
+        `Úsalo en: https://destello.courses/acceso`
+
     // ── Chispas de este usuario
     const usuarioChispas = allChispas.filter(c =>
         c.usuarioEmail && usuario &&
@@ -290,25 +328,36 @@ export default function AccesosPanel({ adminToken }) {
             .some(v => v?.toLowerCase().includes(q))
     )
     const respsFiltered = allResps.filter(r =>
-        !q || [r.code, r.usuario_nombre, r.usuario_email]
+        !q || [r.code, r.nombre, r.usuario_nombre, r.email]
             .some(v => v?.toLowerCase().includes(q))
     )
 
-    // ── Mensaje WA
+    // ── Datos de WA del usuario activo
+    const waNumber = (usuario?.whatsapp ?? '').replace(/\D/g, '').slice(-10)
     const vigLabel = chispaForm.expiresInDays == null
         ? 'Sin vigencia'
         : VIGENCIA_OPTS.find(o => o.value === chispaForm.expiresInDays)?.label ?? `${chispaForm.expiresInDays} días`
-    const waMsg = lastCode?.tipo === 'chispa' && usuario
-        ? `¡Hola ${(usuario.nombre ?? '').split(' ')[0]}! ⚡\nAquí está tu Chispa de acceso:\n\n*${lastCode.code}*\n\nTaller: ${chispaForm.tallerNombre}\nVigencia: ${vigLabel}\n\nÚsala en: https://destello.courses/acceso`
-        : ''
-    const waNumber = (usuario?.whatsapp ?? '').replace(/\D/g, '').slice(-10)
 
-    // searchActive = cualquier estado que ya tiene resultado
-    const searchActive = usuarioStatus === 'found' || usuarioStatus === 'espera' || usuarioStatus === 'not_found'
-
-    // Helpers semánticos para las cards
+    const searchActive   = usuarioStatus === 'found' || usuarioStatus === 'espera' || usuarioStatus === 'not_found'
     const needsResplandor = usuarioStatus === 'not_found' || usuarioStatus === 'espera'
     const hasFullAccount  = usuarioStatus === 'found'
+
+    // ── Botón WA compacto reutilizable
+    const WaBtnSm = ({ onClick, waKey, disabled }) => (
+        <button
+            onClick={onClick}
+            disabled={disabled || sendingWA === waKey}
+            style={{
+                ...sBtnTiny('#25D366'),
+                opacity: (disabled || sendingWA === waKey) ? 0.6 : 1,
+                cursor:  (disabled || sendingWA === waKey) ? 'not-allowed' : 'pointer',
+            }}
+            title="Enviar por WhatsApp desde el bot"
+        >
+            <WhatsappLogo size={11} weight="fill" />
+            {sendingWA === waKey ? '...' : 'WA'}
+        </button>
+    )
 
     // ─────────────────────────────────────────────────────────────────────────
     return (
@@ -379,7 +428,7 @@ export default function AccesosPanel({ adminToken }) {
                     </div>
                 )}
 
-                {/* Usuario EN ESPERA — registrado por el bot, sin cuenta aún */}
+                {/* Usuario EN ESPERA */}
                 {usuarioStatus === 'espera' && usuario && (
                     <div style={{ ...sStatusBox('#8b5cf6'), marginTop: 10, gap: 10 }}>
                         <Clock size={20} color="#8b5cf6" weight="fill" style={{ flexShrink: 0 }} />
@@ -402,7 +451,7 @@ export default function AccesosPanel({ adminToken }) {
                     </div>
                 )}
 
-                {/* Usuario NO encontrado — sin cuenta */}
+                {/* Usuario NO encontrado */}
                 {usuarioStatus === 'not_found' && (
                     <div style={{ ...sStatusBox('#d97706'), marginTop: 10, gap: 10 }}>
                         <WarningCircle size={20} color="#d97706" weight="fill" style={{ flexShrink: 0 }} />
@@ -425,7 +474,7 @@ export default function AccesosPanel({ adminToken }) {
             {searchActive && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', alignItems: 'start' }}>
 
-                    {/* ── CARD RESPLANDOR (☀ ámbar) ──────────────────────── */}
+                    {/* ── CARD RESPLANDOR ──────────────────────────────── */}
                     <div style={{
                         ...sCard,
                         borderColor: needsResplandor ? '#d9770666' : 'var(--border-default)',
@@ -447,12 +496,11 @@ export default function AccesosPanel({ adminToken }) {
 
                         {needsResplandor && (
                             <>
-                                {/* Historial de resplandores de este correo */}
                                 {usuarioResps.length > 0 && (
                                     <div style={{ marginBottom: 'var(--space-3)' }}>
                                         <p style={{ ...sLabel, marginBottom: 6 }}>Historial</p>
                                         {usuarioResps.map(r => {
-                                            const est = getEstadoResp(r)
+                                            const est    = getEstadoResp(r)
                                             const canAct = est === 'activo' || est === 'expirado'
                                             return (
                                                 <div key={r.code} style={sHistRow}>
@@ -463,6 +511,11 @@ export default function AccesosPanel({ adminToken }) {
                                                             <button onClick={() => reenviarResp(r.code)} disabled={!!creating} style={sBtnTiny('#0D7377')}>
                                                                 <Envelope size={11} /> Reenviar
                                                             </button>
+                                                            <WaBtnSm
+                                                                waKey={`card-resp-${r.code}`}
+                                                                onClick={() => sendWA(waNumber, waMsgResplandor(r.code, usuario?.nombre), `card-resp-${r.code}`)}
+                                                                disabled={!waNumber}
+                                                            />
                                                             <button onClick={() => revocarResp(r.code)} disabled={!!creating} style={sBtnTiny('#ef4444')}>
                                                                 <XCircle size={11} /> Revocar
                                                             </button>
@@ -497,7 +550,7 @@ export default function AccesosPanel({ adminToken }) {
                         )}
                     </div>
 
-                    {/* ── CARD CHISPA (⚡ jade) ──────────────────────────── */}
+                    {/* ── CARD CHISPA ──────────────────────────────────── */}
                     <div style={{
                         ...sCard,
                         borderColor: hasFullAccount ? 'var(--color-jade-500)66' : 'var(--border-default)',
@@ -517,7 +570,6 @@ export default function AccesosPanel({ adminToken }) {
 
                         {hasFullAccount && (
                             <form onSubmit={crearChispa} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                                {/* Taller */}
                                 <div>
                                     <label style={sLabel}>Taller</label>
                                     <select
@@ -537,7 +589,6 @@ export default function AccesosPanel({ adminToken }) {
                                     </select>
                                 </div>
 
-                                {/* Vigencia + Demo */}
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end' }}>
                                     <div>
                                         <label style={sLabel}>Vigencia</label>
@@ -617,22 +668,61 @@ export default function AccesosPanel({ adminToken }) {
                                 </code>
                                 <CopyBtn text={lastCode.code} />
                             </div>
-                            {/* Botón WA solo para Chispa si tiene número */}
-                            {lastCode.tipo === 'chispa' && waNumber.length >= 10 && (
-                                <a
-                                    href={`https://wa.me/52${waNumber}?text=${encodeURIComponent(waMsg)}`}
-                                    target="_blank" rel="noreferrer"
-                                    style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                                        padding: '8px 16px', background: '#25D366',
-                                        borderRadius: 'var(--radius-lg)', color: '#fff',
-                                        fontWeight: 700, fontSize: 13, textDecoration: 'none',
-                                    }}
-                                >
-                                    <WhatsappLogo size={16} weight="fill" />
-                                    Enviar por WhatsApp
-                                </a>
-                            )}
+
+                            {/* Botón WA — envía desde el bot */}
+                            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                                {lastCode.tipo === 'chispa' && waNumber.length >= 10 && (
+                                    <button
+                                        onClick={() => sendWA(
+                                            waNumber,
+                                            waMsgChispa(lastCode.code, chispaForm.tallerNombre, vigLabel, usuario?.nombre),
+                                            'lastChispa'
+                                        )}
+                                        disabled={sendingWA === 'lastChispa'}
+                                        style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                                            padding: '8px 16px',
+                                            background: sendingWA === 'lastChispa' ? '#128C7E' : '#25D366',
+                                            borderRadius: 'var(--radius-lg)', color: '#fff',
+                                            fontWeight: 700, fontSize: 13, border: 'none',
+                                            cursor: sendingWA === 'lastChispa' ? 'not-allowed' : 'pointer',
+                                            transition: 'background 0.2s',
+                                        }}
+                                    >
+                                        <WhatsappLogo size={16} weight="fill" />
+                                        {sendingWA === 'lastChispa' ? 'Enviando...' : 'Enviar por WhatsApp'}
+                                    </button>
+                                )}
+
+                                {lastCode.tipo === 'resplandor' && waNumber.length >= 10 && (
+                                    <button
+                                        onClick={() => sendWA(
+                                            waNumber,
+                                            waMsgResplandor(lastCode.code, usuario?.nombre),
+                                            'lastResp'
+                                        )}
+                                        disabled={sendingWA === 'lastResp'}
+                                        style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                                            padding: '8px 16px',
+                                            background: sendingWA === 'lastResp' ? '#128C7E' : '#25D366',
+                                            borderRadius: 'var(--radius-lg)', color: '#fff',
+                                            fontWeight: 700, fontSize: 13, border: 'none',
+                                            cursor: sendingWA === 'lastResp' ? 'not-allowed' : 'pointer',
+                                            transition: 'background 0.2s',
+                                        }}
+                                    >
+                                        <WhatsappLogo size={16} weight="fill" />
+                                        {sendingWA === 'lastResp' ? 'Enviando...' : 'Enviar por WhatsApp'}
+                                    </button>
+                                )}
+
+                                {!waNumber && (
+                                    <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
+                                        Sin número WA — copia el código manualmente.
+                                    </p>
+                                )}
+                            </div>
                         </>
                     )}
                 </div>
@@ -646,7 +736,6 @@ export default function AccesosPanel({ adminToken }) {
                         Historial — {usuario?.nombre ?? emailInput}
                     </p>
 
-                    {/* Tabs */}
                     <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border-subtle)', marginBottom: 'var(--space-3)' }}>
                         {[
                             { id: 'resplandores', label: `Resplandores (${usuarioResps.length})` },
@@ -662,7 +751,7 @@ export default function AccesosPanel({ adminToken }) {
                         usuarioResps.length === 0
                             ? <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>Sin resplandores.</p>
                             : usuarioResps.map(r => {
-                                const est = getEstadoResp(r)
+                                const est    = getEstadoResp(r)
                                 const canAct = est === 'activo' || est === 'expirado'
                                 return (
                                     <div key={r.code} style={sHistRow}>
@@ -676,6 +765,11 @@ export default function AccesosPanel({ adminToken }) {
                                                 <button onClick={() => reenviarResp(r.code)} disabled={!!creating} style={sBtnTiny('#0D7377')}>
                                                     <Envelope size={11} /> Reenviar
                                                 </button>
+                                                <WaBtnSm
+                                                    waKey={`hist-resp-${r.code}`}
+                                                    onClick={() => sendWA(waNumber, waMsgResplandor(r.code, usuario?.nombre), `hist-resp-${r.code}`)}
+                                                    disabled={!waNumber}
+                                                />
                                                 <button onClick={() => revocarResp(r.code)} disabled={!!creating} style={sBtnTiny('#ef4444')}>
                                                     <XCircle size={11} /> Revocar
                                                 </button>
@@ -702,9 +796,20 @@ export default function AccesosPanel({ adminToken }) {
                                             {c.expiresAt ? `Vence: ${new Date(c.expiresAt).toLocaleDateString('es-MX')}` : 'Sin límite'}
                                         </span>
                                         {est === 'activa' && (
-                                            <button onClick={() => revocarChispa(c.code)} style={sBtnTiny('#ef4444')}>
-                                                <XCircle size={11} /> Revocar
-                                            </button>
+                                            <>
+                                                <WaBtnSm
+                                                    waKey={`hist-chispa-${c.code}`}
+                                                    onClick={() => sendWA(
+                                                        waNumber,
+                                                        waMsgChispa(c.code, c.tallerNombre ?? '—', c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('es-MX') : 'Sin límite', usuario?.nombre),
+                                                        `hist-chispa-${c.code}`
+                                                    )}
+                                                    disabled={!waNumber}
+                                                />
+                                                <button onClick={() => revocarChispa(c.code)} style={sBtnTiny('#ef4444')}>
+                                                    <XCircle size={11} /> Revocar
+                                                </button>
+                                            </>
                                         )}
                                     </div>
                                 )
@@ -715,7 +820,6 @@ export default function AccesosPanel({ adminToken }) {
 
             {/* ══ VISTA GLOBAL ═══════════════════════════════════════════════ */}
             <div style={sCard}>
-                {/* Header con tabs + refresh */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)', flexWrap: 'wrap', gap: 8 }}>
                     <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border-subtle)' }}>
                         {[
@@ -736,7 +840,6 @@ export default function AccesosPanel({ adminToken }) {
                     </button>
                 </div>
 
-                {/* Buscador global */}
                 <div style={{ position: 'relative', marginBottom: 'var(--space-3)' }}>
                     <MagnifyingGlass size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                     <input
@@ -748,7 +851,7 @@ export default function AccesosPanel({ adminToken }) {
                     />
                 </div>
 
-                {/* Tabla global — Chispas */}
+                {/* Tabla — Chispas */}
                 {globalTab === 'chispas' && (
                     <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -764,14 +867,15 @@ export default function AccesosPanel({ adminToken }) {
                                 <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Sin resultados</td></tr>
                             )}
                             {chispasFiltered.map(c => {
-                                const est = getEstadoChispa(c)
+                                const est  = getEstadoChispa(c)
+                                const cWa  = (c.usuarioWa ?? '').replace(/\D/g, '').slice(-10)
                                 return (
                                     <tr key={c.code} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                                         <td style={sTd}>
-                                                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                    <code style={{ fontWeight: 700, color: 'var(--color-jade-500)', fontSize: 12 }}>{c.code}</code>
-                                                    <CopyBtn text={c.code} />
-                                                </span>
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                <code style={{ fontWeight: 700, color: 'var(--color-jade-500)', fontSize: 12 }}>{c.code}</code>
+                                                <CopyBtn text={c.code} />
+                                            </span>
                                         </td>
                                         <td style={sTd}>
                                             <p style={{ margin: 0, fontWeight: 600, fontSize: 12 }}>{c.usuarioNombre ?? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>Sin asignar</span>}</p>
@@ -781,11 +885,23 @@ export default function AccesosPanel({ adminToken }) {
                                         <td style={{ ...sTd, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('es-MX') : 'Sin límite'}</td>
                                         <td style={sTd}><Pill estado={est} /></td>
                                         <td style={sTd}>
-                                            {est === 'activa' && (
-                                                <button onClick={() => revocarChispa(c.code)} style={sBtnTiny('#ef4444')}>
-                                                    <XCircle size={11} /> Revocar
-                                                </button>
-                                            )}
+                                            <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                                {est === 'activa' && cWa.length >= 10 && (
+                                                    <WaBtnSm
+                                                        waKey={`global-chispa-${c.code}`}
+                                                        onClick={() => sendWA(
+                                                            cWa,
+                                                            waMsgChispa(c.code, c.tallerNombre ?? '—', c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('es-MX') : 'Sin límite', c.usuarioNombre),
+                                                            `global-chispa-${c.code}`
+                                                        )}
+                                                    />
+                                                )}
+                                                {est === 'activa' && (
+                                                    <button onClick={() => revocarChispa(c.code)} style={sBtnTiny('#ef4444')}>
+                                                        <XCircle size={11} /> Revocar
+                                                    </button>
+                                                )}
+                                            </span>
                                         </td>
                                     </tr>
                                 )
@@ -795,7 +911,7 @@ export default function AccesosPanel({ adminToken }) {
                     </div>
                 )}
 
-                {/* Tabla global — Resplandores */}
+                {/* Tabla — Resplandores */}
                 {globalTab === 'resplandores' && (
                     loadingResps
                         ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Cargando...</p>
@@ -814,15 +930,16 @@ export default function AccesosPanel({ adminToken }) {
                                         <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Sin resultados</td></tr>
                                     )}
                                     {respsFiltered.map(r => {
-                                        const est = getEstadoResp(r)
+                                        const est    = getEstadoResp(r)
                                         const canAct = est === 'activo' || est === 'expirado'
+                                        const rWa    = (r.usuario_whatsapp ?? '').replace(/\D/g, '').slice(-10)
                                         return (
                                             <tr key={r.code} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                                                 <td style={sTd}>
-                                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                            <code style={{ fontWeight: 700, color: '#d97706', fontSize: 12 }}>{r.code}</code>
-                                                            <CopyBtn text={r.code} />
-                                                        </span>
+                                                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                        <code style={{ fontWeight: 700, color: '#d97706', fontSize: 12 }}>{r.code}</code>
+                                                        <CopyBtn text={r.code} />
+                                                    </span>
                                                 </td>
                                                 <td style={{ ...sTd, fontWeight: 600, fontSize: 12 }}>{r.nombre ?? r.usuario_nombre ?? '—'}</td>
                                                 <td style={{ ...sTd, color: 'var(--text-muted)', fontSize: 12 }}>{r.email}</td>
@@ -831,13 +948,23 @@ export default function AccesosPanel({ adminToken }) {
                                                 <td style={sTd}>
                                                     {canAct && (
                                                         <span style={{ display: 'flex', gap: 4 }}>
-                                                                <button onClick={() => reenviarResp(r.code)} style={sBtnTiny('#0D7377')}>
-                                                                    <Envelope size={11} /> Reenviar
-                                                                </button>
-                                                                <button onClick={() => revocarResp(r.code)} style={sBtnTiny('#ef4444')}>
-                                                                    <XCircle size={11} /> Revocar
-                                                                </button>
-                                                            </span>
+                                                            <button onClick={() => reenviarResp(r.code)} style={sBtnTiny('#0D7377')}>
+                                                                <Envelope size={11} /> Reenviar
+                                                            </button>
+                                                            {rWa.length >= 10 && (
+                                                                <WaBtnSm
+                                                                    waKey={`global-resp-${r.code}`}
+                                                                    onClick={() => sendWA(
+                                                                        rWa,
+                                                                        waMsgResplandor(r.code, r.nombre ?? r.usuario_nombre),
+                                                                        `global-resp-${r.code}`
+                                                                    )}
+                                                                />
+                                                            )}
+                                                            <button onClick={() => revocarResp(r.code)} style={sBtnTiny('#ef4444')}>
+                                                                <XCircle size={11} /> Revocar
+                                                            </button>
+                                                        </span>
                                                     )}
                                                 </td>
                                             </tr>
