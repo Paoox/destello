@@ -72,7 +72,7 @@ const httpServer = http.createServer(async (req, res) => {
     res.end('Not found')
 })
 
-httpServer.listen(BOT_HTTP_PORT, '127.0.0.1', () => {
+httpServer.listen(BOT_HTTP_PORT, '0.0.0.0', () => {
     console.log(`✦ Bot HTTP API escuchando en puerto ${BOT_HTTP_PORT}`)
 })
 
