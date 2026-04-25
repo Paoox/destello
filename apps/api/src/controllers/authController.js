@@ -16,10 +16,47 @@ function signToken(payload) {
   })
 }
 
-// POST /auth/login — login con chispa (usuario con cuenta y taller activo)
+/**
+ * POST /auth/login
+ * Maneja dos flujos según el body que llega:
+ *   - { email, password }  → login con credenciales de cuenta (usuario registrado)
+ *   - { code }             → login con Chispa (acceso directo a taller)
+ */
 export async function loginWithCode(req, res, next) {
   try {
-    const { code } = req.body
+    const { email, password, code } = req.body
+
+    // ── Flujo A: email + contraseña ───────────────────────────────────────────
+    if (email && password) {
+      const { rows } = await query(
+          `SELECT * FROM usuarios WHERE email = $1 AND estado = 'activo'`,
+          [email.toLowerCase().trim()]
+      )
+      const usuario = rows[0]
+
+      if (!usuario || !usuario.password) {
+        throw new AppError('Correo o contraseña incorrectos', 401, 'INVALID_CREDENTIALS')
+      }
+
+      const match = await bcrypt.compare(password, usuario.password)
+      if (!match) {
+        throw new AppError('Correo o contraseña incorrectos', 401, 'INVALID_CREDENTIALS')
+      }
+
+      const token = signToken({ userId: usuario.id, role: 'alumno' })
+      return res.json({
+        status: 'ok',
+        token,
+        user: {
+          id:     usuario.id,
+          email:  usuario.email,
+          nombre: usuario.nombre,
+          role:   'alumno',
+        },
+      })
+    }
+
+    // ── Flujo B: Chispa ───────────────────────────────────────────────────────
     if (!code) throw new AppError('Código de acceso requerido', 400, 'BAD_REQUEST')
 
     const result = await validateChispa(code)
@@ -102,8 +139,8 @@ export async function registerUser(req, res, next) {
     const hash = await bcrypt.hash(password, 12)
     const { rows } = await query(
         `INSERT INTO usuarios (email, nombre, password, estado)
-       VALUES ($1, $2, $3, 'activo')
-       RETURNING id, email, nombre, estado, created_at`,
+         VALUES ($1, $2, $3, 'activo')
+           RETURNING id, email, nombre, estado, created_at`,
         [email.toLowerCase().trim(), nombre?.trim() || null, hash]
     )
     const user = rows[0]
