@@ -391,6 +391,29 @@ export default function PageLanding() {
                             <ArrowRight size={18} />
                         </button>
 
+                        {/* Link para usuarios con cuenta */}
+                        <p style={{
+                            marginTop: 'var(--space-4)',
+                            textAlign: 'center',
+                            fontSize: 'var(--text-sm)',
+                            color: 'var(--text-muted)',
+                        }}>
+                            ¿Ya tienes cuenta?{' '}
+                            <button
+                                onClick={() => navigate('/login')}
+                                style={{
+                                    background: 'none', border: 'none',
+                                    color: 'var(--color-jade-500)',
+                                    fontFamily: 'var(--font-sans)',
+                                    fontWeight: 600, fontSize: 'var(--text-m)',
+                                    cursor: 'pointer', padding: 0,
+                                    textDecoration: 'underline',
+                                    textUnderlineOffset: 3,
+                                }}
+                            >
+                                Iniciar sesión
+                            </button>
+                        </p>
                     </div>
                 </div>
             </section>
