@@ -25,15 +25,42 @@ export const useAuthStore = create((set, get) => ({
       if (!res.ok) throw new Error('Credenciales incorrectas')
       const data = await res.json()
       set({ user: data.user, token: data.token, isLoading: false })
-      // Guardar token en sessionStorage (NO localStorage por seguridad)
       sessionStorage.setItem('destello_token', data.token)
     } catch (err) {
       set({ error: err.message, isLoading: false })
     }
   },
 
+  /**
+   * Crea cuenta nueva usando un Resplandor.
+   * @param {{ email: string, password: string, nombre?: string, resplandorCode: string }} opts
+   * @returns {{ ok: boolean, error?: string }}
+   */
+  register: async ({ email, password, nombre, resplandorCode }) => {
+    set({ isLoading: true, error: null })
+    try {
+      const res = await fetch('/api/auth/register', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email, password, nombre, resplandorCode }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Error al crear cuenta')
+
+      set({ user: data.user, token: data.token, isLoading: false })
+      sessionStorage.setItem('destello_token', data.token)
+      // Limpiar el resplandor del sessionStorage — ya fue consumido
+      sessionStorage.removeItem('destello_resplandor')
+      return { ok: true }
+    } catch (err) {
+      set({ error: err.message, isLoading: false })
+      return { ok: false, error: err.message }
+    }
+  },
+
   logout: () => {
     sessionStorage.removeItem('destello_token')
+    sessionStorage.removeItem('destello_resplandor')
     set({ user: null, token: null, error: null })
   },
 

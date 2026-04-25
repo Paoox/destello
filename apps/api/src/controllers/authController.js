@@ -1,11 +1,14 @@
 /**
  * Destello API — Auth Controller
- * Login de usuario con chispa, OAuth, refresh y logout.
+ * Login de usuario con chispa, registro con resplandor, OAuth, refresh y logout.
  * Resplandores (validar/consumir) → resplandorController.js
  */
 import jwt      from 'jsonwebtoken'
-import { AppError }       from '../middleware/errorHandler.js'
-import { validateChispa } from '../services/chispaService.js'
+import bcrypt   from 'bcryptjs'
+import { AppError }           from '../middleware/errorHandler.js'
+import { validateChispa }     from '../services/chispaService.js'
+import * as resplandorService from '../services/resplandorService.js'
+import { query }              from '../db/db.js'
 
 function signToken(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, {
@@ -39,6 +42,88 @@ export async function loginWithCode(req, res, next) {
     const token = signToken({ userId: user.id, role: user.role, tallerId: user.tallerId })
 
     res.json({ status: 'ok', token, user })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
+ * POST /auth/register
+ * Crea una cuenta nueva usando un Resplandor válido.
+ * Body: { email, password, nombre, resplandorCode }
+ * Flujo:
+ *   1. Valida que el resplandor sea válido y no esté usado
+ *   2. Verifica que el email no tenga cuenta previa
+ *   3. Crea el usuario con contraseña hasheada
+ *   4. Consume el resplandor (lo marca como used = true)
+ *   5. Devuelve JWT + datos del usuario
+ */
+export async function registerUser(req, res, next) {
+  try {
+    const { email, password, nombre, resplandorCode } = req.body
+
+    if (!email || !password || !resplandorCode) {
+      throw new AppError('email, password y resplandorCode son requeridos', 400, 'BAD_REQUEST')
+    }
+    if (password.length < 8) {
+      throw new AppError('La contraseña debe tener al menos 8 caracteres', 400, 'BAD_REQUEST')
+    }
+
+    // 1. Validar resplandor
+    const validation = await resplandorService.validateResplandor(resplandorCode)
+    if (!validation.valid) {
+      const messages = {
+        INVALID_CODE: 'Resplandor no reconocido',
+        REVOKED:      'Este resplandor ha sido revocado',
+        ALREADY_USED: 'Este resplandor ya fue utilizado — si ya tienes cuenta, inicia sesión',
+        EXPIRED:      'Este resplandor ha expirado',
+      }
+      throw new AppError(
+          messages[validation.reason] ?? 'Resplandor inválido',
+          401,
+          validation.reason,
+      )
+    }
+
+    // 2. Verificar que no exista cuenta con ese email
+    const { rows: existing } = await query(
+        `SELECT id FROM usuarios WHERE email = $1`,
+        [email.toLowerCase().trim()]
+    )
+    if (existing.length > 0) {
+      throw new AppError(
+          'Ya existe una cuenta con ese correo. Inicia sesión.',
+          409,
+          'EMAIL_ALREADY_EXISTS',
+      )
+    }
+
+    // 3. Crear usuario con contraseña hasheada
+    const hash = await bcrypt.hash(password, 12)
+    const { rows } = await query(
+        `INSERT INTO usuarios (email, nombre, password, estado)
+       VALUES ($1, $2, $3, 'activo')
+       RETURNING id, email, nombre, estado, created_at`,
+        [email.toLowerCase().trim(), nombre?.trim() || null, hash]
+    )
+    const user = rows[0]
+
+    // 4. Consumir resplandor
+    await resplandorService.consumeResplandor(resplandorCode, user.email)
+
+    // 5. Emitir JWT
+    const token = signToken({ userId: user.id, role: 'alumno' })
+
+    res.status(201).json({
+      status: 'ok',
+      token,
+      user: {
+        id:     user.id,
+        email:  user.email,
+        nombre: user.nombre,
+        role:   'alumno',
+      },
+    })
   } catch (err) {
     next(err)
   }

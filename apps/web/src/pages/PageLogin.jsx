@@ -1,10 +1,13 @@
 /**
  * Destello — PageLogin
  * Inicio de sesión / registro con OAuth + email+contraseña.
- * La chispa ya fue validada en PageAcceso antes de llegar aquí.
+ *
+ * Si viene de /acceso (resplandor válido), location.state trae { email, nombre }
+ * y sessionStorage guarda 'destello_resplandor' con el código.
+ * En ese caso se abre automáticamente en modo registro con el email pre-llenado.
  */
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { Eye, EyeSlash, ArrowRight } from '@phosphor-icons/react'
 import { useAuthStore } from '@store/useAuthStore.js'
 import logoLight from '../Images/destello-logo-512.png'
@@ -93,7 +96,7 @@ function Divider({ label = 'o continúa con email' }) {
 }
 
 // ── Input con label ───────────────────────────────────────────────────────────
-function Field({ label, type = 'text', placeholder, value, onChange, right }) {
+function Field({ label, type = 'text', placeholder, value, onChange, right, readOnly }) {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <label style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontWeight: 500 }}>
@@ -105,17 +108,20 @@ function Field({ label, type = 'text', placeholder, value, onChange, right }) {
                     placeholder={placeholder}
                     value={value}
                     onChange={onChange}
+                    readOnly={readOnly}
                     style={{
                         width:        '100%',
                         padding:      right ? 'var(--space-3) 44px var(--space-3) var(--space-3)' : 'var(--space-3)',
-                        background:   'var(--bg-surface)',
+                        background:   readOnly ? 'var(--bg-dark)' : 'var(--bg-surface)',
                         border:       '1px solid var(--border-default)',
                         borderRadius: 'var(--radius-lg)',
-                        color:        'var(--text-primary)',
+                        color:        readOnly ? 'var(--text-muted)' : 'var(--text-primary)',
                         fontSize:     'var(--text-sm)',
                         fontFamily:   'var(--font-sans)',
                         outline:      'none',
                         boxSizing:    'border-box',
+                        opacity:      readOnly ? 0.7 : 1,
+                        cursor:       readOnly ? 'default' : 'text',
                     }}
                 />
                 {right && (
@@ -136,19 +142,34 @@ function Field({ label, type = 'text', placeholder, value, onChange, right }) {
 // ── Página principal ──────────────────────────────────────────────────────────
 export default function PageLogin() {
     const navigate = useNavigate()
-    const { login, isLoading, error } = useAuthStore()
+    const location = useLocation()
+    const { login, register, isLoading, error } = useAuthStore()
 
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     const logo = prefersDark ? logoDark : logoLight
 
+    // Detectar si venimos de /acceso con resplandor validado
+    const resplandorEmail  = location.state?.email  || ''
+    const resplandorNombre = location.state?.nombre || ''
+    const resplandorCode   = sessionStorage.getItem('destello_resplandor') || ''
+    const vieneDeAcceso    = !!resplandorCode
+
     // 'login' | 'register'
-    const [mode,            setMode]            = useState('login')
-    const [email,           setEmail]           = useState('')
+    const [mode,            setMode]            = useState(vieneDeAcceso ? 'register' : 'login')
+    const [email,           setEmail]           = useState(resplandorEmail)
+    const [nombre,          setNombre]          = useState(resplandorNombre)
     const [password,        setPassword]        = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [showPass,        setShowPass]        = useState(false)
     const [showConfirm,     setShowConfirm]     = useState(false)
     const [localError,      setLocalError]      = useState(null)
+
+    // Si llega con resplandor después del primer render
+    useEffect(() => {
+        if (vieneDeAcceso) setMode('register')
+        if (resplandorEmail) setEmail(resplandorEmail)
+        if (resplandorNombre) setNombre(resplandorNombre)
+    }, [vieneDeAcceso, resplandorEmail, resplandorNombre])
 
     const handleOAuth = (provider) => {
         window.location.href = `/api/auth/${provider}`
@@ -159,6 +180,10 @@ export default function PageLogin() {
         setLocalError(null)
 
         if (mode === 'register') {
+            if (!nombre.trim()) {
+                setLocalError('Por favor ingresa tu nombre.')
+                return
+            }
             if (password !== confirmPassword) {
                 setLocalError('Las contraseñas no coinciden.')
                 return
@@ -167,8 +192,23 @@ export default function PageLogin() {
                 setLocalError('La contraseña debe tener al menos 8 caracteres.')
                 return
             }
-            // TODO: llamar endpoint de registro cuando esté listo
-            setLocalError('Registro con email próximamente.')
+            if (!resplandorCode) {
+                setLocalError('No se encontró tu código Resplandor. Regresa a /acceso e ingrésalo de nuevo.')
+                return
+            }
+
+            const result = await register({
+                email:          email.trim(),
+                password,
+                nombre:         nombre.trim(),
+                resplandorCode,
+            })
+
+            if (result.ok) {
+                navigate('/home')
+            } else {
+                setLocalError(result.error || 'Error al crear cuenta. Intenta de nuevo.')
+            }
             return
         }
 
@@ -274,17 +314,48 @@ export default function PageLogin() {
                         ))}
                     </div>
 
-                    {/* OAuth */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                        <OAuthButton icon={IconGoogle}    label="Continuar con Google"    onClick={() => handleOAuth('google')} />
-                        <OAuthButton icon={IconFacebook}  label="Continuar con Facebook"  onClick={() => handleOAuth('facebook')} />
-                        <OAuthButton icon={IconInstagram} label="Continuar con Instagram" onClick={() => handleOAuth('instagram')} />
-                    </div>
+                    {/* Banner de bienvenida si viene de resplandor */}
+                    {vieneDeAcceso && mode === 'register' && (
+                        <div style={{
+                            background:   'rgba(13,115,119,0.08)',
+                            border:       '1px solid rgba(13,115,119,0.25)',
+                            borderRadius: 'var(--radius-lg)',
+                            padding:      'var(--space-3)',
+                            marginBottom: 'var(--space-4)',
+                            fontSize:     'var(--text-xs)',
+                            color:        'var(--text-muted)',
+                            textAlign:    'center',
+                            lineHeight:   1.5,
+                        }}>
+                            ✨ Resplandor válido. Completa tu registro para acceder.
+                        </div>
+                    )}
 
-                    <Divider />
+                    {/* OAuth — solo en modo login */}
+                    {mode === 'login' && (
+                        <>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                                <OAuthButton icon={IconGoogle}    label="Continuar con Google"    onClick={() => handleOAuth('google')} />
+                                <OAuthButton icon={IconFacebook}  label="Continuar con Facebook"  onClick={() => handleOAuth('facebook')} />
+                                <OAuthButton icon={IconInstagram} label="Continuar con Instagram" onClick={() => handleOAuth('instagram')} />
+                            </div>
+                            <Divider />
+                        </>
+                    )}
 
                     {/* Formulario email + contraseña */}
                     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+
+                        {/* Nombre — solo en registro */}
+                        {mode === 'register' && (
+                            <Field
+                                label="Nombre"
+                                type="text"
+                                placeholder="Tu nombre"
+                                value={nombre}
+                                onChange={e => setNombre(e.target.value)}
+                            />
+                        )}
 
                         <Field
                             label="Correo electrónico"
@@ -292,6 +363,8 @@ export default function PageLogin() {
                             placeholder="tu@email.com"
                             value={email}
                             onChange={e => setEmail(e.target.value)}
+                            // Si viene con resplandor el email ya está vinculado, no se puede cambiar
+                            readOnly={vieneDeAcceso && mode === 'register' && !!resplandorEmail}
                         />
 
                         <Field
@@ -370,7 +443,9 @@ export default function PageLogin() {
                                 transition:     'background 0.2s',
                             }}
                         >
-                            {isLoading ? 'Un momento...' : mode === 'login' ? 'Entrar' : 'Crear cuenta'}
+                            {isLoading
+                                ? 'Un momento...'
+                                : mode === 'login' ? 'Entrar' : 'Crear mi cuenta'}
                             {!isLoading && <ArrowRight size={16} />}
                         </button>
                     </form>
