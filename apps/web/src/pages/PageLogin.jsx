@@ -363,8 +363,8 @@ export default function PageLogin() {
                             placeholder="tu@email.com"
                             value={email}
                             onChange={e => setEmail(e.target.value)}
-                            // Si viene con resplandor el email ya está vinculado, no se puede cambiar
-                            readOnly={vieneDeAcceso && mode === 'register' && !!resplandorEmail}
+                            // Si viene con resplandor el email ya está vinculado, no se puede cambiar (ni en login ni en registro)
+                            readOnly={vieneDeAcceso && !!resplandorEmail}
                         />
 
                         <Field
