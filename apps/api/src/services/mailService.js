@@ -127,7 +127,7 @@ function templateBase(content) {
 // ── Template: Resplandor ──────────────────────────────────────────────────────
 
 function templateResplandor({ nombre, code }) {
-    const nombreCorto = nombre?.split(' ')[0] || 'viajero'
+    const nombreCorto = nombre?.trim().split(' ')[0] || 'bienvenido/a'
 
     return templateBase(`
     <div class="header">
