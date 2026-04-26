@@ -198,7 +198,7 @@ router.post('/resplandores/:code/reenviar', async (req, res, next) => {
     try {
         const { rows } = await query(
             `SELECT r.*, u.nombre FROM resplandores r
-                                           JOIN usuarios u ON u.email = r.email
+                                           LEFT JOIN usuarios u ON u.email = r.email
              WHERE r.code = $1`,
             [req.params.code]
         )
