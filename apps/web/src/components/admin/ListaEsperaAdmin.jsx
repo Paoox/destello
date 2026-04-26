@@ -36,7 +36,8 @@ function EstadoSelect({ value, onChange, disabled }) {
     )
 }
 
-function buildWaUrl(r) {
+/** Construye el texto del mensaje WA (sin URL, solo el texto plano) */
+function buildWaMensaje(r) {
     const nombre  = r.nombre?.split(' ')[0] || 'alumno/a'
     const taller  = r.taller_nombre || 'el taller'
     const precio  = r.taller_precio && Number(r.taller_precio) > 0
@@ -47,7 +48,7 @@ function buildWaUrl(r) {
         : null
     const horario = r.taller_horario || null
 
-    const lines = [
+    return [
         `¡Hola ${nombre}! ✦`,
         '',
         `¡Alcanzaste un lugar en Destello! 🎉`,
@@ -71,10 +72,7 @@ function buildWaUrl(r) {
         'Una vez realizado tu pago, envíanos tu *comprobante por WhatsApp* a este mismo número. ✦',
         '',
         '¿Tienes dudas? Con gusto te atendemos. 😊',
-    ].filter(l => l !== null)
-
-    const numero = String(r.whatsapp || '').replace(/@.*$/, '').replace(/\D/g, '').slice(-10)
-    return `https://wa.me/52${numero}?text=${encodeURIComponent(lines.join('\n'))}`
+    ].filter(l => l !== null).join('\n')
 }
 
 export default function ListaEsperaAdmin({ adminToken }) {
@@ -82,6 +80,7 @@ export default function ListaEsperaAdmin({ adminToken }) {
     const [loading,      setLoading]      = useState(false)
     const [updating,     setUpdating]     = useState(null)
     const [enviandoMail, setEnviandoMail] = useState(null)
+    const [enviandoWa,   setEnviandoWa]   = useState(null)
     const [toast,        setToast]        = useState(null)
     const [filterEstado, setFilterEstado] = useState('all')
 
@@ -130,12 +129,37 @@ export default function ListaEsperaAdmin({ adminToken }) {
             const data = await res.json()
             if (res.ok) {
                 showToast(data.enviado ? `Correo enviado a ${r.email} ✓` : 'Lugar confirmado (sin correo)')
-                setLista(prev => prev.map(x => x.id === r.id ? { ...x, estado: 'confirmado' } : x))
+                setLista(prev => prev.map(x => x.id === r.id ? { ...x, estado: 'cupo_confirmado' } : x))
             } else {
                 showToast(data.message || 'Error al enviar correo', false)
             }
         } catch { showToast('Error de conexión', false) }
         finally { setEnviandoMail(null) }
+    }
+
+    const enviarWa = async (r) => {
+        const numero = String(r.whatsapp || '').replace(/\D/g, '').slice(-10)
+        if (!numero || numero.length !== 10) {
+            showToast('Número de WhatsApp inválido', false)
+            return
+        }
+        if (!confirm(`¿Enviar mensaje de confirmación por WhatsApp a ${r.nombre || r.email}?\n\nSe enviará desde el número del bot Faro.`)) return
+
+        setEnviandoWa(r.id)
+        try {
+            const mensaje = buildWaMensaje(r)
+            const res     = await fetch('/api/admin/send-wa', {
+                method: 'POST', headers,
+                body:   JSON.stringify({ numero, mensaje }),
+            })
+            const data = await res.json()
+            if (res.ok) {
+                showToast(`Mensaje WA enviado a ${r.nombre || numero} ✓`)
+            } else {
+                showToast(data.message || 'Error al enviar WA', false)
+            }
+        } catch { showToast('Error de conexión', false) }
+        finally { setEnviandoWa(null) }
     }
 
     const filtered = lista.filter(r => filterEstado === 'all' || r.estado === filterEstado)
@@ -175,7 +199,7 @@ export default function ListaEsperaAdmin({ adminToken }) {
                 }}>
                     <h3 style={{ fontWeight: 700, margin: 0 }}>⏳ Lista de espera ({filtered.length})</h3>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
-                        {['all', 'pendiente', 'confirmado', 'rechazado'].map(f => (
+                        {['all', 'pendiente', 'cupo_confirmado', 'pagado', 'rechazado'].map(f => (
                             <button key={f} onClick={() => setFilterEstado(f)} style={{
                                 padding: '4px 12px', borderRadius: 999, border: '1px solid',
                                 borderColor: filterEstado === f ? 'var(--color-jade-500)' : 'var(--border-default)',
@@ -184,7 +208,7 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                 fontSize: 'var(--text-xs)', fontWeight: filterEstado === f ? 600 : 400,
                                 cursor: 'pointer', fontFamily: 'var(--font-sans)',
                             }}>
-                                {{ all: 'Todos', pendiente: 'Pendientes', confirmado: 'Confirmados', rechazado: 'Rechazados' }[f]}
+                                {{ all: 'Todos', pendiente: 'Pendientes', cupo_confirmado: 'Confirmados', pagado: 'Pagados', rechazado: 'Rechazados' }[f]}
                             </button>
                         ))}
                         <button onClick={fetchLista} disabled={loading} style={{
@@ -247,19 +271,24 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                 </td>
                                 <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
                                     <div style={{ display: 'flex', gap: 6 }}>
-                                        {/* WA — mensaje pre-llenado con detalles del taller */}
+                                        {/* WA — envía directo desde el bot Faro */}
                                         {r.whatsapp && (
-                                            <a href={buildWaUrl(r)} target="_blank" rel="noreferrer"
-                                               title="Enviar confirmación por WhatsApp"
-                                               style={{
-                                                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                   width: 28, height: 28,
-                                                   background: '#25D36622', border: '1px solid #25D366',
-                                                   borderRadius: 'var(--radius-md)',
-                                                   color: '#25D366', textDecoration: 'none',
-                                               }}>
+                                            <button
+                                                onClick={() => enviarWa(r)}
+                                                disabled={enviandoWa === r.id}
+                                                title="Enviar confirmación por WhatsApp (bot Faro)"
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    width: 28, height: 28,
+                                                    background: enviandoWa === r.id ? 'transparent' : '#25D36622',
+                                                    border: '1px solid #25D366',
+                                                    borderRadius: 'var(--radius-md)',
+                                                    color: enviandoWa === r.id ? 'var(--text-muted)' : '#25D366',
+                                                    cursor: enviandoWa === r.id ? 'wait' : 'pointer',
+                                                    fontFamily: 'var(--font-sans)',
+                                                }}>
                                                 <WhatsappLogo size={14} weight="fill" />
-                                            </a>
+                                            </button>
                                         )}
                                         {/* Correo — envía via Resend con template completo */}
                                         {r.email && (
