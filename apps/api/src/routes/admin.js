@@ -116,7 +116,7 @@ router.post('/lista-espera/:id/confirmar-lugar', async (req, res, next) => {
         // Obtener el registro con info del taller
         const { rows } = await query(
             `SELECT le.*, t.nombre AS taller_nombre, t.descripcion AS taller_descripcion,
-                    t.fecha_inicio AS taller_fecha,, t.horario AS taller_horario,
+                    t.fecha_inicio AS taller_fecha, t.horario AS taller_horario,
                     t.precio AS taller_precio
              FROM lista_espera le
                       LEFT JOIN talleres t ON t.id = le.taller_id
