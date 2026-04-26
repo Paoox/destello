@@ -458,9 +458,9 @@ export default function ListaEsperaPanel({ adminToken }) {
                                     <td style={{ padding: 'var(--space-3) var(--space-4)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                                         {r.whatsapp
                                             ? (() => {
-                                                // Limpiar formato JID de Baileys (@lid, @s.whatsapp.net)
-                                                const clean = r.whatsapp.replace(/@.*$/, '').replace(/\D/g, '')
-                                                return <a href={`https://wa.me/${clean}`} target="_blank" rel="noreferrer" style={{ color: '#25D366' }}>+{clean}</a>
+                                                // Limpiar formato JID de Baileys (@lid, @s.whatsapp.net) → solo dígitos
+                                                const clean = String(r.whatsapp).replace(/@.*$/, '').replace(/\D/g, '')
+                                                return <span>+{clean.slice(-10)}</span>
                                             })()
                                             : <span>—</span>
                                         }

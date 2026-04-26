@@ -25,7 +25,7 @@ import * as chispaCtrl       from '../controllers/chispasController.js'
 import { listTodosLosTalleres, crearTaller, actualizarTaller, getTallerById } from '../services/tallerService.js'
 import { AppError }          from '../middleware/errorHandler.js'
 import { query }             from '../db/db.js'
-import { sendConfirmacionTaller, sendResplandor } from '../services/mailService.js'
+import { sendConfirmacionTaller, sendConfirmacionLugar, sendResplandor } from '../services/mailService.js'
 import crypto                from 'node:crypto'
 
 const router = Router()
@@ -96,12 +96,142 @@ router.patch('/lista-espera/:id', async (req, res, next) => {
     } catch (err) { next(err) }
 })
 
+/**
+ * POST /admin/lista-espera/:id/confirmar-lugar
+ * Confirma el lugar → cambia estado a 'confirmado' y envía correo con
+ * detalles del taller + métodos de pago (sin chispa aún).
+ */
+router.post('/lista-espera/:id/confirmar-lugar', async (req, res, next) => {
+    try {
+        // Obtener el registro con info del taller
+        const { rows } = await query(
+            `SELECT le.*, t.nombre AS taller_nombre, t.descripcion AS taller_descripcion,
+                    t.fecha_disponible AS taller_fecha, t.horario AS taller_horario,
+                    t.precio AS taller_precio
+             FROM lista_espera le
+                      LEFT JOIN talleres t ON t.id = le.taller_id
+             WHERE le.id = $1`,
+            [req.params.id]
+        )
+        if (!rows.length) throw new AppError('Registro no encontrado', 404, 'NOT_FOUND')
+        const reg = rows[0]
+
+        // Actualizar estado a confirmado
+        await query(
+            `UPDATE lista_espera SET estado = 'confirmado' WHERE id = $1`,
+            [req.params.id]
+        )
+
+        // Enviar correo de confirmación de lugar (sin chispa)
+        const taller = {
+            nombre:           reg.taller_nombre      ?? reg.taller_id,
+            descripcion:      reg.taller_descripcion ?? null,
+            fecha_disponible: reg.taller_fecha       ?? null,
+            horario:          reg.taller_horario     ?? null,
+            precio:           reg.taller_precio      ?? 0,
+        }
+
+        let enviado = false
+        try {
+            await sendConfirmacionLugar({ to: reg.email, nombre: reg.nombre ?? '', taller })
+            enviado = true
+        } catch (mailErr) {
+            console.error('[mail] Error al enviar confirmación de lugar:', mailErr.message)
+        }
+
+        res.json({ status: 'ok', mensaje: 'Lugar confirmado', enviado })
+    } catch (err) { next(err) }
+})
+
+/**
+ * POST /admin/lista-espera/:id/confirmar
+ * Genera resplandor o chispa y envía el código por correo.
+ * Body: { tipo: 'resplandor' | 'chispa', expiresInDays?: number }
+ */
+router.post('/lista-espera/:id/confirmar', async (req, res, next) => {
+    try {
+        const { tipo = 'resplandor', expiresInDays = 30 } = req.body
+
+        // Obtener el registro con info del taller
+        const { rows } = await query(
+            `SELECT le.*, t.nombre AS taller_nombre, t.descripcion AS taller_descripcion,
+                    t.fecha_disponible AS taller_fecha, t.horario AS taller_horario,
+                    t.precio AS taller_precio
+             FROM lista_espera le
+                      LEFT JOIN talleres t ON t.id = le.taller_id
+             WHERE le.id = $1`,
+            [req.params.id]
+        )
+        if (!rows.length) throw new AppError('Registro no encontrado', 404, 'NOT_FOUND')
+        const reg = rows[0]
+
+        const taller = {
+            id:               reg.taller_id,
+            nombre:           reg.taller_nombre      ?? reg.taller_id,
+            descripcion:      reg.taller_descripcion ?? null,
+            fecha_disponible: reg.taller_fecha       ?? null,
+            horario:          reg.taller_horario     ?? null,
+            precio:           reg.taller_precio      ?? 0,
+        }
+
+        const seg = () => crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 4)
+
+        if (tipo === 'chispa') {
+            // Generar chispa
+            const code      = `DEST-${seg()}-${seg()}`
+            const expiresAt = expiresInDays
+                ? new Date(Date.now() + expiresInDays * 86400000)
+                : null
+
+            await query(
+                `INSERT INTO chispas
+                    (code, taller_id, expires_at, usuario_nombre, usuario_email, usuario_wa)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [code, reg.taller_id, expiresAt, reg.nombre, reg.email, reg.whatsapp]
+            )
+
+            // Enviar correo con chispa
+            try {
+                await sendConfirmacionTaller({ to: reg.email, nombre: reg.nombre ?? '', taller, chispaCode: code })
+            } catch (mailErr) {
+                console.error('[mail] Error al enviar chispa:', mailErr.message)
+            }
+
+            return res.status(201).json({ status: 'ok', chispa: { code } })
+        }
+
+        // Generar resplandor
+        const { rows: existentes } = await query(
+            `SELECT * FROM resplandores WHERE email = $1 AND revoked = FALSE AND used = FALSE`,
+            [reg.email]
+        )
+        if (existentes.length > 0) {
+            throw new AppError('El usuario ya tiene un resplandor activo.', 409, 'CONFLICT')
+        }
+
+        const code = `RES-${seg()}-${seg()}`
+        await query(
+            `INSERT INTO resplandores (code, email, created_at) VALUES ($1, $2, NOW())`,
+            [code, reg.email]
+        )
+
+        // Enviar correo con resplandor
+        try {
+            await sendResplandor({ to: reg.email, nombre: reg.nombre ?? '', code })
+        } catch (mailErr) {
+            console.error('[mail] Error al enviar resplandor:', mailErr.message)
+        }
+
+        res.status(201).json({ status: 'ok', resplandor: { code } })
+    } catch (err) { next(err) }
+})
+
 router.get('/resplandores/all', async (_req, res, next) => {
     try {
         const { rows } = await query(
             `SELECT r.*, u.nombre AS usuario_nombre, u.whatsapp AS usuario_whatsapp
              FROM resplandores r
-                      LEFT JOIN usuarios u ON u.email = r.email
+             LEFT JOIN usuarios u ON u.email = r.email
              ORDER BY r.created_at DESC`
         )
         res.json({ status: 'ok', resplandores: rows })
@@ -175,7 +305,7 @@ router.post('/resplandores', async (req, res, next) => {
         const { rows } = await query(
             `INSERT INTO resplandores (code, email, created_at)
              VALUES ($1, $2, NOW())
-                 RETURNING *`,
+             RETURNING *`,
             [code, emailNorm]
         )
         const resplandor = rows[0]
@@ -197,9 +327,13 @@ router.post('/resplandores', async (req, res, next) => {
 router.post('/resplandores/:code/reenviar', async (req, res, next) => {
     try {
         const { rows } = await query(
-            `SELECT r.*, u.nombre FROM resplandores r
-                                           LEFT JOIN usuarios u ON u.email = r.email
-             WHERE r.code = $1`,
+            `SELECT r.*,
+                    COALESCE(u.nombre, le.nombre) AS nombre
+             FROM resplandores r
+             LEFT JOIN usuarios    u  ON u.email  = r.email
+             LEFT JOIN lista_espera le ON le.email = r.email
+             WHERE r.code = $1
+             LIMIT 1`,
             [req.params.code]
         )
         if (!rows.length) throw new AppError('Resplandor no encontrado', 404, 'NOT_FOUND')
@@ -288,7 +422,8 @@ router.post('/send-wa', async (req, res, next) => {
             throw new AppError('El número debe tener 10 dígitos (ej: 5577888800)', 400, 'BAD_REQUEST')
         }
 
-        // Formato JID de WhatsApp para México: 52XXXXXXXXXX@s.whatsapp.net
+        // Formato JID de WhatsApp para México: 521XXXXXXXXXX@s.whatsapp.net
+        // Los números móviles MX en WhatsApp llevan el "1" después del código de país
         const jid    = `521${numeroLimpio}@s.whatsapp.net`
         const botUrl = process.env.BOT_HTTP_URL || 'http://127.0.0.1:4001'
 

@@ -28,6 +28,16 @@ export async function sendMail({ to, subject, html }) {
 
 // ── Templates específicos ─────────────────────────────────────────────────────
 
+/**
+ * Envía confirmación de lugar en taller (sin chispa — antes del pago).
+ * Incluye detalles del taller, métodos de pago y link a WA.
+ */
+export async function sendConfirmacionLugar({ to, nombre, taller }) {
+    const subject = `¡Tu lugar en "${taller.nombre}" está reservado! ✦`
+    const html    = templateConfirmacionLugar({ nombre, taller })
+    return sendMail({ to, subject, html })
+}
+
 export async function sendConfirmacionTaller({ to, nombre, taller, chispaCode }) {
     const subject = `¡Tu lugar en "${taller.nombre}" está confirmado! ✦`
     const html    = templateConfirmacionTaller({ nombre, taller, chispaCode })
@@ -277,6 +287,111 @@ function templateConfirmacionTaller({ nombre, taller, chispaCode }) {
 
       <div class="btn-wrap">
         <a href="https://destello.courses/acceso" class="btn">Activar mi Chispa →</a>
+      </div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">
+        ¿Tienes dudas? Escríbenos por WhatsApp al <strong style="color:#9CA3B0;">+52 55 7788 8800</strong><br>
+        o responde directamente a este correo.
+      </p>
+    </div>`)
+}
+
+// ── Template: Confirmación de lugar (antes del pago, sin chispa) ──────────────
+
+function templateConfirmacionLugar({ nombre, taller }) {
+    const nombreCorto = nombre?.trim().split(' ')[0] || 'alumno'
+    const fechaStr    = taller.fecha_disponible
+        ? new Date(taller.fecha_disponible).toLocaleDateString('es-MX', {
+            weekday:'long', day:'numeric', month:'long', year:'numeric' })
+        : null
+    const precioStr = taller.precio > 0 ? `$${taller.precio} MXN` : 'Gratuito'
+    const waLink    = 'https://wa.me/525577888800'
+
+    return templateBase(`
+    <div class="header">
+      <div class="logo-mark">✦</div>
+      <div class="logo-name">Destello</div>
+      <div class="logo-sub">Plataforma de aprendizaje inmersivo 3D</div>
+    </div>
+    <div class="body">
+      <div class="greeting">¡Hola, ${nombreCorto}! 🎉</div>
+      <p class="text">
+        ¡Tenemos buenas noticias! Tu lugar en el siguiente taller está
+        <strong style="color:#FAF7F2;">reservado</strong>.
+        Para completar tu inscripción, solo necesitas realizar tu pago.
+      </p>
+
+      <!-- Detalle del taller -->
+      <div class="info-box">
+        <p class="section-label">Detalles del taller</p>
+        <table width="100%" style="border-collapse:collapse;">
+          <tr>
+            <td style="padding-bottom:10px;width:90px;vertical-align:top;">
+              <span class="info-label">Taller</span>
+            </td>
+            <td style="padding-bottom:10px;vertical-align:top;">
+              <span style="font-size:16px;font-weight:800;color:#FAF7F2;">${taller.nombre}</span>
+            </td>
+          </tr>
+          ${fechaStr ? `<tr>
+            <td style="padding-bottom:10px;vertical-align:top;"><span class="info-label">Fecha</span></td>
+            <td style="padding-bottom:10px;vertical-align:top;"><span class="info-value">${fechaStr}</span></td>
+          </tr>` : ''}
+          ${taller.horario ? `<tr>
+            <td style="padding-bottom:10px;vertical-align:top;"><span class="info-label">Horario</span></td>
+            <td style="padding-bottom:10px;vertical-align:top;"><span class="info-value">${taller.horario} (CDMX)</span></td>
+          </tr>` : ''}
+          <tr>
+            <td style="vertical-align:top;"><span class="info-label">Inversión</span></td>
+            <td style="vertical-align:top;"><span class="info-value" style="color:#22c55e;font-weight:700;">${precioStr}</span></td>
+          </tr>
+        </table>
+      </div>
+
+      ${taller.descripcion ? `
+      <p class="section-label">¿Qué aprenderás?</p>
+      <p class="text">${taller.descripcion}</p>
+      <hr class="divider">` : ''}
+
+      <!-- Métodos de pago -->
+      <p class="section-label">Métodos de pago</p>
+      <div class="pago-box">
+        <p class="pago-title">Transferencia SPEI · Inbursa</p>
+        <div class="pago-row"><span class="pago-key">Titular&nbsp;&nbsp;</span><span class="pago-val">Paola Arreola</span></div>
+        <div class="pago-row"><span class="pago-key">CLABE&nbsp;&nbsp;&nbsp;</span><span class="pago-val">036180500687558754</span></div>
+      </div>
+      <div class="pago-box">
+        <p class="pago-title">Pago en efectivo</p>
+        <div class="pago-row"><span class="pago-key">Tarjeta&nbsp;</span><span class="pago-val">4658 2850 1724 7424</span></div>
+        <div class="pago-row"><span class="pago-key">Titular&nbsp;</span><span class="pago-val">Paola Arreola</span></div>
+        <p style="font-size:12px;color:#6B7280;margin-top:10px;">
+          Walmart · Bodega Aurrera · Sam's Club · OXXO · Sears · Sanborns
+        </p>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Siguientes pasos -->
+      <p class="section-label">Siguientes pasos</p>
+      <table class="step-table">
+        <tr><td class="step-num-cell"><span class="step-num">1</span></td>
+            <td class="step-text">Realiza tu pago con cualquiera de los métodos de arriba.</td></tr>
+      </table>
+      <table class="step-table">
+        <tr><td class="step-num-cell"><span class="step-num">2</span></td>
+            <td class="step-text">Envía tu <strong style="color:#FAF7F2;">comprobante de pago por WhatsApp</strong> al número de abajo para que lo verifiquemos.</td></tr>
+      </table>
+      <table class="step-table">
+        <tr><td class="step-num-cell"><span class="step-num">3</span></td>
+            <td class="step-text">Una vez verificado, te enviaremos tu código de acceso (Chispa) para entrar al taller. ✦</td></tr>
+      </table>
+
+      <div class="btn-wrap">
+        <a href="${waLink}?text=Hola%2C+aquí+está+mi+comprobante+de+pago+para+el+taller+${encodeURIComponent(taller.nombre)}" class="btn"
+           style="background:#25D366;">
+          Enviar comprobante por WhatsApp →
+        </a>
       </div>
     </div>
     <div class="footer">
