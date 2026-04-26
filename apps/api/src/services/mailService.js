@@ -1,58 +1,35 @@
 /**
  * Destello API — Mail Service
- * Envío de correos transaccionales con nodemailer.
+ * Envío de correos transaccionales con Resend.
  *
  * Variables de entorno requeridas:
- *   MAIL_HOST     → smtp server (ej: smtp.gmail.com)
- *   MAIL_PORT     → 587 (TLS) o 465 (SSL)
- *   MAIL_USER     → tu@correo.com
- *   MAIL_PASS     → contraseña o app password
- *   MAIL_FROM     → "Destello ✦ <noreply@destello.mx>"
+ *   RESEND_API_KEY → re_xxxxxxxxxxxxxxxxxxxx
+ *   MAIL_FROM      → (opcional) "Destello ✦ <hola@destello.courses>"
  */
 
-import nodemailer from 'nodemailer'
+import { Resend } from 'resend'
 
-// ── Transporter ───────────────────────────────────────────────────────────────
-let _transporter = null
+const resend = new Resend(process.env.RESEND_API_KEY)
 
-function getTransporter() {
-    if (_transporter) return _transporter
-    _transporter = nodemailer.createTransport({
-        host:   process.env.MAIL_HOST   || 'smtp.gmail.com',
-        port:   Number(process.env.MAIL_PORT || 587),
-        secure: process.env.MAIL_PORT === '465',
-        auth: {
-            user: process.env.MAIL_USER,
-            pass: process.env.MAIL_PASS,
-        },
-    })
-    return _transporter
-}
+const FROM = process.env.MAIL_FROM || 'Destello ✦ <hola@destello.courses>'
 
 // ── Función base de envío ─────────────────────────────────────────────────────
-export async function sendMail({ to, subject, html, text }) {
-    const transporter = getTransporter()
-    const info = await transporter.sendMail({
-        from:    process.env.MAIL_FROM || '"Destello ✦" <noreply@destello.mx>',
-        to,
+export async function sendMail({ to, subject, html }) {
+    const { data, error } = await resend.emails.send({
+        from:    FROM,
+        to:      Array.isArray(to) ? to : [to],
         subject,
         html,
-        text: text || html.replace(/<[^>]+>/g, ''),
     })
-    return info
+
+    if (error) throw new Error(error.message ?? 'Error al enviar correo')
+    return data
 }
 
 // ── Templates específicos ─────────────────────────────────────────────────────
 
 /**
  * Envía la confirmación de lugar en un taller.
- *
- * @param {{
- *   to: string,
- *   nombre: string,
- *   taller: { nombre: string, descripcion?: string, fecha_disponible?: string, horario?: string, precio?: number },
- *   chispaCode: string,
- * }} opts
  */
 export async function sendConfirmacionTaller({ to, nombre, taller, chispaCode }) {
     const subject = `¡Tu lugar en "${taller.nombre}" está confirmado! ✦`
@@ -62,8 +39,6 @@ export async function sendConfirmacionTaller({ to, nombre, taller, chispaCode })
 
 /**
  * Envía un resplandor (código de acceso para crear cuenta).
- *
- * @param {{ to: string, nombre: string, code: string }} opts
  */
 export async function sendResplandor({ to, nombre, code }) {
     const subject = `Tu Resplandor de acceso a Destello ✦`
@@ -208,12 +183,12 @@ function templateConfirmacionTaller({ nombre, taller, chispaCode }) {
       <!-- Siguientes pasos -->
       <p class="section-title">🚀 Siguientes pasos</p>
       <div class="step"><div class="step-num">1</div><div class="step-text">Realiza tu pago y envía el comprobante por WhatsApp.</div></div>
-      <div class="step"><div class="step-num">2</div><div class="step-text">Ingresa a <strong>destello.mx/acceso</strong> y usa tu Chispa <code style="background:#2A2A35;padding:2px 6px;border-radius:4px;">${chispaCode}</code>.</div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-text">Ingresa a <strong>destello.courses/acceso</strong> y usa tu Chispa <code style="background:#2A2A35;padding:2px 6px;border-radius:4px;">${chispaCode}</code>.</div></div>
       <div class="step"><div class="step-num">3</div><div class="step-text">Crea tu perfil y explora la plataforma antes del día del taller.</div></div>
       <div class="step"><div class="step-num">4</div><div class="step-text">El día del taller entra al aula 3D y ¡a aprender! ✨</div></div>
 
       <div style="text-align:center;margin-top:32px;">
-        <a href="https://destello.mx/acceso" class="btn">Activar mi Chispa →</a>
+        <a href="https://destello.courses/acceso" class="btn">Activar mi Chispa →</a>
       </div>
     </div>
     <div class="footer">
@@ -247,12 +222,12 @@ function templateResplandor({ nombre, code }) {
       </div>
 
       <p class="section-title">🚀 Cómo usar tu Resplandor</p>
-      <div class="step"><div class="step-num">1</div><div class="step-text">Entra a <strong>destello.mx/acceso</strong></div></div>
+      <div class="step"><div class="step-num">1</div><div class="step-text">Entra a <strong>destello.courses/acceso</strong></div></div>
       <div class="step"><div class="step-num">2</div><div class="step-text">Ingresa el código de arriba cuando se te pida.</div></div>
       <div class="step"><div class="step-num">3</div><div class="step-text">Crea tu perfil y ¡listo! Ya eres parte de Destello. ✨</div></div>
 
       <div style="text-align:center;margin-top:32px;">
-        <a href="https://destello.mx/acceso" class="btn">Activar mi Resplandor →</a>
+        <a href="https://destello.courses/acceso" class="btn">Activar mi Resplandor →</a>
       </div>
     </div>
     <div class="footer">
