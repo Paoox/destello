@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "gives-charlie-leo-indexes.trycloudflare.com"
+      "destination": "https://api.destello.courses/:path*"
     },
     {
       "source": "/(.*)",
