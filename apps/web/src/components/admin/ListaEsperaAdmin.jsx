@@ -1,15 +1,17 @@
 /**
  * Destello Admin — ListaEsperaAdmin
- * Tabla de lista de espera con actualización de estado y acceso rápido a WA/correo.
  */
 import { useState, useEffect, useCallback } from 'react'
-import { WhatsappLogo, Envelope, ArrowClockwise } from '@phosphor-icons/react'
+import { WhatsappLogo, Envelope, ArrowClockwise, CheckCircle, WarningCircle } from '@phosphor-icons/react'
 
 const ESTADOS_OPTS = [
     { value: 'pendiente',  label: '⏳ Pendiente',  color: '#f59e0b' },
     { value: 'confirmado', label: '✅ Confirmado',  color: '#22c55e' },
     { value: 'rechazado',  label: '❌ Rechazado',   color: 'var(--color-error)' },
 ]
+
+const SPEI_CLABE = '036180500687558754'
+const CARD_NUM   = '4658 2850 1724 7424'
 
 function EstadoSelect({ value, onChange, disabled }) {
     const opt = ESTADOS_OPTS.find(o => o.value === value)
@@ -19,16 +21,13 @@ function EstadoSelect({ value, onChange, disabled }) {
             onChange={e => onChange(e.target.value)}
             disabled={disabled}
             style={{
-                padding:      '3px 8px',
-                background:   (opt?.color ?? 'var(--text-muted)') + '22',
-                border:       `1px solid ${opt?.color ?? 'var(--border-default)'}`,
-                borderRadius: 999,
-                color:        opt?.color ?? 'var(--text-muted)',
-                fontSize:     'var(--text-xs)',
-                fontWeight:   600,
-                cursor:       disabled ? 'default' : 'pointer',
-                fontFamily:   'var(--font-sans)',
-                outline:      'none',
+                padding: '3px 8px',
+                background: (opt?.color ?? 'var(--text-muted)') + '22',
+                border: `1px solid ${opt?.color ?? 'var(--border-default)'}`,
+                borderRadius: 999, color: opt?.color ?? 'var(--text-muted)',
+                fontSize: 'var(--text-xs)', fontWeight: 600,
+                cursor: disabled ? 'default' : 'pointer',
+                fontFamily: 'var(--font-sans)', outline: 'none',
             }}
         >
             {ESTADOS_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -36,13 +35,61 @@ function EstadoSelect({ value, onChange, disabled }) {
     )
 }
 
+function buildWaUrl(r) {
+    const nombre  = r.nombre?.split(' ')[0] || 'alumno/a'
+    const taller  = r.taller_nombre || 'el taller'
+    const precio  = r.taller_precio && Number(r.taller_precio) > 0
+        ? `$${Number(r.taller_precio).toLocaleString('es-MX')} MXN` : 'Gratuito'
+    const fecha   = r.taller_fecha
+        ? new Date(r.taller_fecha).toLocaleDateString('es-MX',
+            { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+        : null
+    const horario = r.taller_horario || null
+
+    const lines = [
+        `¡Hola ${nombre}! ✦`,
+        '',
+        `¡Alcanzaste un lugar en Destello! 🎉`,
+        '',
+        `✦ *${taller}*`,
+        fecha   ? `📅 Fecha: ${fecha}` : null,
+        horario ? `🕐 Horario: ${horario} (CDMX)` : null,
+        `💰 Inversión: ${precio}`,
+        '',
+        'Para confirmar tu lugar realiza tu pago:',
+        '',
+        '🏦 *SPEI — Inbursa*',
+        'Titular: Paola Arreola',
+        `CLABE: ${SPEI_CLABE}`,
+        '',
+        '💳 *Pago en efectivo*',
+        `Tarjeta: ${CARD_NUM}`,
+        'Titular: Paola Arreola',
+        '(Walmart · OXXO · Sears · Sanborns · Bodega Aurrera)',
+        '',
+        'Una vez realizado tu pago, envíanos tu *comprobante por WhatsApp* a este mismo número. ✦',
+        '',
+        '¿Tienes dudas? Con gusto te atendemos. 😊',
+    ].filter(l => l !== null)
+
+    const numero = String(r.whatsapp || '').replace(/@.*$/, '').replace(/\D/g, '').slice(-10)
+    return `https://wa.me/52${numero}?text=${encodeURIComponent(lines.join('\n'))}`
+}
+
 export default function ListaEsperaAdmin({ adminToken }) {
-    const [lista,      setLista]      = useState([])
-    const [loading,    setLoading]    = useState(false)
-    const [updating,   setUpdating]   = useState(null)
+    const [lista,        setLista]        = useState([])
+    const [loading,      setLoading]      = useState(false)
+    const [updating,     setUpdating]     = useState(null)
+    const [enviandoMail, setEnviandoMail] = useState(null)
+    const [toast,        setToast]        = useState(null)
     const [filterEstado, setFilterEstado] = useState('all')
 
     const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` }
+
+    const showToast = (msg, ok = true) => {
+        setToast({ msg, ok })
+        setTimeout(() => setToast(null), 3500)
+    }
 
     const fetchLista = useCallback(async () => {
         setLoading(true)
@@ -58,144 +105,187 @@ export default function ListaEsperaAdmin({ adminToken }) {
     const updateEstado = async (id, nuevoEstado) => {
         setUpdating(id)
         try {
-            await fetch(`/api/admin/lista-espera/${id}`, {
+            const res = await fetch(`/api/admin/lista-espera/${id}`, {
                 method: 'PATCH', headers,
                 body:   JSON.stringify({ estado: nuevoEstado }),
             })
-            setLista(prev => prev.map(r => r.id === id ? { ...r, estado: nuevoEstado } : r))
-        } catch { /* ignorar */ } finally { setUpdating(null) }
+            if (res.ok) {
+                setLista(prev => prev.map(r => r.id === id ? { ...r, estado: nuevoEstado } : r))
+                showToast('Estado guardado ✓')
+            } else {
+                showToast('Error al guardar estado', false)
+            }
+        } catch { showToast('Error de conexión', false) }
+        finally { setUpdating(null) }
+    }
+
+    const enviarCorreo = async (r) => {
+        if (!confirm(`¿Enviar correo de confirmación a ${r.nombre || r.email}?\n\nSe enviará con los detalles del taller y métodos de pago.`)) return
+        setEnviandoMail(r.id)
+        try {
+            const res  = await fetch(`/api/admin/lista-espera/${r.id}/confirmar-lugar`, {
+                method: 'POST', headers,
+            })
+            const data = await res.json()
+            if (res.ok) {
+                showToast(data.enviado ? `Correo enviado a ${r.email} ✓` : 'Lugar confirmado (sin correo)')
+                setLista(prev => prev.map(x => x.id === r.id ? { ...x, estado: 'confirmado' } : x))
+            } else {
+                showToast(data.message || 'Error al enviar correo', false)
+            }
+        } catch { showToast('Error de conexión', false) }
+        finally { setEnviandoMail(null) }
     }
 
     const filtered = lista.filter(r => filterEstado === 'all' || r.estado === filterEstado)
 
     return (
-        <div style={{
-            background:   'var(--bg-card)',
-            border:       '1px solid var(--border-default)',
-            borderRadius: 'var(--radius-xl)',
-            overflow:     'hidden',
-        }}>
-            {/* Header */}
-            <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: 'var(--space-5) var(--space-6)',
-                borderBottom: '1px solid var(--border-subtle)',
-                gap: 'var(--space-3)', flexWrap: 'wrap',
-            }}>
-                <h3 style={{ fontWeight: 700, margin: 0 }}>⏳ Lista de espera ({filtered.length})</h3>
-                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
-                    {/* Filtro por estado */}
-                    {['all', 'pendiente', 'confirmado', 'rechazado'].map(f => (
-                        <button key={f} onClick={() => setFilterEstado(f)} style={{
-                            padding: '4px 12px', borderRadius: 999, border: '1px solid',
-                            borderColor: filterEstado === f ? 'var(--color-jade-500)' : 'var(--border-default)',
-                            background: filterEstado === f ? 'var(--color-jade-500)22' : 'transparent',
-                            color: filterEstado === f ? 'var(--color-jade-500)' : 'var(--text-muted)',
-                            fontSize: 'var(--text-xs)', fontWeight: filterEstado === f ? 600 : 400,
-                            cursor: 'pointer', fontFamily: 'var(--font-sans)',
-                        }}>
-                            {{ all: 'Todos', pendiente: 'Pendientes', confirmado: 'Confirmados', rechazado: 'Rechazados' }[f]}
-                        </button>
-                    ))}
-                    <button onClick={fetchLista} disabled={loading} style={{
-                        display: 'flex', alignItems: 'center', padding: 'var(--space-2)',
-                        background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
-                        borderRadius: 'var(--radius-lg)', color: 'var(--text-muted)', cursor: 'pointer',
-                    }}>
-                        <ArrowClockwise size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-                    </button>
+        <div style={{ position: 'relative' }}>
+            {/* Toast */}
+            {toast && (
+                <div style={{
+                    position: 'fixed', bottom: 'var(--space-6)', right: 'var(--space-6)',
+                    background: toast.ok ? '#22c55e22' : 'var(--color-error)22',
+                    border: `1px solid ${toast.ok ? '#22c55e' : 'var(--color-error)'}`,
+                    borderRadius: 'var(--radius-lg)', padding: 'var(--space-3) var(--space-5)',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    color: toast.ok ? '#22c55e' : 'var(--color-error)',
+                    fontWeight: 600, fontSize: 'var(--text-sm)', zIndex: 1000,
+                    boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+                }}>
+                    {toast.ok
+                        ? <CheckCircle size={16} weight="fill" />
+                        : <WarningCircle size={16} weight="fill" />
+                    }
+                    {toast.msg}
                 </div>
-            </div>
+            )}
 
-            {/* Tabla */}
-            <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
-                    <thead>
-                    <tr style={{ background: 'var(--bg-surface)' }}>
-                        {['Nombre', 'Correo', 'Taller', 'Fecha', 'Estado', 'Contacto'].map(h => (
-                            <th key={h} style={{
-                                padding: 'var(--space-3) var(--space-4)', textAlign: 'left',
-                                color: 'var(--text-muted)', fontWeight: 500,
-                                fontSize: 'var(--text-xs)', whiteSpace: 'nowrap',
-                            }}>{h}</th>
+            <div style={{
+                background: 'var(--bg-card)', border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-xl)', overflow: 'hidden',
+            }}>
+                {/* Header */}
+                <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: 'var(--space-5) var(--space-6)',
+                    borderBottom: '1px solid var(--border-subtle)',
+                    gap: 'var(--space-3)', flexWrap: 'wrap',
+                }}>
+                    <h3 style={{ fontWeight: 700, margin: 0 }}>⏳ Lista de espera ({filtered.length})</h3>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {['all', 'pendiente', 'confirmado', 'rechazado'].map(f => (
+                            <button key={f} onClick={() => setFilterEstado(f)} style={{
+                                padding: '4px 12px', borderRadius: 999, border: '1px solid',
+                                borderColor: filterEstado === f ? 'var(--color-jade-500)' : 'var(--border-default)',
+                                background: filterEstado === f ? 'var(--color-jade-500)22' : 'transparent',
+                                color: filterEstado === f ? 'var(--color-jade-500)' : 'var(--text-muted)',
+                                fontSize: 'var(--text-xs)', fontWeight: filterEstado === f ? 600 : 400,
+                                cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                            }}>
+                                {{ all: 'Todos', pendiente: 'Pendientes', confirmado: 'Confirmados', rechazado: 'Rechazados' }[f]}
+                            </button>
                         ))}
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {loading && (
-                        <tr><td colSpan={6} style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--text-muted)' }}>
-                            Cargando...
-                        </td></tr>
-                    )}
-                    {!loading && filtered.length === 0 && (
-                        <tr><td colSpan={6} style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--text-muted)' }}>
-                            No hay registros en este filtro
-                        </td></tr>
-                    )}
-                    {filtered.map(r => (
-                        <tr key={r.id} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                            <td style={{ padding: 'var(--space-3) var(--space-4)', fontWeight: 500 }}>
-                                {r.nombre || <span style={{ color: 'var(--text-disabled)', fontStyle: 'italic' }}>—</span>}
-                            </td>
-                            <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                                {r.email}
-                            </td>
-                            <td style={{ padding: 'var(--space-3) var(--space-4)', color: 'var(--text-muted)', maxWidth: 160 }}>
+                        <button onClick={fetchLista} disabled={loading} style={{
+                            display: 'flex', alignItems: 'center', padding: 'var(--space-2)',
+                            background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
+                            borderRadius: 'var(--radius-lg)', color: 'var(--text-muted)', cursor: 'pointer',
+                        }}>
+                            <ArrowClockwise size={14} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Tabla */}
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+                        <thead>
+                        <tr style={{ background: 'var(--bg-surface)' }}>
+                            {['Nombre', 'Correo', 'Taller', 'Fecha', 'Estado', 'Contacto'].map(h => (
+                                <th key={h} style={{
+                                    padding: 'var(--space-3) var(--space-4)', textAlign: 'left',
+                                    color: 'var(--text-muted)', fontWeight: 500,
+                                    fontSize: 'var(--text-xs)', whiteSpace: 'nowrap',
+                                }}>{h}</th>
+                            ))}
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {loading && (
+                            <tr><td colSpan={6} style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                Cargando...
+                            </td></tr>
+                        )}
+                        {!loading && filtered.length === 0 && (
+                            <tr><td colSpan={6} style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                No hay registros
+                            </td></tr>
+                        )}
+                        {filtered.map(r => (
+                            <tr key={r.id} style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                                <td style={{ padding: 'var(--space-3) var(--space-4)', fontWeight: 500 }}>
+                                    {r.nombre || <span style={{ color: 'var(--text-disabled)', fontStyle: 'italic' }}>—</span>}
+                                </td>
+                                <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                                    {r.email}
+                                </td>
+                                <td style={{ padding: 'var(--space-3) var(--space-4)', color: 'var(--text-muted)', maxWidth: 160 }}>
                                     <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                         {r.taller_nombre || r.taller_id}
                                     </span>
-                            </td>
-                            <td style={{ padding: 'var(--space-3) var(--space-4)', color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: 'var(--text-xs)' }}>
-                                {r.created_at ? new Date(r.created_at).toLocaleDateString('es-MX') : '—'}
-                            </td>
-                            <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                                <EstadoSelect
-                                    value={r.estado ?? 'pendiente'}
-                                    onChange={val => updateEstado(r.id, val)}
-                                    disabled={updating === r.id}
-                                />
-                            </td>
-                            <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                    {/* WhatsApp */}
-                                    {r.whatsapp && (
-                                        <a
-                                            href={`https://wa.me/52${r.whatsapp}`}
-                                            target="_blank" rel="noreferrer"
-                                            title={`WhatsApp ${r.whatsapp}`}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                width: 28, height: 28,
-                                                background: '#25D36622', border: '1px solid #25D366',
-                                                borderRadius: 'var(--radius-md)',
-                                                color: '#25D366', textDecoration: 'none',
-                                            }}
-                                        >
-                                            <WhatsappLogo size={14} weight="fill" />
-                                        </a>
-                                    )}
-                                    {/* Correo */}
-                                    {r.email && (
-                                        <a
-                                            href={`mailto:${r.email}`}
-                                            title={`Enviar correo a ${r.email}`}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                width: 28, height: 28,
-                                                background: 'var(--color-jade-500)22', border: '1px solid var(--color-jade-500)',
-                                                borderRadius: 'var(--radius-md)',
-                                                color: 'var(--color-jade-500)', textDecoration: 'none',
-                                            }}
-                                        >
-                                            <Envelope size={14} weight="fill" />
-                                        </a>
-                                    )}
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
-                    </tbody>
-                </table>
+                                </td>
+                                <td style={{ padding: 'var(--space-3) var(--space-4)', color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: 'var(--text-xs)' }}>
+                                    {r.created_at ? new Date(r.created_at).toLocaleDateString('es-MX') : '—'}
+                                </td>
+                                <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                                    <EstadoSelect
+                                        value={r.estado ?? 'pendiente'}
+                                        onChange={val => updateEstado(r.id, val)}
+                                        disabled={updating === r.id}
+                                    />
+                                </td>
+                                <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                        {/* WA — mensaje pre-llenado con detalles del taller */}
+                                        {r.whatsapp && (
+                                            <a href={buildWaUrl(r)} target="_blank" rel="noreferrer"
+                                               title="Enviar confirmación por WhatsApp"
+                                               style={{
+                                                   display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                   width: 28, height: 28,
+                                                   background: '#25D36622', border: '1px solid #25D366',
+                                                   borderRadius: 'var(--radius-md)',
+                                                   color: '#25D366', textDecoration: 'none',
+                                               }}>
+                                                <WhatsappLogo size={14} weight="fill" />
+                                            </a>
+                                        )}
+                                        {/* Correo — envía via Resend con template completo */}
+                                        {r.email && (
+                                            <button
+                                                onClick={() => enviarCorreo(r)}
+                                                disabled={enviandoMail === r.id}
+                                                title="Enviar correo de confirmación (con detalles + pagos)"
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    width: 28, height: 28,
+                                                    background: 'var(--color-jade-500)22',
+                                                    border: '1px solid var(--color-jade-500)',
+                                                    borderRadius: 'var(--radius-md)',
+                                                    color: enviandoMail === r.id ? 'var(--text-muted)' : 'var(--color-jade-500)',
+                                                    cursor: enviandoMail === r.id ? 'wait' : 'pointer',
+                                                    fontFamily: 'var(--font-sans)',
+                                                }}>
+                                                <Envelope size={14} weight="fill" />
+                                            </button>
+                                        )}
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     )

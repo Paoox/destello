@@ -75,12 +75,15 @@ router.get('/lista-espera', async (_req, res, next) => {
     try {
         const { rows } = await query(
             `SELECT le.*,
-                    t.nombre AS taller_nombre,
+                    t.nombre       AS taller_nombre,
+                    t.precio       AS taller_precio,
+                    t.horario      AS taller_horario,
+                    t.fecha_disponible AS taller_fecha,
+                    t.descripcion  AS taller_descripcion,
                     EXISTS (
                         SELECT 1 FROM resplandores r
                         WHERE LOWER(r.email) = LOWER(le.email)
-                          AND r.used = FALSE
-                          AND r.revoked = FALSE
+                          AND r.used = FALSE AND r.revoked = FALSE
                     ) AS tiene_resplandor
              FROM lista_espera le
                       LEFT JOIN talleres t ON t.id = le.taller_id
