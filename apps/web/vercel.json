@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://holds-soldier-children-leading.trycloudflare.com/:path*"
+      "destination": "gives-charlie-leo-indexes.trycloudflare.com"
     },
     {
       "source": "/(.*)",
