@@ -4,7 +4,7 @@
  * Usados en landing, /acceso, /habitat y registro.
  */
 
-const BASE = '/api'
+const BASE = `${import.meta.env.VITE_API_URL ?? ''}/api`
 
 async function handleResponse(res) {
     const data = await res.json()
