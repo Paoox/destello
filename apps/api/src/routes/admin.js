@@ -74,7 +74,14 @@ router.put('/talleres/:id', async (req, res, next) => {
 router.get('/lista-espera', async (_req, res, next) => {
     try {
         const { rows } = await query(
-            `SELECT le.*, t.nombre AS taller_nombre
+            `SELECT le.*,
+                    t.nombre AS taller_nombre,
+                    EXISTS (
+                        SELECT 1 FROM resplandores r
+                        WHERE LOWER(r.email) = LOWER(le.email)
+                          AND r.used = FALSE
+                          AND r.revoked = FALSE
+                    ) AS tiene_resplandor
              FROM lista_espera le
                       LEFT JOIN talleres t ON t.id = le.taller_id
              ORDER BY le.created_at DESC`
