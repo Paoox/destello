@@ -5,9 +5,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { WhatsappLogo, Envelope, ArrowClockwise, CheckCircle, WarningCircle } from '@phosphor-icons/react'
 
 const ESTADOS_OPTS = [
-    { value: 'pendiente',  label: '⏳ Pendiente',  color: '#f59e0b' },
-    { value: 'confirmado', label: '✅ Confirmado',  color: '#22c55e' },
-    { value: 'rechazado',  label: '❌ Rechazado',   color: 'var(--color-error)' },
+    { value: 'pendiente',        label: '⏳ Pendiente',         color: '#f59e0b' },
+    { value: 'cupo_confirmado',  label: '✅ Lugar confirmado',  color: '#22c55e' },
+    { value: 'pagado',           label: '💰 Pagado',            color: '#8b5cf6' },
+    { value: 'rechazado',        label: '❌ Rechazado',          color: 'var(--color-error)' },
 ]
 
 const SPEI_CLABE = '036180500687558754'

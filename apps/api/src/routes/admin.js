@@ -128,7 +128,7 @@ router.post('/lista-espera/:id/confirmar-lugar', async (req, res, next) => {
 
         // Actualizar estado a confirmado
         await query(
-            `UPDATE lista_espera SET estado = 'confirmado' WHERE id = $1`,
+            `UPDATE lista_espera SET estado = 'cupo_confirmado' WHERE id = $1`,
             [req.params.id]
         )
 
