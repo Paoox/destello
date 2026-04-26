@@ -78,7 +78,7 @@ router.get('/lista-espera', async (_req, res, next) => {
                     t.nombre       AS taller_nombre,
                     t.precio       AS taller_precio,
                     t.horario      AS taller_horario,
-                    t.fecha_disponible AS taller_fecha,
+                    t.fecha_inicio AS taller_fecha,
                     t.descripcion  AS taller_descripcion,
                     EXISTS (
                         SELECT 1 FROM resplandores r
@@ -116,7 +116,7 @@ router.post('/lista-espera/:id/confirmar-lugar', async (req, res, next) => {
         // Obtener el registro con info del taller
         const { rows } = await query(
             `SELECT le.*, t.nombre AS taller_nombre, t.descripcion AS taller_descripcion,
-                    t.fecha_disponible AS taller_fecha, t.horario AS taller_horario,
+                    t.fecha_inicio AS taller_fecha,, t.horario AS taller_horario,
                     t.precio AS taller_precio
              FROM lista_espera le
                       LEFT JOIN talleres t ON t.id = le.taller_id
@@ -165,7 +165,7 @@ router.post('/lista-espera/:id/confirmar', async (req, res, next) => {
         // Obtener el registro con info del taller
         const { rows } = await query(
             `SELECT le.*, t.nombre AS taller_nombre, t.descripcion AS taller_descripcion,
-                    t.fecha_disponible AS taller_fecha, t.horario AS taller_horario,
+                    t.fecha_inicio AS taller_fecha, t.horario AS taller_horario,
                     t.precio AS taller_precio
              FROM lista_espera le
                       LEFT JOIN talleres t ON t.id = le.taller_id
