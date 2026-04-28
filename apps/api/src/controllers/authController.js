@@ -1,14 +1,15 @@
 /**
  * Destello API — Auth Controller
- * Login de usuario con chispa, registro con resplandor, OAuth, refresh y logout.
+ * Login de usuario con chispa, registro con resplandor, OAuth social, refresh y logout.
  * Resplandores (validar/consumir) → resplandorController.js
  */
 import jwt      from 'jsonwebtoken'
 import bcrypt   from 'bcryptjs'
-import { AppError }           from '../middleware/errorHandler.js'
-import { validateChispa }     from '../services/chispaService.js'
-import * as resplandorService from '../services/resplandorService.js'
-import { query }              from '../db/db.js'
+import { AppError }               from '../middleware/errorHandler.js'
+import { validateChispa }         from '../services/chispaService.js'
+import * as resplandorService     from '../services/resplandorService.js'
+import { query }                  from '../db/db.js'
+import { verifyFirebaseToken }    from '../services/firebaseAdmin.js'
 
 function signToken(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, {
@@ -85,15 +86,81 @@ export async function loginWithCode(req, res, next) {
 }
 
 /**
+ * POST /auth/social
+ * Login con proveedor social (Google) via Firebase.
+ * Body: { idToken, provider }
+ *
+ * Flujo:
+ *   1. Verifica el idToken con Firebase Admin SDK
+ *   2. Extrae el email del token (verificado por Google)
+ *   3. Busca al usuario en la BD por ese email
+ *   4. Si existe y está activo → emite JWT de Destello
+ *   5. Si no existe → error claro indicando que use el correo con el que se registró
+ */
+export async function loginWithSocial(req, res, next) {
+  try {
+    const { idToken, provider = 'google' } = req.body
+
+    if (!idToken) {
+      throw new AppError('idToken requerido', 400, 'BAD_REQUEST')
+    }
+
+    // 1. Verificar token con Firebase Admin
+    let firebaseUser
+    try {
+      firebaseUser = await verifyFirebaseToken(idToken)
+    } catch {
+      throw new AppError('Token de Google inválido o expirado', 401, 'INVALID_TOKEN')
+    }
+
+    const emailNorm = firebaseUser.email?.toLowerCase().trim()
+    if (!emailNorm) {
+      throw new AppError('No pudimos obtener el correo de tu cuenta de Google', 400, 'NO_EMAIL')
+    }
+
+    // 2. Buscar usuario en la BD
+    const { rows } = await query(
+        `SELECT id, email, nombre, estado FROM usuarios WHERE email = $1`,
+        [emailNorm]
+    )
+
+    if (!rows.length) {
+      throw new AppError(
+          `No encontramos una cuenta con el correo ${emailNorm}. Verifica que uses el mismo correo con el que te registraste en Destello.`,
+          404,
+          'USER_NOT_FOUND',
+      )
+    }
+
+    const usuario = rows[0]
+
+    if (usuario.estado !== 'activo') {
+      throw new AppError('Tu cuenta no está activa. Contacta a soporte.', 403, 'ACCOUNT_INACTIVE')
+    }
+
+    // 3. Emitir JWT de Destello
+    const token = signToken({ userId: usuario.id, role: 'alumno' })
+
+    return res.json({
+      status: 'ok',
+      token,
+      user: {
+        id:       usuario.id,
+        email:    usuario.email,
+        nombre:   usuario.nombre,
+        role:     'alumno',
+        provider,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+/**
  * POST /auth/register
  * Crea una cuenta nueva usando un Resplandor válido.
  * Body: { email, password, nombre, resplandorCode }
- * Flujo:
- *   1. Valida que el resplandor sea válido y no esté usado
- *   2. Verifica que el email no tenga cuenta previa
- *   3. Crea el usuario con contraseña hasheada
- *   4. Consume el resplandor (lo marca como used = true)
- *   5. Devuelve JWT + datos del usuario
  */
 export async function registerUser(req, res, next) {
   try {
@@ -131,36 +198,32 @@ export async function registerUser(req, res, next) {
     let user
 
     if (existing.length > 0) {
-      // Existe registro — distinguir si tiene cuenta completa o es un shell sin contraseña
       if (existing[0].password) {
-        // Tiene contraseña → cuenta real, no puede re-registrarse
         throw new AppError(
             'Ya existe una cuenta con ese correo. Inicia sesión.',
             409,
             'EMAIL_ALREADY_EXISTS',
         )
       }
-
-      // Sin contraseña → registro incompleto (p.ej. creado por bot/admin sin pass)
-      // Completar el registro actualizando nombre y contraseña
+      // Sin contraseña → completar registro
       const hash = await bcrypt.hash(password, 12)
       const { rows } = await query(
           `UPDATE usuarios
-         SET nombre   = COALESCE($2, nombre),
-             password = $3,
-             estado   = 'activo'
-         WHERE email = $1
-         RETURNING id, email, nombre, estado`,
+           SET nombre   = COALESCE($2, nombre),
+               password = $3,
+               estado   = 'activo'
+           WHERE email = $1
+           RETURNING id, email, nombre, estado`,
           [email.toLowerCase().trim(), nombre?.trim() || null, hash]
       )
       user = rows[0]
     } else {
-      // 3a. Usuario nuevo — crear con contraseña hasheada
+      // Usuario nuevo
       const hash = await bcrypt.hash(password, 12)
       const { rows } = await query(
           `INSERT INTO usuarios (email, nombre, password, estado)
-         VALUES ($1, $2, $3, 'activo')
-         RETURNING id, email, nombre, estado`,
+           VALUES ($1, $2, $3, 'activo')
+           RETURNING id, email, nombre, estado`,
           [email.toLowerCase().trim(), nombre?.trim() || null, hash]
       )
       user = rows[0]
@@ -182,24 +245,6 @@ export async function registerUser(req, res, next) {
         role:   'alumno',
       },
     })
-  } catch (err) {
-    next(err)
-  }
-}
-
-// GET /auth/:provider — OAuth (pendiente)
-export function oauthRedirect(provider) {
-  return (_req, res) => {
-    res.json({ status: 'pending', message: `OAuth ${provider} pendiente de implementar` })
-  }
-}
-
-// GET /auth/callback
-export async function oauthCallback(req, res, next) {
-  try {
-    const { code } = req.query
-    if (!code) throw new AppError('Código OAuth faltante', 400, 'BAD_REQUEST')
-    res.redirect(`${process.env.WEB_URL}/home`)
   } catch (err) {
     next(err)
   }

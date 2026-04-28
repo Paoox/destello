@@ -1,26 +1,24 @@
 /**
  * Destello — PageLogin
  *
- * Dos modos completamente separados:
- *
  * MODO REGISTRO (viene de /acceso con resplandor válido):
- *   - Sin tabs, sin OAuth
- *   - Solo formulario: nombre, email (bloqueado), contraseña, confirmar
+ *   - Sin OAuth, solo formulario: nombre, email (bloqueado), contraseña, confirmar
  *   - Llama a POST /api/auth/register y consume el resplandor
  *
  * MODO LOGIN (acceso directo a /login):
- *   - Sin opción de registrarse (eso va por /acceso)
- *   - OAuth + email+contraseña
- *   - Llama a POST /api/auth/login
+ *   - Google OAuth via Firebase popup
+ *   - Email + contraseña
+ *   - Llama a POST /api/auth/social (Google) o POST /api/auth/login (email)
  */
-import { useState, useEffect } from 'react'
-import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { useState }                              from 'react'
+import { useNavigate, useLocation, Link }        from 'react-router-dom'
 import { Eye, EyeSlash, ArrowRight, CheckCircle, XCircle } from '@phosphor-icons/react'
-import { useAuthStore } from '@store/useAuthStore.js'
+import { useAuthStore }                          from '@store/useAuthStore.js'
+import { signInWithGoogle }                      from '@services/firebase.js'
 import logoLight from '../Images/destello-logo-512.png'
 import logoDark  from '../Images/destello-logo-dark-512.png'
 
-// ── Iconos OAuth ──────────────────────────────────────────────────────────────
+// ── Icono Google ──────────────────────────────────────────────────────────────
 function IconGoogle() {
     return (
         <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -31,46 +29,29 @@ function IconGoogle() {
         </svg>
     )
 }
-function IconFacebook() {
-    return (
-        <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" fill="#1877F2"/>
-        </svg>
-    )
-}
-function IconInstagram() {
-    return (
-        <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-                <linearGradient id="ig-grad" x1="0%" y1="100%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#FFDC80"/><stop offset="25%" stopColor="#FCAF45"/>
-                    <stop offset="50%" stopColor="#F77737"/><stop offset="75%" stopColor="#C13584"/>
-                    <stop offset="100%" stopColor="#833AB4"/>
-                </linearGradient>
-            </defs>
-            <path fill="url(#ig-grad)" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-        </svg>
-    )
-}
 
 // ── Botón OAuth ───────────────────────────────────────────────────────────────
-function OAuthButton({ icon: Icon, label, onClick }) {
+function OAuthButton({ icon: Icon, label, onClick, loading }) {
     const [hovered, setHovered] = useState(false)
     return (
-        <button onClick={onClick}
-                onMouseEnter={() => setHovered(true)}
-                onMouseLeave={() => setHovered(false)}
-                style={{
-                    display:'flex', alignItems:'center', justifyContent:'center', gap:10,
-                    width:'100%', padding:'var(--space-3)',
-                    background: hovered ? 'var(--bg-surface)' : 'transparent',
-                    border:'1px solid var(--border-default)',
-                    borderColor: hovered ? 'var(--color-jade-500)' : 'var(--border-default)',
-                    borderRadius:'var(--radius-lg)', color:'var(--text-primary)',
-                    fontSize:'var(--text-sm)', fontFamily:'var(--font-sans)', fontWeight:500,
-                    cursor:'pointer', transition:'all 0.15s',
-                }}>
-            <Icon />{label}
+        <button
+            onClick={onClick}
+            disabled={loading}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                width: '100%', padding: 'var(--space-3)',
+                background: hovered ? 'var(--bg-surface)' : 'transparent',
+                border: '1px solid',
+                borderColor: hovered ? 'var(--color-jade-500)' : 'var(--border-default)',
+                borderRadius: 'var(--radius-lg)', color: 'var(--text-primary)',
+                fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)', fontWeight: 500,
+                cursor: loading ? 'wait' : 'pointer',
+                opacity: loading ? 0.7 : 1,
+                transition: 'all 0.15s',
+            }}>
+            <Icon />{loading ? 'Conectando...' : label}
         </button>
     )
 }
@@ -78,44 +59,44 @@ function OAuthButton({ icon: Icon, label, onClick }) {
 // ── Divider ───────────────────────────────────────────────────────────────────
 function Divider({ label = 'o continúa con email' }) {
     return (
-        <div style={{ display:'flex', alignItems:'center', gap:'var(--space-3)', margin:'var(--space-4) 0' }}>
-            <div style={{ flex:1, height:1, background:'var(--border-subtle)' }}/>
-            <span style={{ color:'var(--text-muted)', fontSize:'var(--text-xs)', whiteSpace:'nowrap' }}>{label}</span>
-            <div style={{ flex:1, height:1, background:'var(--border-subtle)' }}/>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', margin: 'var(--space-4) 0' }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }}/>
+            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{label}</span>
+            <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }}/>
         </div>
     )
 }
 
 // ── Field con label ───────────────────────────────────────────────────────────
-function Field({ label, type='text', placeholder, value, onChange, right, readOnly, hint }) {
+function Field({ label, type = 'text', placeholder, value, onChange, right, readOnly, hint }) {
     return (
-        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-            <label style={{ fontSize:'var(--text-xs)', color:'var(--text-muted)', fontWeight:500 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontWeight: 500 }}>
                 {label}
             </label>
-            <div style={{ position:'relative' }}>
+            <div style={{ position: 'relative' }}>
                 <input
                     type={type} placeholder={placeholder} value={value}
                     onChange={onChange} readOnly={readOnly}
                     style={{
-                        width:'100%',
+                        width: '100%',
                         padding: right ? 'var(--space-3) 44px var(--space-3) var(--space-3)' : 'var(--space-3)',
                         background: readOnly ? 'var(--bg-dark)' : 'var(--bg-surface)',
-                        border:'1px solid var(--border-default)',
-                        borderRadius:'var(--radius-lg)',
+                        border: '1px solid var(--border-default)',
+                        borderRadius: 'var(--radius-lg)',
                         color: readOnly ? 'var(--text-muted)' : 'var(--text-primary)',
-                        fontSize:'var(--text-sm)', fontFamily:'var(--font-sans)',
-                        outline:'none', boxSizing:'border-box',
+                        fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)',
+                        outline: 'none', boxSizing: 'border-box',
                         opacity: readOnly ? 0.7 : 1, cursor: readOnly ? 'default' : 'text',
                     }}
                 />
                 {right && (
-                    <div style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)' }}>
+                    <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}>
                         {right}
                     </div>
                 )}
             </div>
-            {hint && <p style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--text-disabled)' }}>{hint}</p>}
+            {hint && <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-disabled)' }}>{hint}</p>}
         </div>
     )
 }
@@ -123,19 +104,19 @@ function Field({ label, type='text', placeholder, value, onChange, right, readOn
 // ── Validación de contraseña ──────────────────────────────────────────────────
 function PasswordRules({ password }) {
     const rules = [
-        { label: 'Mínimo 8 caracteres',       ok: password.length >= 8 },
-        { label: 'Al menos una mayúscula',     ok: /[A-Z]/.test(password) },
-        { label: 'Al menos un número',         ok: /[0-9]/.test(password) },
+        { label: 'Mínimo 8 caracteres',   ok: password.length >= 8 },
+        { label: 'Al menos una mayúscula', ok: /[A-Z]/.test(password) },
+        { label: 'Al menos un número',     ok: /[0-9]/.test(password) },
     ]
     if (!password) return null
     return (
-        <div style={{ display:'flex', flexDirection:'column', gap:3, marginTop:2 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>
             {rules.map(r => (
-                <div key={r.label} style={{ display:'flex', alignItems:'center', gap:5,
-                    fontSize:'var(--text-xs)', color: r.ok ? '#10B981' : 'var(--text-disabled)' }}>
-                    {r.ok
-                        ? <CheckCircle size={13} weight="fill" />
-                        : <XCircle size={13} weight="fill" />}
+                <div key={r.label} style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    fontSize: 'var(--text-xs)', color: r.ok ? '#10B981' : 'var(--text-disabled)',
+                }}>
+                    {r.ok ? <CheckCircle size={13} weight="fill"/> : <XCircle size={13} weight="fill"/>}
                     {r.label}
                 </div>
             ))}
@@ -153,33 +134,32 @@ function PageShell({ children }) {
     const logo = prefersDark ? logoDark : logoLight
     return (
         <div style={{
-            position:'fixed', inset:0, display:'flex', alignItems:'flex-start',
-            justifyContent:'center', background:'var(--bg-dark)',
-            padding:'var(--space-8) var(--space-6)', boxSizing:'border-box', overflowY:'auto',
+            position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start',
+            justifyContent: 'center', background: 'var(--bg-dark)',
+            padding: 'var(--space-8) var(--space-6)', boxSizing: 'border-box', overflowY: 'auto',
         }}>
             <div style={{
-                position:'fixed', top:'35%', left:'50%', transform:'translate(-50%,-50%)',
-                width:600, height:600, borderRadius:'50%', pointerEvents:'none',
-                background:'radial-gradient(circle, rgba(13,115,119,0.08) 0%, transparent 70%)',
+                position: 'fixed', top: '35%', left: '50%', transform: 'translate(-50%,-50%)',
+                width: 600, height: 600, borderRadius: '50%', pointerEvents: 'none',
+                background: 'radial-gradient(circle, rgba(13,115,119,0.08) 0%, transparent 70%)',
             }}/>
-            <div style={{ maxWidth:420, width:'100%', position:'relative', zIndex:1 }}>
+            <div style={{ maxWidth: 420, width: '100%', position: 'relative', zIndex: 1 }}>
                 <div style={{
-                    background:'var(--bg-card)', border:'1px solid var(--border-default)',
-                    borderRadius:'var(--radius-2xl)', padding:'var(--space-8)', boxShadow:'var(--shadow-lg)',
+                    background: 'var(--bg-card)', border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-2xl)', padding: 'var(--space-8)', boxShadow: 'var(--shadow-lg)',
                 }}>
-                    {/* Logo */}
-                    <div style={{ textAlign:'center', marginBottom:'var(--space-6)' }}>
+                    <div style={{ textAlign: 'center', marginBottom: 'var(--space-6)' }}>
                         <img src={logo} alt="Destello" style={{
-                            display:'block', width:52, height:52, margin:'0 auto var(--space-3)',
-                            objectFit:'contain', filter:'drop-shadow(0 0 14px rgba(13,115,119,0.4))',
+                            display: 'block', width: 52, height: 52, margin: '0 auto var(--space-3)',
+                            objectFit: 'contain', filter: 'drop-shadow(0 0 14px rgba(13,115,119,0.4))',
                         }}/>
                         <h1 style={{
-                            fontSize:'var(--text-2xl)', fontWeight:700,
-                            margin:'0 0 var(--space-1)', letterSpacing:'-0.02em', color:'var(--text-primary)',
+                            fontSize: 'var(--text-2xl)', fontWeight: 700,
+                            margin: '0 0 var(--space-1)', letterSpacing: '-0.02em', color: 'var(--text-primary)',
                         }}>Destello</h1>
-                        <p style={{ margin:0, fontSize:'var(--text-sm)', color:'var(--text-muted)' }}>
+                        <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
                             Tu espacio de aprendizaje{' '}
-                            <span style={{ color:'var(--color-amber-600,#D97706)', fontWeight:600 }}>inmersivo</span>
+                            <span style={{ color: 'var(--color-amber-600,#D97706)', fontWeight: 600 }}>inmersivo</span>
                         </p>
                     </div>
                     {children}
@@ -221,30 +201,18 @@ function RegisterForm({ email, nombre: nombreInicial, resplandorCode }) {
 
     return (
         <PageShell>
-            {/* Banner resplandor */}
             <div style={{
-                background:'rgba(13,115,119,0.08)', border:'1px solid rgba(13,115,119,0.25)',
-                borderRadius:'var(--radius-lg)', padding:'var(--space-3)',
-                marginBottom:'var(--space-5)', fontSize:'var(--text-xs)',
-                color:'var(--text-muted)', textAlign:'center', lineHeight:1.5,
+                background: 'rgba(13,115,119,0.08)', border: '1px solid rgba(13,115,119,0.25)',
+                borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)',
+                marginBottom: 'var(--space-5)', fontSize: 'var(--text-xs)',
+                color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5,
             }}>
                 ✨ Resplandor válido — Crea tu cuenta para acceder
             </div>
 
-            <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:'var(--space-3)' }}>
-                <Field
-                    label="Nombre"
-                    placeholder="Tu nombre"
-                    value={nombre}
-                    onChange={e => setNombre(e.target.value)}
-                />
-                <Field
-                    label="Correo electrónico"
-                    type="email"
-                    value={email}
-                    readOnly
-                    hint="Vinculado a tu Resplandor"
-                />
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                <Field label="Nombre" placeholder="Tu nombre" value={nombre} onChange={e => setNombre(e.target.value)}/>
+                <Field label="Correo electrónico" type="email" value={email} readOnly hint="Vinculado a tu Resplandor"/>
                 <div>
                     <Field
                         label="Contraseña"
@@ -253,8 +221,8 @@ function RegisterForm({ email, nombre: nombreInicial, resplandorCode }) {
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                         right={
-                            <button type="button" onClick={() => setShowPass(p=>!p)}
-                                    style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', padding:0, display:'flex' }}>
+                            <button type="button" onClick={() => setShowPass(p => !p)}
+                                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0, display: 'flex' }}>
                                 {showPass ? <EyeSlash size={17}/> : <Eye size={17}/>}
                             </button>
                         }
@@ -268,34 +236,30 @@ function RegisterForm({ email, nombre: nombreInicial, resplandorCode }) {
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
                     right={
-                        <button type="button" onClick={() => setShowConfirm(p=>!p)}
-                                style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', padding:0, display:'flex' }}>
+                        <button type="button" onClick={() => setShowConfirm(p => !p)}
+                                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0, display: 'flex' }}>
                             {showConfirm ? <EyeSlash size={17}/> : <Eye size={17}/>}
                         </button>
                     }
                 />
 
-                {/* Indicador de contraseñas coinciden */}
                 {confirmPassword && (
-                    <p style={{ margin:0, fontSize:'var(--text-xs)',
-                        color: password === confirmPassword ? '#10B981' : 'var(--color-error)' }}>
+                    <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: password === confirmPassword ? '#10B981' : 'var(--color-error)' }}>
                         {password === confirmPassword ? '✓ Las contraseñas coinciden' : '✗ Las contraseñas no coinciden'}
                     </p>
                 )}
 
-                {error && (
-                    <p style={{ color:'var(--color-error)', fontSize:'var(--text-xs)', margin:0 }}>{error}</p>
-                )}
+                {error && <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-xs)', margin: 0 }}>{error}</p>}
 
                 <button type="submit" disabled={!canSubmit} style={{
-                    display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-                    width:'100%', marginTop:'var(--space-1)', padding:'var(--space-3)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    width: '100%', marginTop: 'var(--space-1)', padding: 'var(--space-3)',
                     background: canSubmit ? 'var(--color-jade-500)' : 'var(--bg-surface)',
-                    border:'1px solid transparent', borderRadius:'var(--radius-lg)',
+                    border: '1px solid transparent', borderRadius: 'var(--radius-lg)',
                     color: canSubmit ? '#FAF7F2' : 'var(--text-muted)',
-                    fontFamily:'var(--font-sans)', fontWeight:600, fontSize:'var(--text-sm)',
+                    fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 'var(--text-sm)',
                     cursor: canSubmit ? 'pointer' : 'not-allowed',
-                    opacity: isLoading ? 0.7 : 1, transition:'background 0.2s',
+                    opacity: isLoading ? 0.7 : 1, transition: 'background 0.2s',
                 }}>
                     {isLoading ? 'Creando tu cuenta...' : 'Crear mi cuenta'}
                     {!isLoading && <ArrowRight size={16}/>}
@@ -312,18 +276,49 @@ function LoginForm() {
     const navigate = useNavigate()
     const { login, isLoading, error } = useAuthStore()
 
-    const [email,    setEmail]    = useState('')
-    const [password, setPassword] = useState('')
-    const [showPass, setShowPass] = useState(false)
-    const [localError, setLocalError] = useState(null)
+    const [email,         setEmail]         = useState('')
+    const [password,      setPassword]      = useState('')
+    const [showPass,      setShowPass]      = useState(false)
+    const [localError,    setLocalError]    = useState(null)
+    const [googleLoading, setGoogleLoading] = useState(false)
 
-    const handleOAuth = (provider) => { window.location.href = `/api/auth/${provider}` }
+    // ── Login con Google via Firebase ─────────────────────────────────────────
+    const handleGoogleLogin = async () => {
+        setGoogleLoading(true)
+        setLocalError(null)
+        try {
+            const { idToken } = await signInWithGoogle()
 
+            const res  = await fetch('/api/auth/social', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ idToken, provider: 'google' }),
+            })
+            const data = await res.json()
+
+            if (!res.ok) {
+                setLocalError(data.message || 'No encontramos cuenta con ese correo de Google.')
+                return
+            }
+
+            // Guardar token en el store y navegar
+            useAuthStore.setState({ token: data.token, user: data.user, error: null })
+            navigate('/home')
+        } catch (err) {
+            // El usuario cerró el popup — no es error real
+            if (err.code === 'auth/popup-closed-by-user' ||
+                err.code === 'auth/cancelled-popup-request') return
+            setLocalError('Error al conectar con Google. Intenta de nuevo.')
+        } finally {
+            setGoogleLoading(false)
+        }
+    }
+
+    // ── Login con email + contraseña ──────────────────────────────────────────
     const handleSubmit = async (e) => {
         e.preventDefault()
         setLocalError(null)
         await login({ email, password })
-        // Si login fue exitoso, navega
         const { token } = useAuthStore.getState()
         if (token) navigate('/home')
     }
@@ -332,16 +327,19 @@ function LoginForm() {
 
     return (
         <PageShell>
-            {/* OAuth */}
-            <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
-                <OAuthButton icon={IconGoogle}    label="Continuar con Google"    onClick={() => handleOAuth('google')}/>
-                <OAuthButton icon={IconFacebook}  label="Continuar con Facebook"  onClick={() => handleOAuth('facebook')}/>
-                <OAuthButton icon={IconInstagram} label="Continuar con Instagram" onClick={() => handleOAuth('instagram')}/>
+            {/* Google OAuth */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                <OAuthButton
+                    icon={IconGoogle}
+                    label="Continuar con Google"
+                    onClick={handleGoogleLogin}
+                    loading={googleLoading}
+                />
             </div>
 
-            <Divider />
+            <Divider/>
 
-            <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:'var(--space-3)' }}>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                 <Field
                     label="Correo electrónico" type="email" placeholder="tu@email.com"
                     value={email} onChange={e => setEmail(e.target.value)}
@@ -353,48 +351,45 @@ function LoginForm() {
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     right={
-                        <button type="button" onClick={() => setShowPass(p=>!p)}
-                                style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', padding:0, display:'flex' }}>
+                        <button type="button" onClick={() => setShowPass(p => !p)}
+                                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0, display: 'flex' }}>
                             {showPass ? <EyeSlash size={17}/> : <Eye size={17}/>}
                         </button>
                     }
                 />
 
                 {displayError && (
-                    <p style={{ color:'var(--color-error)', fontSize:'var(--text-xs)', margin:0 }}>{displayError}</p>
+                    <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-xs)', margin: 0 }}>{displayError}</p>
                 )}
 
-                <div style={{ textAlign:'right', marginTop:-6 }}>
+                <div style={{ textAlign: 'right', marginTop: -6 }}>
                     <Link to="/recuperar-contrasena" style={{
-                        fontSize:'var(--text-xs)', color:'var(--color-jade-500)',
-                        fontWeight:500, textDecoration:'none',
+                        fontSize: 'var(--text-xs)', color: 'var(--color-jade-500)',
+                        fontWeight: 500, textDecoration: 'none',
                     }}>¿Olvidaste tu contraseña?</Link>
                 </div>
 
                 <button type="submit" disabled={!email || !password || isLoading} style={{
-                    display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-                    width:'100%', marginTop:'var(--space-1)', padding:'var(--space-3)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    width: '100%', marginTop: 'var(--space-1)', padding: 'var(--space-3)',
                     background: email && password ? 'var(--color-jade-500)' : 'var(--bg-surface)',
-                    border:'1px solid transparent', borderRadius:'var(--radius-lg)',
+                    border: '1px solid transparent', borderRadius: 'var(--radius-lg)',
                     color: email && password ? '#FAF7F2' : 'var(--text-muted)',
-                    fontFamily:'var(--font-sans)', fontWeight:600, fontSize:'var(--text-sm)',
+                    fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 'var(--text-sm)',
                     cursor: email && password ? 'pointer' : 'not-allowed',
-                    opacity: isLoading ? 0.7 : 1, transition:'background 0.2s',
+                    opacity: isLoading ? 0.7 : 1, transition: 'background 0.2s',
                 }}>
                     {isLoading ? 'Entrando...' : 'Entrar'}
                     {!isLoading && <ArrowRight size={16}/>}
                 </button>
             </form>
 
-            {/* Link para ir a /acceso si no tienen cuenta */}
             <p style={{
-                marginTop:'var(--space-5)', textAlign:'center',
-                fontSize:'var(--text-xs)', color:'var(--text-disabled)',
+                marginTop: 'var(--space-5)', textAlign: 'center',
+                fontSize: 'var(--text-xs)', color: 'var(--text-disabled)',
             }}>
                 ¿No tienes cuenta?{' '}
-                <Link to="/acceso" style={{
-                    color:'var(--color-jade-500)', fontWeight:600, textDecoration:'none',
-                }}>
+                <Link to="/acceso" style={{ color: 'var(--color-jade-500)', fontWeight: 600, textDecoration: 'none' }}>
                     Activa tu Resplandor
                 </Link>
             </p>
@@ -402,7 +397,7 @@ function LoginForm() {
     )
 }
 
-// ── Exportación principal — decide qué formulario mostrar ─────────────────────
+// ── Exportación principal ─────────────────────────────────────────────────────
 export default function PageLogin() {
     const location = useLocation()
 
@@ -421,5 +416,5 @@ export default function PageLogin() {
         )
     }
 
-    return <LoginForm />
+    return <LoginForm/>
 }
