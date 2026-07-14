@@ -15,12 +15,21 @@ const firebaseConfig = {
     appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
-const app      = initializeApp(firebaseConfig)
-const auth     = getAuth(app)
-const provider = new GoogleAuthProvider()
+// Init defensivo: si faltan las VITE_FIREBASE_* (típico en local sin .env),
+// no tumbamos toda la página — el login con email sigue funcionando y solo
+// el botón de Google queda deshabilitado.
+let auth = null
+let provider = null
 
-// Pedir el email siempre (evita que Google elija automáticamente sin mostrar el selector)
-provider.setCustomParameters({ prompt: 'select_account' })
+if (firebaseConfig.apiKey) {
+    const app = initializeApp(firebaseConfig)
+    auth      = getAuth(app)
+    provider  = new GoogleAuthProvider()
+    // Pedir el email siempre (evita que Google elija automáticamente sin mostrar el selector)
+    provider.setCustomParameters({ prompt: 'select_account' })
+} else {
+    console.warn('[firebase] Faltan las variables VITE_FIREBASE_* — login con Google deshabilitado en este entorno.')
+}
 
 /**
  * Abre el popup de Google, autentica al usuario y devuelve el idToken.
@@ -30,6 +39,9 @@ provider.setCustomParameters({ prompt: 'select_account' })
  * @throws  Si el usuario cierra el popup → err.code === 'auth/popup-closed-by-user'
  */
 export async function signInWithGoogle() {
+    if (!auth || !provider) {
+        throw new Error('Login con Google no disponible: faltan las variables VITE_FIREBASE_* en este entorno.')
+    }
     const result  = await signInWithPopup(auth, provider)
     const idToken = await result.user.getIdToken()
     return {

@@ -303,6 +303,8 @@ function LoginForm() {
 
             // Guardar token en el store y navegar
             useAuthStore.setState({ token: data.token, user: data.user, error: null })
+            sessionStorage.setItem('destello_token', data.token)
+            if (data.user) sessionStorage.setItem('destello_user', JSON.stringify(data.user))
             navigate('/home')
         } catch (err) {
             // El usuario cerró el popup — no es error real

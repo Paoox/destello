@@ -13,7 +13,10 @@ import {
   Gear,
   SignOut,
   Sparkle,
+  ShieldCheck,
 } from '@phosphor-icons/react'
+import { useAuthStore } from '@store/useAuthStore.js'
+import { isAdminEmail } from '@/constants.js'
 
 // Definición de rutas — modificar aquí afecta toda la nav
 const NAV_ITEMS = [
@@ -106,6 +109,8 @@ const styles = {
 
 export default function Navbar() {
   const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
+  const showAdmin = isAdminEmail(user?.email)
 
   const handleSignOut = () => {
     // TODO: limpiar sesión en Zustand store
@@ -132,6 +137,17 @@ export default function Navbar() {
             {label}
           </NavLink>
         ))}
+
+        {/* Admin — solo visible para cuentas autorizadas */}
+        {showAdmin && (
+          <NavLink
+            to="/admin"
+            style={({ isActive }) => styles.link(isActive)}
+          >
+            <ShieldCheck size={20} weight="regular" />
+            Admin
+          </NavLink>
+        )}
       </div>
 
       {/* Links inferiores */}

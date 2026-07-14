@@ -60,7 +60,6 @@ export default function App() {
                     <Route path="/acceso" element={<PageAcceso />} />
                     <Route path="/bienvenida" element={<PageLanding />} />
                     <Route path="/login" element={<PageLogin />} />
-                    <Route path="/admin" element={<PageAdmin />} />
                 </Route>
 
                 {/* ── Rutas privadas (con sidebar/navbar) ───────── */}
@@ -69,6 +68,8 @@ export default function App() {
                     <Route path="/habitat"       element={<PageHabitat />} />
                     <Route path="/aula/:id"      element={<PageAula />} />
                     <Route path="/perfil"        element={<PagePerfil />} />
+                    {/* Admin integrado en el shell — link visible solo para cuentas admin */}
+                    <Route path="/admin"         element={<PageAdmin />} />
                 </Route>
 
                 {/* ── Redirects ─────────────────────────────────── */}

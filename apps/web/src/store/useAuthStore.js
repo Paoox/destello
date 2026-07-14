@@ -26,6 +26,7 @@ export const useAuthStore = create((set, get) => ({
       const data = await res.json()
       set({ user: data.user, token: data.token, isLoading: false })
       sessionStorage.setItem('destello_token', data.token)
+      if (data.user) sessionStorage.setItem('destello_user', JSON.stringify(data.user))
     } catch (err) {
       set({ error: err.message, isLoading: false })
     }
@@ -49,6 +50,7 @@ export const useAuthStore = create((set, get) => ({
 
       set({ user: data.user, token: data.token, isLoading: false })
       sessionStorage.setItem('destello_token', data.token)
+      if (data.user) sessionStorage.setItem('destello_user', JSON.stringify(data.user))
       // Limpiar el resplandor del sessionStorage — ya fue consumido
       sessionStorage.removeItem('destello_resplandor')
       return { ok: true }
@@ -61,12 +63,18 @@ export const useAuthStore = create((set, get) => ({
   logout: () => {
     sessionStorage.removeItem('destello_token')
     sessionStorage.removeItem('destello_resplandor')
+    sessionStorage.removeItem('destello_user')
     set({ user: null, token: null, error: null })
   },
 
   restoreSession: () => {
     const token = sessionStorage.getItem('destello_token')
-    if (token) set({ token })
+    let user = null
+    try {
+      const raw = sessionStorage.getItem('destello_user')
+      if (raw) user = JSON.parse(raw)
+    } catch { /* ignora JSON corrupto */ }
+    if (token) set({ token, user })
   },
 
   clearError: () => set({ error: null }),
