@@ -109,7 +109,8 @@ export async function loginWithSocial(req, res, next) {
     let firebaseUser
     try {
       firebaseUser = await verifyFirebaseToken(idToken)
-    } catch {
+    } catch (fbErr) {
+      console.error('[auth/social] Firebase verifyIdToken falló:', fbErr?.code, '-', fbErr?.message)
       throw new AppError('Token de Google inválido o expirado', 401, 'INVALID_TOKEN')
     }
 
