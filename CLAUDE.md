@@ -301,17 +301,16 @@ Tabs: **Accesos** | **Talleres** | **Lista de espera**
 
 ## Lo que Falta (Próximas Sesiones)
 
-### 🔴 Prioritario
-- **Login con Google OAuth** — conectar al flujo existente de Resplandores (si el email tiene Resplandor válido, activarlo al hacer login social)
-
 ### 🟡 Pendiente
 - **Fix `@lid` en bot Faro** — `extractWhatsapp()` devuelve raw en vez de `null` para JIDs internos de WA
 - **Opción 2 del bot** — inscripción a lista de espera desde la vista de talleres
 - **Dashboard Analytics** en panel admin — métricas de conversión, rentabilidad, reincidencia
-- **Error en consola frontend** — `Cannot read properties of undefined (reading 'payload')` en `useAuthStore.js`
+- **Error en consola frontend** — `Cannot read properties of undefined (reading 'payload')`. Nota: `useAuthStore.js` actual NO tiene referencia a `payload` (0 matches en `apps/web/src`); ya corregido o viene de una librería. Reproducir y leer stack trace para ubicarlo.
 - **Vigencia de Chispa en frontend** — bloquear rooms/contenido automáticamente al vencer
+- **Limpieza env** — agregar `MAIL_FROM` y `BOT_HTTP_URL` al `.env` de la Toshiba (salen WARN); regenerar `package-lock.json` de la api con `resend`
 
 ### 🔮 Futuro
+- **Toggle "registrarse con Google"** en la pantalla de Resplandor (`RegisterForm`) — dejar elegir formulario vs Google al crear cuenta. Requiere endpoint backend social-register (verifica token Google + consume Resplandor + crea cuenta). Diferido: el flujo actual (registrar con formulario → luego Google login) ya cubre el caso.
 - Pasarela de pago (Stripe/Conekta) → automatizar flujo manual del admin
 - Multi-tenant (cada institución con su propio espacio)
 - Traducción automática
@@ -320,6 +319,7 @@ Tabs: **Accesos** | **Talleres** | **Lista de espera**
 
 ## Lo que Está Terminado y Funciona
 
+- ✅ **Login con Google (Firebase OAuth)** — funciona end-to-end (13 jul 2026). `signInWithGoogle()` → `POST /auth/social` → Firebase Admin verifica idToken → JWT Destello. Solo para usuarios ya registrados (si el email no tiene cuenta → `USER_NOT_FOUND`, correcto). Causa raíz del bug: al `docker-compose.yml` le faltaban las env vars `FIREBASE_*`, `RESEND_API_KEY`, `MAIL_FROM`, `BOT_HTTP_URL`, `JWT_EXPIRES_IN`, y a `apps/api/package.json` la dependencia `resend`. La `FIREBASE_PRIVATE_KEY` se pasa por interpolación `${...}` desde `.env` (no `env_file`).
 - ✅ Named Tunnel Cloudflare — URL fija `https://api.destello.courses`
 - ✅ Bot router `/bot` montado en `index.js`
 - ✅ `getPendientesPorEmail` corregido con columnas reales de BD
