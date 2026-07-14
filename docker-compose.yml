@@ -41,6 +41,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Permite que el contenedor alcance servicios del host (ej: el bot Faro en :4001)
+    # vía http://host.docker.internal:<puerto>
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - destello-net
     healthcheck:
