@@ -474,13 +474,6 @@ export default function PageHome() {
   })
   const rutaPct = Math.min(100, Math.round((rachaVal / 30) * 100))
 
-  // Próximos cursos = talleres 'proximamente' que aún no tomas, por fecha.
-  const misIds = new Set(misTalleres.map((t) => t.tallerId))
-  const proximosCursos = proximos
-    .filter((t) => t.estado === 'proximamente' && !misIds.has(t.id))
-    .sort((a, b) => String(a.fecha_inicio ?? '').localeCompare(String(b.fecha_inicio ?? '')))
-    .slice(0, 4)
-
   // Canjea una Supernova con Estrellas.
   const canjearSupernova = async (id) => {
     setSupernovaMsg(null)
@@ -514,6 +507,14 @@ export default function PageHome() {
       .finally(() => setLoadingTalleres(false))
   }
   useEffect(() => { cargarTalleres() }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Próximos cursos = talleres 'proximamente' que aún no tomas, por fecha.
+  // (Se calcula aquí, después de declarar misTalleres, para evitar usarlo antes.)
+  const misIds = new Set(misTalleres.map((t) => t.tallerId))
+  const proximosCursos = proximos
+    .filter((t) => t.estado === 'proximamente' && !misIds.has(t.id))
+    .sort((a, b) => String(a.fecha_inicio ?? '').localeCompare(String(b.fecha_inicio ?? '')))
+    .slice(0, 4)
 
   // ── Estado del canje de chispa (card in-line) ──
   const [canjeOpen, setCanjeOpen] = useState(false)
