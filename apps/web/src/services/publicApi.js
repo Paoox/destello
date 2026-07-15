@@ -4,7 +4,11 @@
  * Usados en landing, /acceso, /habitat y registro.
  */
 
-const BASE = import.meta.env.VITE_API_URL ?? '/api'
+// Siempre por el proxy `/api` (mismo origen) para evitar CORS:
+//  · Producción → vercel.json reescribe /api/* → https://api.destello.courses
+//  · Dev local  → vite.config.js proxya /api/* al túnel
+// (Igual que adminApi.js, que ya funciona así.)
+const BASE = '/api'
 
 async function handleResponse(res) {
     const data = await res.json()
