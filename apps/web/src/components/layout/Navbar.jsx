@@ -14,6 +14,8 @@ import {
   Gear,
   SignOut,
   ShieldCheck,
+  List,
+  X,
 } from '@phosphor-icons/react'
 import { useAuthStore } from '@store/useAuthStore.js'
 import { isAdminEmail } from '@/constants.js'
@@ -42,7 +44,11 @@ const NAV_CSS = `
   position: fixed;
   left: 0; top: 0; bottom: 0;
   width: var(--navbar-width, 240px);
-  background: var(--bg-card);
+  /* Semi-transparente + blur: deja ver la constelación del fondo sin
+     sacrificar la legibilidad del menú. */
+  background: rgba(10, 36, 34, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
@@ -127,11 +133,14 @@ const NAV_CSS = `
   border-left: 3px solid var(--color-jade-500);
 }
 .ds-nav__link.active .ds-nav__ico { color: var(--color-jade-400); }
+/* "Salir" siempre en ámbar para que resalte y se lea en modo claro y oscuro */
+.ds-nav__link--danger { color: var(--color-amber-600); font-weight: 600; }
+.ds-nav__link--danger .ds-nav__ico { color: var(--color-amber-600); }
 .ds-nav__link--danger:hover {
   background: rgba(217, 119, 6, 0.14);
-  color: var(--color-amber-200);
+  color: var(--color-amber-700);
 }
-.ds-nav__link--danger:hover .ds-nav__ico { color: var(--color-amber-400); }
+.ds-nav__link--danger:hover .ds-nav__ico { color: var(--color-amber-700); }
 
 /* Overlay de confirmación de salida */
 .ds-nav__overlay {
@@ -196,6 +205,56 @@ const NAV_CSS = `
 
 @keyframes ds-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ds-pop { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+
+/* ── Modo claro: fondo traslúcido claro + divisores jade visibles ── */
+@media (prefers-color-scheme: light) {
+  .ds-nav {
+    background: rgba(255, 255, 255, 0.78);
+    border-right: 1px solid rgba(13, 115, 119, 0.18);
+  }
+  .ds-nav__brand { border-bottom-color: rgba(13, 115, 119, 0.28); }
+  .ds-nav__bottom { border-top-color: rgba(13, 115, 119, 0.28); }
+  .ds-nav__hamburger { background: rgba(255, 255, 255, 0.9); }
+}
+
+/* ── Botón hamburguesa (solo móvil) ── */
+.ds-nav__hamburger {
+  display: none;
+  position: fixed;
+  top: 10px; left: 10px;
+  z-index: 250;
+  width: 42px; height: 42px;
+  align-items: center; justify-content: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+.ds-nav__scrim { display: none; }
+
+/* ═══════════════ RESPONSIVE ═══════════════ */
+@media (max-width: 768px) {
+  .ds-nav__hamburger { display: inline-flex; }
+  .ds-nav {
+    width: min(268px, 82vw);
+    padding-top: 62px;
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--shadow-lg);
+  }
+  .ds-nav--open { transform: translateX(0); }
+  .ds-nav__scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: rgba(2, 20, 18, 0.5);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    animation: ds-fade 0.2s ease;
+  }
+}
 `
 
 export default function Navbar() {
@@ -205,12 +264,16 @@ export default function Navbar() {
   const showAdmin = isAdminEmail(user?.email)
 
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false) // drawer en móvil
 
   const handleSignOut = () => {
     logout()
     navigate('/login')
   }
 
+  const closeMobile = () => setMobileOpen(false)
+
+  // Cierra el drawer al navegar (en móvil) y aplica la clase activa.
   const linkClass = ({ isActive }) =>
     isActive ? 'ds-nav__link active' : 'ds-nav__link'
 
@@ -218,12 +281,26 @@ export default function Navbar() {
     <>
       <style>{NAV_CSS}</style>
 
-      <nav className="ds-nav">
+      {/* Botón hamburguesa — solo visible en móvil */}
+      <button
+        type="button"
+        className="ds-nav__hamburger"
+        onClick={() => setMobileOpen((v) => !v)}
+        aria-label={mobileOpen ? 'Cerrar menú' : 'Abrir menú'}
+        aria-expanded={mobileOpen}
+      >
+        {mobileOpen ? <X size={22} weight="bold" /> : <List size={22} weight="bold" />}
+      </button>
+
+      {/* Scrim — oscurece el fondo cuando el drawer está abierto (móvil) */}
+      {mobileOpen && <div className="ds-nav__scrim" onClick={closeMobile} />}
+
+      <nav className={mobileOpen ? 'ds-nav ds-nav--open' : 'ds-nav'}>
         {/* Logo → redirige a Inicio */}
         <button
           type="button"
           className="ds-nav__brand"
-          onClick={() => navigate('/home')}
+          onClick={() => { navigate('/home'); closeMobile() }}
           aria-label="Ir a Inicio"
         >
           <img src={logoDestello} alt="Destello" className="ds-nav__logo" />
@@ -233,7 +310,7 @@ export default function Navbar() {
         {/* Links principales */}
         <div className="ds-nav__section">
           {NAV_ITEMS.map(({ label, path, Icon }) => (
-            <NavLink key={path} to={path} className={linkClass}>
+            <NavLink key={path} to={path} className={linkClass} onClick={closeMobile}>
               <span className="ds-nav__ico"><Icon size={20} weight="regular" /></span>
               {label}
             </NavLink>
@@ -241,7 +318,7 @@ export default function Navbar() {
 
           {/* Admin — solo visible para cuentas autorizadas */}
           {showAdmin && (
-            <NavLink to="/admin" className={linkClass}>
+            <NavLink to="/admin" className={linkClass} onClick={closeMobile}>
               <span className="ds-nav__ico"><ShieldCheck size={20} weight="regular" /></span>
               Admin
             </NavLink>
@@ -251,7 +328,7 @@ export default function Navbar() {
         {/* Links inferiores */}
         <div className="ds-nav__bottom">
           {NAV_BOTTOM.map(({ label, path, Icon }) => (
-            <NavLink key={path} to={path} className={linkClass}>
+            <NavLink key={path} to={path} className={linkClass} onClick={closeMobile}>
               <span className="ds-nav__ico"><Icon size={20} weight="regular" /></span>
               {label}
             </NavLink>
@@ -259,7 +336,7 @@ export default function Navbar() {
           <button
             type="button"
             className="ds-nav__link ds-nav__link--danger"
-            onClick={() => setConfirmOpen(true)}
+            onClick={() => { setConfirmOpen(true); closeMobile() }}
           >
             <span className="ds-nav__ico"><SignOut size={20} /></span>
             Salir

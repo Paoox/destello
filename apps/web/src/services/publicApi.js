@@ -39,6 +39,22 @@ export async function apiConsumirResplandor(code, email) {
     return handleResponse(res)
 }
 
+// ── Chispas ───────────────────────────────────────────────────────────────────
+
+/**
+ * Valida un código de chispa SIN consumirlo.
+ * Devuelve { status, record } donde record trae { tallerNombre, tallerId, expiresAt, ... }.
+ * Se usa en el Home para previsualizar el taller antes de desbloquearlo.
+ */
+export async function apiValidarChispa(code) {
+    const res = await fetch(`${BASE}/chispas/validate`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ code: code.toUpperCase().trim() }),
+    })
+    return handleResponse(res)
+}
+
 // ── Talleres ──────────────────────────────────────────────────────────────────
 
 /**

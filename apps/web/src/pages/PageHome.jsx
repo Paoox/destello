@@ -1,141 +1,667 @@
 /**
  * Destello — PageHome
- * Landing principal después del login.
- * Muestra talleres disponibles, progreso y accesos rápidos.
+ * Home principal después del login. Es el centro de vida del alumno:
+ *   · Energía / gamificación (Destellos, Logros, Racha)
+ *   · Ruta de progreso
+ *   · Mis talleres → botón a Material de apoyo + modelos 3D (vigencia 30 días)
+ *   · Canjear Chispa (desbloquea taller nuevo)
+ *   · Tienda de Destellos (moneda general)
+ *   · Promos exclusivas alumnos + Próximos cursos
+ *   · Constelación de amigos (referidos): Estrellas → Supernovas
+ *
+ * ── Sistema de puntos (definición de negocio) ──────────────────────────
+ *   Destellos    → moneda general de la plataforma (se gasta en la Tienda).
+ *   Estrellas    → puntos que SOLO se ganan por referidos (código de amigo).
+ *   Supernovas   → catálogo de premios grandes que se canjean con Estrellas.
+ *   Polvo estelar→ concepto/nombre del acto de compartir tu código de amigo.
+ *
+ * ⚠️ Los datos son mock por ahora. Cuando exista el backend de referidos y
+ *    progreso, reemplazar HOME_MOCK por la respuesta de la API.
+ * ──────────────────────────────────────────────────────────────────────
  */
-import { Books, PlayCircle, Trophy, ArrowRight, Fire } from '@phosphor-icons/react'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  Sparkle,
+  Trophy,
+  Fire,
+  Cube,
+  Clock,
+  Ticket,
+  Gift,
+  Star,
+  ShootingStar,
+  CalendarBlank,
+  Tag,
+  ArrowRight,
+  Medal,
+  CheckCircle,
+  CircleNotch,
+  Warning,
+  X,
+  UsersThree,
+} from '@phosphor-icons/react'
+import { apiValidarChispa, apiListTalleres } from '@services/publicApi.js'
 
-// ── Subcomponente: Stat card ──────────────────────────────
-function StatCard({ Icon, label, value, accent }) {
+/* ============================================================
+   Datos mock — reemplazar por API cuando exista el backend
+   ============================================================ */
+const HOME_MOCK = {
+  nombre: 'Paola',
+  // Moneda general
+  destellos: 120,
+  logros: 12,
+  racha: 7,
+  // Referidos
+  codigoAmigo: 'PAO-BRILLA',
+  estrellas: 3,          // estrellas ganadas
+  estrellasMeta: 5,      // estrellas para el próximo premio
+  premioProximo: '1 mes gratis',
+  // Ruta de progreso (hitos)
+  progresoHitos: [
+    { label: 'Día 1',  estado: 'done',    Icon: CheckCircle },
+    { label: 'Día 2',  estado: 'current', Icon: Medal },
+    { label: 'Día 7',  estado: 'locked',  Icon: Medal },
+    { label: 'Día 15', estado: 'locked',  Icon: Trophy },
+  ],
+  progresoPct: 40, // % de la barra de la ruta
+  talleres: [
+    {
+      id: '1',
+      nombre: 'Auriculoterapia Nivel 1',
+      categoria: 'Horizonte Zen',
+      color: '#0D7377',
+      Icon: Sparkle,
+      // Fecha en que se impartió el taller; el material vive 30 días después.
+      impartido: '2026-07-02',
+    },
+    {
+      id: '2',
+      nombre: 'Automaquillaje Artístico',
+      categoria: 'Estilo Personal',
+      color: '#D97706',
+      Icon: Tag,
+      impartido: '2026-07-09',
+    },
+  ],
+  // Tienda de Destellos (moneda general)
+  tienda: [
+    { titulo: 'Mes de acceso gratis',   costo: 500, Icon: CalendarBlank, moneda: 'destellos' },
+    { titulo: 'Masterclass exclusiva',  costo: 300, Icon: Star,          moneda: 'destellos' },
+    { titulo: 'Taller a elegir',        costo: 800, Icon: Gift,          moneda: 'destellos' },
+  ],
+  promos: [
+    { titulo: '2x1 en tu segundo taller Zen', detalle: 'Exclusivo alumnos · termina en 6 días' },
+  ],
+  proximos: [
+    { nombre: 'Iridología', fecha: '1 ago' },
+    { nombre: 'Gomitas artesanales', fecha: '8 ago' },
+    { nombre: 'Dibujo expresivo', fecha: '15 ago' },
+  ],
+}
+
+const MATERIAL_DIAS = 30 // vigencia del material de apoyo tras el taller
+
+/* Calcula cuántos días quedan de acceso al material (30 días post-taller). */
+function diasRestantesMaterial(fechaImpartido) {
+  const fin = new Date(fechaImpartido)
+  fin.setDate(fin.getDate() + MATERIAL_DIAS)
+  const hoy = new Date()
+  const ms = fin - hoy
+  return Math.ceil(ms / (1000 * 60 * 60 * 24))
+}
+
+/* ============================================================
+   Estilos + responsive (media queries reales vía <style>).
+   Los pseudo-selectores y breakpoints no se pueden expresar
+   con estilos inline, por eso van aquí — igual que la Navbar.
+   ============================================================ */
+const HOME_CSS = `
+.dh-wrap {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-8);
+  box-sizing: border-box;
+}
+.dh-section-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-jade-400);
+  letter-spacing: 0.02em;
+  margin: 0 0 var(--space-3);
+}
+.dh-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Header ── */
+.dh-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+}
+.dh-hello { font-size: var(--text-3xl); font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+.dh-sub { color: var(--text-muted); font-size: var(--text-sm); margin: 4px 0 0; }
+
+/* ── Píldoras de energía ── */
+.dh-energy { display: flex; gap: var(--space-3); }
+.dh-pill {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-4);
+  text-align: center;
+  min-width: 74px;
+}
+.dh-pill-val { font-size: var(--text-lg); font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.dh-pill-lbl { font-size: var(--text-xs); color: var(--text-muted); }
+
+/* ── Ruta de progreso ── */
+.dh-ruta { padding: var(--space-5); margin-bottom: var(--space-6); }
+.dh-ruta-track { position: relative; display: flex; align-items: flex-start; justify-content: space-between; }
+.dh-ruta-line { position: absolute; left: 6%; right: 6%; top: 16px; height: 3px; background: var(--border-default); border-radius: var(--radius-full); }
+.dh-ruta-fill { position: absolute; left: 6%; top: 16px; height: 3px; background: linear-gradient(90deg, var(--color-jade-500), var(--color-amber-600)); border-radius: var(--radius-full); }
+.dh-hito { position: relative; text-align: center; z-index: 1; flex: 1; }
+.dh-hito-dot { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; }
+.dh-hito-lbl { font-size: var(--text-xs); color: var(--text-muted); margin-top: 6px; }
+
+/* ── Grids ── */
+.dh-grid-talleres { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6); }
+.dh-grid-tienda   { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); margin-bottom: var(--space-6); }
+.dh-grid-promos   { display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--space-4); margin-bottom: var(--space-6); }
+
+/* ── Card de taller ── */
+.dh-taller { overflow: hidden; display: flex; flex-direction: column; }
+.dh-taller-thumb { height: 84px; position: relative; display: flex; align-items: center; justify-content: center; }
+.dh-taller-badge {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(217,119,6,0.92); color: #fff;
+  font-size: var(--text-xs); font-weight: 700;
+  padding: 3px 9px; border-radius: var(--radius-full);
+  display: flex; align-items: center; gap: 4px;
+}
+.dh-taller-body { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
+.dh-taller-cat { font-size: var(--text-xs); color: var(--color-amber-600); font-weight: 700; }
+.dh-taller-name { font-size: var(--text-sm); font-weight: 600; margin: 0; }
+
+/* ── Botones ── */
+.dh-btn {
+  font-family: var(--font-sans);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  font-weight: 600;
+  transition: filter 0.15s ease, transform 0.1s ease, background 0.15s ease;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.dh-btn:active { transform: scale(0.98); }
+.dh-btn--material {
+  width: 100%;
+  background: rgba(13,115,119,0.22);
+  border: 1px solid var(--color-jade-500);
+  color: var(--color-jade-300);
+  font-size: var(--text-xs);
+  padding: var(--space-2) var(--space-3);
+}
+.dh-btn--material:hover { background: rgba(13,115,119,0.34); }
+.dh-btn--material:disabled { opacity: 0.55; cursor: not-allowed; border-color: var(--border-default); color: var(--text-muted); background: transparent; }
+.dh-btn--amber {
+  background: var(--color-amber-600); color: #fff; border: none;
+  font-size: var(--text-sm); padding: var(--space-3) var(--space-5);
+}
+.dh-btn--amber:hover { filter: brightness(1.08); }
+.dh-btn--ghost-amber {
+  background: rgba(217,119,6,0.14); border: 1px solid var(--color-amber-600);
+  color: var(--color-amber-500); font-size: var(--text-xs);
+  padding: var(--space-2) var(--space-3);
+}
+
+/* ── Canjear chispa ── */
+.dh-chispa {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+  flex-wrap: wrap;
+  background: linear-gradient(120deg, rgba(217,119,6,0.16), rgba(13,115,119,0.12));
+  border: 1px solid rgba(217,119,6,0.4);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-6);
+  box-shadow: var(--shadow-md);
+}
+.dh-chispa-left { display: flex; align-items: center; gap: var(--space-4); }
+.dh-chispa-orb {
+  width: 46px; height: 46px; flex-shrink: 0;
+  background: radial-gradient(circle, var(--color-amber-500), var(--color-amber-800));
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-amber);
+}
+.dh-chispa--tappable { cursor: pointer; transition: filter 0.15s ease, transform 0.1s ease; }
+.dh-chispa--tappable:hover { filter: brightness(1.05); }
+.dh-chispa--tappable:active { transform: scale(0.995); }
+
+/* ── Card interactiva de canje de chispa ── */
+.dh-canje { display: block; margin-bottom: var(--space-6); animation: fadeIn 0.28s ease; }
+.dh-canje-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
+.dh-canje-title { display: flex; align-items: center; gap: 8px; font-size: var(--text-base); font-weight: 700; }
+.dh-canje-close {
+  background: none; border: none; color: var(--text-muted);
+  display: inline-flex; padding: 4px; border-radius: var(--radius-md);
+}
+.dh-canje-close:hover { color: var(--text-primary); background: var(--bg-surface); }
+.dh-canje-form { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.dh-input {
+  flex: 1; min-width: 160px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dh-input:focus { outline: 2px solid var(--color-jade-500); outline-offset: 1px; border-color: transparent; }
+.dh-canje-error {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: var(--space-3);
+  font-size: var(--text-xs); color: var(--color-error);
+}
+.dh-canje-result {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: rgba(13,115,119,0.10);
+  animation: fadeIn 0.28s ease;
+}
+.dh-result-row { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); margin-bottom: var(--space-2); }
+.dh-result-name { font-size: var(--text-lg); font-weight: 700; margin: 0 0 var(--space-1); }
+.dh-spin { display: inline-flex; animation: dh-rotate 0.8s linear infinite; }
+@keyframes dh-rotate { to { transform: rotate(360deg); } }
+
+/* ── Tienda ── */
+.dh-tienda-item { padding: var(--space-4); text-align: center; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); }
+.dh-cost { font-size: var(--text-xs); font-weight: 700; color: var(--color-amber-500); display: inline-flex; align-items: center; gap: 4px; }
+
+/* ── Promos / próximos ── */
+.dh-block { padding: var(--space-4) var(--space-5); }
+.dh-block-tag { display: flex; align-items: center; gap: 6px; font-size: var(--text-xs); font-weight: 700; margin-bottom: var(--space-3); }
+.dh-next-row { font-size: var(--text-sm); font-weight: 500; margin: 0 0 var(--space-2); }
+.dh-next-row span { color: var(--text-muted); font-weight: 400; }
+
+/* ── Constelación de amigos (referidos) ── */
+.dh-refer {
+  background: linear-gradient(120deg, var(--bg-card), var(--bg-surface));
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-md);
+}
+.dh-refer-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.dh-refer-title { display: flex; align-items: center; gap: 8px; font-size: var(--text-base); font-weight: 700; }
+.dh-code {
+  font-family: var(--font-mono); font-size: var(--text-sm); font-weight: 700;
+  color: var(--color-amber-500);
+  background: rgba(217,119,6,0.14); border: 1px dashed var(--color-amber-600);
+  padding: 5px 12px; border-radius: var(--radius-md);
+}
+.dh-stars { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+
+/* ═══════════════ RESPONSIVE ═══════════════ */
+@media (max-width: 768px) {
+  .dh-wrap { padding: var(--space-5) var(--space-4); }
+  .dh-hello { font-size: var(--text-2xl); }
+  .dh-header { flex-direction: column; align-items: stretch; }
+  .dh-energy { width: 100%; }
+  .dh-pill { flex: 1; min-width: 0; }
+  .dh-grid-tienda { grid-template-columns: 1fr; }
+  .dh-grid-promos { grid-template-columns: 1fr; }
+  .dh-chispa { flex-direction: column; align-items: stretch; }
+  .dh-chispa .dh-btn--amber { width: 100%; }
+}
+@media (max-width: 460px) {
+  .dh-wrap { padding: var(--space-4) var(--space-3); }
+  .dh-grid-talleres { grid-template-columns: 1fr; }
+  .dh-hito-lbl { font-size: 0.68rem; }
+}
+`
+
+/* ── Subcomponente: card de taller con acceso a material ── */
+function TallerCard({ taller, onMaterial }) {
+  const dias = diasRestantesMaterial(taller.impartido)
+  const vigente = dias > 0
+  const { Icon } = taller
+
   return (
-      <div style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 'var(--radius-xl)',
-        padding: 'var(--space-5)',
-        display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
-      }}>
-        <div style={{
-          width: 44, height: 44,
-          background: accent === 'amber' ? 'rgba(217,119,6,0.12)' : 'rgba(13,115,119,0.12)',
-          borderRadius: 'var(--radius-lg)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-        }}>
-          <Icon size={22} color={accent === 'amber' ? 'var(--color-amber-600)' : 'var(--color-jade-500)'} weight="fill" />
-        </div>
-        <div>
-          <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 700 }}>{value}</div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{label}</div>
-        </div>
+    <div className="dh-card dh-taller">
+      <div
+        className="dh-taller-thumb"
+        style={{ background: `linear-gradient(135deg, ${taller.color}, ${taller.color}88)` }}
+      >
+        <Icon size={30} color="rgba(255,255,255,0.9)" weight="fill" />
+        <span className="dh-taller-badge">
+          <Clock size={12} weight="bold" />
+          {vigente ? `${dias} días` : 'Expirado'}
+        </span>
       </div>
+      <div className="dh-taller-body">
+        <span className="dh-taller-cat">{taller.categoria}</span>
+        <h3 className="dh-taller-name">{taller.nombre}</h3>
+        <button
+          className="dh-btn dh-btn--material"
+          disabled={!vigente}
+          onClick={() => onMaterial(taller.id)}
+          title={vigente
+            ? 'Material de apoyo y modelos 3D'
+            : 'El acceso al material venció (30 días tras el taller)'}
+        >
+          <Cube size={14} weight="fill" />
+          {vigente ? 'Material y modelos 3D' : 'Material no disponible'}
+        </button>
+      </div>
+    </div>
   )
 }
 
-// ── Subcomponente: Taller card ────────────────────────────
-function TallerCard({ title, category, progress, imgColor }) {
-  return (
-      <div style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 'var(--radius-xl)',
-        overflow: 'hidden',
-        transition: 'border-color 0.2s, transform 0.2s',
-        cursor: 'pointer',
-      }}>
-        {/* Thumbnail placeholder */}
-        <div style={{
-          height: 120,
-          background: `linear-gradient(135deg, ${imgColor}22, ${imgColor}44)`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <PlayCircle size={40} color={imgColor} weight="fill" />
-        </div>
-        {/* Info */}
-        <div style={{ padding: 'var(--space-4)' }}>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-amber-600)', fontWeight: 600, marginBottom: 4 }}>
-            {category}
-          </div>
-          <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: 'var(--space-3)' }}>
-            {title}
-          </div>
-          {/* Progress bar */}
-          <div style={{ height: 4, background: 'var(--border-subtle)', borderRadius: 'var(--radius-full)' }}>
-            <div style={{
-              height: '100%',
-              width: `${progress}%`,
-              background: 'var(--color-jade-500)',
-              borderRadius: 'var(--radius-full)',
-            }} />
-          </div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4 }}>
-            {progress}% completado
-          </div>
-        </div>
-      </div>
-  )
-}
-
-// ── Página ────────────────────────────────────────────────
-const TALLERES = [
-  { title: 'Auriculoterapia Nivel 1', category: 'Horizonte Zen', progress: 65, imgColor: '#0D7377' },
-  { title: 'Automaquillaje Artístico', category: 'Estilo Personal', progress: 30, imgColor: '#D97706' },
-  { title: 'Elaboración de Gomitas', category: 'Gastronomía', progress: 10, imgColor: '#10B981' },
-  { title: 'Dibujo Expresivo', category: 'Arte', progress: 80, imgColor: '#8B5CF6' },
-]
-
+/* ── Página ── */
 export default function PageHome() {
+  const navigate = useNavigate()
+  const data = HOME_MOCK
+
+  // ── Estado del canje de chispa (card in-line) ──
+  const [canjeOpen, setCanjeOpen] = useState(false)
+  const [codigo, setCodigo]       = useState('')
+  const [cargando, setCargando]   = useState(false)
+  const [error, setError]         = useState('')
+  const [resultado, setResultado] = useState(null) // { nombre, fecha, horario }
+
+  const cerrarCanje = () => {
+    setCanjeOpen(false)
+    setCodigo('')
+    setError('')
+    setResultado(null)
+  }
+
+  const validarChispa = async (e) => {
+    e?.preventDefault()
+    const code = codigo.trim()
+    if (!code) return
+    setCargando(true)
+    setError('')
+    setResultado(null)
+    try {
+      // 1) Valida la chispa (sin consumirla) → devuelve el taller ligado.
+      const { record } = await apiValidarChispa(code)
+      // 2) Cruza con el catálogo de talleres para obtener fecha y horario.
+      let fecha = null, horario = null, nombre = record?.tallerNombre ?? null
+      try {
+        const talleres = await apiListTalleres()
+        const t = talleres.find((x) => x.id === record?.tallerId)
+        if (t) {
+          nombre  = nombre ?? t.nombre
+          fecha   = t.fecha_inicio ?? t.fecha_disponible ?? null
+          horario = t.horario ?? null
+        }
+      } catch { /* si falla el catálogo, mostramos al menos el nombre */ }
+      setResultado({ nombre: nombre ?? 'Tu taller', fecha, horario })
+    } catch (err) {
+      setError(err.message ?? 'No pudimos validar esa chispa')
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  const fmtFecha = (iso) => {
+    if (!iso) return null
+    const d = new Date(iso)
+    if (isNaN(d)) return null
+    return d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
+  }
+
+  const abrirMaterial = (tallerId) => {
+    // El material de apoyo y los modelos 3D viven en el aula del taller.
+    navigate(`/aula/${tallerId}`)
+  }
+
+  const dotStyle = (estado) => {
+    if (estado === 'done') {
+      return { background: 'var(--color-amber-600)', boxShadow: 'var(--shadow-amber)' }
+    }
+    if (estado === 'current') {
+      return { background: 'var(--color-jade-500)' }
+    }
+    return { background: 'var(--bg-card)', border: '2px solid var(--border-default)' }
+  }
+  const dotIconColor = (estado) => (estado === 'locked' ? 'var(--text-disabled)' : '#fff')
+
   return (
-      <div style={{
-        padding: 'var(--space-8)',
-        maxWidth: 1100,
-        width: '100%',
-        margin: '0 auto',
-      }}>
-        {/* Header */}
-        <div style={{ marginBottom: 'var(--space-8)' }}>
-          <h1 style={{ fontSize: 'var(--text-3xl)', fontWeight: 700, letterSpacing: '-0.02em' }}>
-            Buen día ✨
-          </h1>
-          <p style={{ color: 'var(--text-muted)', marginTop: 4 }}>
-            Continúa donde lo dejaste
-          </p>
+    <>
+      <style>{HOME_CSS}</style>
+
+      <div className="dh-wrap">
+
+        {/* ── Header + energía ── */}
+        <div className="dh-header">
+          <div>
+            <h1 className="dh-hello">
+              ¡Hola, {data.nombre}! <span style={{ color: 'var(--color-amber-600)' }}>✦</span>
+            </h1>
+            <p className="dh-sub">Tu viaje creativo continúa</p>
+          </div>
+          <div className="dh-energy">
+            <div className="dh-pill">
+              <div className="dh-pill-val" style={{ color: 'var(--color-amber-500)' }}>
+                <Sparkle size={16} weight="fill" />{data.destellos}
+              </div>
+              <div className="dh-pill-lbl">Destellos</div>
+            </div>
+            <div className="dh-pill">
+              <div className="dh-pill-val"><Trophy size={16} weight="fill" color="var(--color-amber-600)" />{data.logros}</div>
+              <div className="dh-pill-lbl">Logros</div>
+            </div>
+            <div className="dh-pill">
+              <div className="dh-pill-val"><Fire size={16} weight="fill" color="var(--color-amber-500)" />{data.racha}</div>
+              <div className="dh-pill-lbl">Racha</div>
+            </div>
+          </div>
         </div>
 
-        {/* Stats */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: 'var(--space-4)',
-          marginBottom: 'var(--space-8)',
-        }}>
-          <StatCard Icon={Books}   label="Talleres activos" value="4"    accent="jade" />
-          <StatCard Icon={Trophy}  label="Logros obtenidos" value="12"   accent="amber" />
-          <StatCard Icon={Fire}    label="Racha de días"    value="7 🔥"  accent="amber" />
+        {/* ── Ruta de progreso ── */}
+        <div className="dh-card dh-ruta">
+          <p className="dh-section-title">Ruta de progreso</p>
+          <div className="dh-ruta-track">
+            <div className="dh-ruta-line" />
+            <div className="dh-ruta-fill" style={{ width: `${(data.progresoPct * 0.88)}%` }} />
+            {data.progresoHitos.map(({ label, estado, Icon }) => (
+              <div className="dh-hito" key={label}>
+                <div className="dh-hito-dot" style={dotStyle(estado)}>
+                  <Icon size={16} weight="fill" color={dotIconColor(estado)} />
+                </div>
+                <div className="dh-hito-lbl" style={estado === 'current' ? { color: 'var(--text-primary)' } : undefined}>
+                  {label}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Talleres */}
-        <div style={{ marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600 }}>Mis talleres</h2>
-          <button style={{
-            display: 'flex', alignItems: 'center', gap: 4,
-            background: 'none', border: 'none', color: 'var(--color-jade-500)',
-            fontSize: 'var(--text-sm)', fontWeight: 500, cursor: 'pointer',
-            fontFamily: 'var(--font-sans)',
-          }}>
+        {/* ── Mis talleres ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
+          <p className="dh-section-title" style={{ margin: 0 }}>Mis talleres</p>
+          <button
+            onClick={() => navigate('/habitat')}
+            className="dh-btn"
+            style={{ background: 'none', border: 'none', color: 'var(--color-jade-400)', fontSize: 'var(--text-sm)', padding: 0 }}
+          >
             Ver todos <ArrowRight size={14} />
           </button>
         </div>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-          gap: 'var(--space-4)',
-        }}>
-          {TALLERES.map((t) => (
-              <TallerCard key={t.title} {...t} />
+        <div className="dh-grid-talleres">
+          {data.talleres.map((t) => (
+            <TallerCard key={t.id} taller={t} onMaterial={abrirMaterial} />
           ))}
         </div>
+
+        {/* ── Canjear chispa ── */}
+        {!canjeOpen ? (
+          /* Estado colapsado: al hacer click, se transforma en la card de canje */
+          <div
+            className="dh-chispa dh-chispa--tappable"
+            role="button"
+            tabIndex={0}
+            onClick={() => setCanjeOpen(true)}
+            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setCanjeOpen(true)}
+          >
+            <div className="dh-chispa-left">
+              <div className="dh-chispa-orb">
+                <Fire size={24} weight="fill" color="#fff" />
+              </div>
+              <div>
+                <div style={{ fontSize: 'var(--text-base)', fontWeight: 700 }}>¿Tienes una chispa?</div>
+                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                  Canjéala y desbloquea tu nuevo taller al instante
+                </div>
+              </div>
+            </div>
+            <span className="dh-btn dh-btn--amber">
+              <Ticket size={16} weight="fill" /> Canjear chispa
+            </span>
+          </div>
+        ) : (
+          /* Card de canje: pega el código → muestra taller y fecha */
+          <div className="dh-card dh-block dh-canje">
+            <div className="dh-canje-head">
+              <div className="dh-canje-title">
+                <Ticket size={18} weight="fill" color="var(--color-amber-600)" />
+                Canjea tu chispa
+              </div>
+              <button className="dh-canje-close" onClick={cerrarCanje} aria-label="Cerrar">
+                <X size={18} weight="bold" />
+              </button>
+            </div>
+
+            <form className="dh-canje-form" onSubmit={validarChispa}>
+              <input
+                className="dh-input"
+                placeholder="DEST-XXXX-XXXX"
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value)}
+                autoFocus
+                maxLength={16}
+              />
+              <button type="submit" className="dh-btn dh-btn--amber" disabled={cargando || !codigo.trim()}>
+                {cargando
+                  ? <><span className="dh-spin"><CircleNotch size={16} weight="bold" /></span> Validando…</>
+                  : <>Validar</>}
+              </button>
+            </form>
+
+            {error && (
+              <div className="dh-canje-error">
+                <Warning size={14} weight="fill" /> {error}
+              </div>
+            )}
+
+            {resultado && (
+              <div className="dh-canje-result">
+                <div className="dh-result-row" style={{ color: 'var(--color-success)' }}>
+                  <CheckCircle size={16} weight="fill" /> Chispa válida
+                </div>
+                <p className="dh-result-name">{resultado.nombre}</p>
+                {resultado.fecha && (
+                  <div className="dh-result-row" style={{ color: 'var(--text-secondary)' }}>
+                    <CalendarBlank size={15} weight="fill" color="var(--color-jade-400)" />
+                    Se imparte el {fmtFecha(resultado.fecha)}{resultado.horario ? ` · ${resultado.horario}` : ''}
+                  </div>
+                )}
+                <button
+                  className="dh-btn dh-btn--amber"
+                  style={{ width: '100%', marginTop: 'var(--space-3)' }}
+                  onClick={() => navigate('/acceso')}
+                >
+                  <Sparkle size={16} weight="fill" /> Desbloquear taller
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Canjea tu Supernova (premios con Estrellas) ── */}
+        <p className="dh-section-title">Canjea tu Supernova</p>
+        <div className="dh-grid-tienda">
+          {data.tienda.map(({ titulo, costo, Icon }) => (
+            <div className="dh-card dh-tienda-item" key={titulo}>
+              <Icon size={24} weight="fill" color="var(--color-jade-400)" />
+              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{titulo}</div>
+              <span className="dh-cost"><Star size={12} weight="fill" /> {costo} Estrellas</span>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Promos + próximos ── */}
+        <div className="dh-grid-promos">
+          <div className="dh-card dh-block" style={{ borderColor: 'rgba(217,119,6,0.35)' }}>
+            <div className="dh-block-tag" style={{ color: 'var(--color-amber-500)' }}>
+              <Tag size={14} weight="fill" /> Exclusivo alumnos
+            </div>
+            {data.promos.map((p) => (
+              <div key={p.titulo}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{p.titulo}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '4px 0 var(--space-3)' }}>{p.detalle}</div>
+                <button className="dh-btn dh-btn--ghost-amber">Aprovechar</button>
+              </div>
+            ))}
+          </div>
+          <div className="dh-card dh-block">
+            <div className="dh-block-tag" style={{ color: 'var(--color-jade-400)' }}>
+              <CalendarBlank size={14} weight="fill" /> Próximos cursos
+            </div>
+            {data.proximos.map((c) => (
+              <p className="dh-next-row" key={c.nombre}>
+                {c.nombre} <span>· {c.fecha}</span>
+              </p>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Constelación de amigos (referidos) ── */}
+        <div className="dh-refer">
+          <div className="dh-refer-head">
+            <div className="dh-refer-title">
+              <UsersThree size={20} weight="fill" color="var(--color-amber-600)" />
+              Constelación de amigos
+            </div>
+            <span className="dh-code">{data.codigoAmigo}</span>
+          </div>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: '0 0 var(--space-3)' }}>
+            Comparte tu polvo estelar. Cada amigo que se une con tu código enciende una
+            Estrella; júntalas para canjear Supernovas como meses gratis o un taller.
+          </p>
+          <div className="dh-stars">
+            {Array.from({ length: data.estrellasMeta }).map((_, i) => (
+              <Star
+                key={i}
+                size={18}
+                weight="fill"
+                color={i < data.estrellas ? 'var(--color-amber-500)' : 'var(--text-disabled)'}
+              />
+            ))}
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 8 }}>
+              {data.estrellas} de {data.estrellasMeta} Estrellas · faltan {data.estrellasMeta - data.estrellas} para {data.premioProximo}
+            </span>
+            <ShootingStar size={16} weight="fill" color="var(--color-amber-500)" style={{ marginLeft: 4 }} />
+          </div>
+        </div>
+
       </div>
+    </>
   )
 }
