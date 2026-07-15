@@ -139,9 +139,9 @@ function AccesoGate({ estado, navigate }) {
   const verificando = estado === 'checking'
   return (
     <div style={{
-      height: '100vh', display: 'flex', flexDirection: 'column',
+      minHeight: '80vh', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center', gap: 'var(--space-4)',
-      background: 'var(--bg-dark)', padding: 'var(--space-6)', textAlign: 'center',
+      background: 'transparent', padding: 'var(--space-6)', textAlign: 'center',
     }}>
       <div style={{
         width: 64, height: 64, borderRadius: '50%',
