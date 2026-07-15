@@ -19,11 +19,12 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - JWT_SECRET=${JWT_SECRET}
-      - DB_HOST=postgres
-      - DB_PORT=5432
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
+      - DB_SSL=${DB_SSL}
       - WEB_URL=${WEB_URL}
       - REDIS_URL=redis://redis:6379
       - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
@@ -37,8 +38,6 @@ services:
       - BOT_HTTP_URL=${BOT_HTTP_URL}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     # Permite que el contenedor alcance servicios del host (ej: el bot Faro en :4001)
@@ -68,24 +67,8 @@ services:
     profiles: ["3d"]
 
   # ── PostgreSQL ──────────────────────────────────────────
-  postgres:
-    image: postgres:16-alpine
-    container_name: destello-postgres
-    restart: unless-stopped
-    environment:
-      - POSTGRES_DB=${DB_NAME:-destello_db}
-      - POSTGRES_USER=${DB_USER:-destello}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./infra/docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    networks:
-      - destello-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-destello}"]
-      interval: 10s
-      timeout:  5s
-      retries:  5
+  # La base de datos ahora vive en Supabase (administrada, siempre encendida).
+  # Se configura por variables DB_* en el .env. Ya no se corre Postgres local.
 
   # ── Redis (cache + sessiones) ────────────────────────────
   redis:
@@ -116,8 +99,6 @@ services:
 
 # ── Volúmenes persistentes ───────────────────────────────────
 volumes:
-  postgres_data:
-    name: destello-postgres-data
   redis_data:
     name: destello-redis-data
 
