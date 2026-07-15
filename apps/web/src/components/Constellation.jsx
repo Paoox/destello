@@ -72,6 +72,20 @@ function bbox(stars) {
 const JADE = '47,150,153'
 const AMBER = '217,119,6'
 
+/* Paleta de tonos para el campo estelar: del más brillante (casi blanco) al
+   más tenue, con algo de ámbar. Se repiten los jade para que dominen. */
+const STAR_PALETTE = [
+  '215,238,236', // blanco cyan (brillante)
+  '160,220,214', // jade claro
+  '47,150,153',  // jade
+  '47,150,153',
+  '47,150,153',
+  '32,98,102',   // jade oscuro (tenue)
+  '32,98,102',
+  '217,119,6',   // ámbar
+  '242,188,98',  // ámbar claro
+]
+
 export default function Constellation() {
   const canvasRef = useRef(null)
 
@@ -86,22 +100,27 @@ export default function Constellation() {
 
     // Un "cuerpo" por constelación, con su bbox, posición, velocidad y escala.
     const bodies = [
-      { def: PISCES,   box: bbox(PISCES.stars),   cvx: 0.34,  cvy: 0.24,  seed: 0.2 },
-      { def: AQUARIUS, box: bbox(AQUARIUS.stars), cvx: -0.28, cvy: 0.30,  seed: 0.6 },
+      { def: PISCES,   box: bbox(PISCES.stars),   cvx: 0.12,  cvy: 0.085, seed: 0.2 },
+      { def: AQUARIUS, box: bbox(AQUARIUS.stars), cvx: -0.10, cvy: 0.11,  seed: 0.6 },
     ]
 
     const navW = () => (window.innerWidth <= 768 ? 0 : 240)
 
     const build = () => {
-      const count = Math.min(240, Math.floor((w * h) / 9000))
+      // Más densidad y variedad: tamaños (sesgo a pequeñas + algunas grandes),
+      // colores de la paleta e intensidades distintas por estrella.
+      const count = Math.min(360, Math.floor((w * h) / 5500))
       stars.length = 0
       for (let i = 0; i < count; i++) {
         stars.push({
           x: Math.random() * w,
           y: Math.random() * h,
-          r: Math.random() * 1.1 + 0.4,
+          r: 0.3 + Math.pow(Math.random(), 2.2) * 2.2,
+          col: STAR_PALETTE[(Math.random() * STAR_PALETTE.length) | 0],
+          base: 0.12 + Math.random() * 0.33, // brillo base
+          amp: 0.08 + Math.random() * 0.30,  // amplitud del parpadeo
           ph: Math.random() * Math.PI * 2,
-          sp: 0.6 + Math.random() * 0.9,
+          sp: 0.5 + Math.random() * 1.1,
         })
       }
     }
@@ -178,10 +197,12 @@ export default function Constellation() {
     const draw = () => {
       ctx.clearRect(0, 0, w, h)
 
-      // Campo de estrellas (parpadeo) cubriendo todo el lienzo.
-      stars.forEach((s, i) => {
-        const tw = reduce ? 0.4 : 0.24 + 0.28 * Math.sin(t * s.sp + s.ph)
-        ctx.fillStyle = i % 7 === 0 ? `rgba(${AMBER},${tw})` : `rgba(${JADE},${tw})`
+      // Campo de estrellas: tamaño, color e intensidad variados por estrella.
+      stars.forEach((s) => {
+        const a = reduce
+          ? Math.min(1, s.base + s.amp * 0.5)
+          : Math.max(0, Math.min(1, s.base + s.amp * Math.sin(t * s.sp + s.ph)))
+        ctx.fillStyle = `rgba(${s.col},${a})`
         ctx.beginPath()
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2)
         ctx.fill()
