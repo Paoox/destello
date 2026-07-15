@@ -16,10 +16,14 @@ import { useRef, useEffect } from 'react'
 const CSS = `
 .ds-constellation {
   position: fixed;
-  inset: 0;
+  top: 0; right: 0; bottom: 0;
+  left: var(--navbar-width, 240px);   /* arranca donde termina el menú */
   z-index: -1;
   pointer-events: none;
   opacity: 0.85;
+}
+@media (max-width: 768px) {
+  .ds-constellation { left: 0; }       /* en móvil el menú es drawer → ancho completo */
 }
 @media (prefers-color-scheme: light) {
   .ds-constellation { opacity: 0.7; }

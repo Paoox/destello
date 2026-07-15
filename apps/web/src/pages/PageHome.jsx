@@ -19,8 +19,9 @@
  *    progreso, reemplazar HOME_MOCK por la respuesta de la API.
  * ──────────────────────────────────────────────────────────────────────
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '@store/useAuthStore.js'
 import {
   Sparkle,
   Trophy,
@@ -376,6 +377,24 @@ export default function PageHome() {
   const navigate = useNavigate()
   const data = HOME_MOCK
 
+  // ── Estrellas reales del usuario (BD: usuarios.estrellas) ──
+  const token = useAuthStore((s) => s.token)
+  const [estrellas, setEstrellas] = useState(null) // null = cargando/desconocido
+
+  useEffect(() => {
+    if (!token) return
+    fetch('/api/users/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        if (res?.user && typeof res.user.estrellas === 'number') {
+          setEstrellas(res.user.estrellas)
+        }
+      })
+      .catch(() => { /* si falla, dejamos el valor por defecto */ })
+  }, [token])
+
+  const estrellasVal = estrellas ?? data.estrellas // fallback mientras carga
+
   // ── Estado del canje de chispa (card in-line) ──
   const [canjeOpen, setCanjeOpen] = useState(false)
   const [codigo, setCodigo]       = useState('')
@@ -459,9 +478,9 @@ export default function PageHome() {
           <div className="dh-energy">
             <div className="dh-pill">
               <div className="dh-pill-val" style={{ color: 'var(--color-amber-500)' }}>
-                <Sparkle size={16} weight="fill" />{data.destellos}
+                <Star size={16} weight="fill" />{estrellasVal}
               </div>
-              <div className="dh-pill-lbl">Destellos</div>
+              <div className="dh-pill-lbl">Estrellas</div>
             </div>
             <div className="dh-pill">
               <div className="dh-pill-val"><Trophy size={16} weight="fill" color="var(--color-amber-600)" />{data.logros}</div>
@@ -651,11 +670,11 @@ export default function PageHome() {
                 key={i}
                 size={18}
                 weight="fill"
-                color={i < data.estrellas ? 'var(--color-amber-500)' : 'var(--text-disabled)'}
+                color={i < estrellasVal ? 'var(--color-amber-500)' : 'var(--text-disabled)'}
               />
             ))}
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 8 }}>
-              {data.estrellas} de {data.estrellasMeta} Estrellas · faltan {data.estrellasMeta - data.estrellas} para {data.premioProximo}
+              {estrellasVal} de {data.estrellasMeta} Estrellas · faltan {Math.max(0, data.estrellasMeta - estrellasVal)} para {data.premioProximo}
             </span>
             <ShootingStar size={16} weight="fill" color="var(--color-amber-500)" style={{ marginLeft: 4 }} />
           </div>

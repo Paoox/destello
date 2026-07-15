@@ -44,11 +44,7 @@ const NAV_CSS = `
   position: fixed;
   left: 0; top: 0; bottom: 0;
   width: var(--navbar-width, 240px);
-  /* Semi-transparente + blur: deja ver la constelación del fondo sin
-     sacrificar la legibilidad del menú. */
-  background: rgba(10, 36, 34, 0.72);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--bg-card);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
@@ -208,13 +204,9 @@ const NAV_CSS = `
 
 /* ── Modo claro: fondo traslúcido claro + divisores jade visibles ── */
 @media (prefers-color-scheme: light) {
-  .ds-nav {
-    background: rgba(255, 255, 255, 0.78);
-    border-right: 1px solid rgba(13, 115, 119, 0.18);
-  }
+  .ds-nav { border-right: 1px solid rgba(13, 115, 119, 0.18); }
   .ds-nav__brand { border-bottom-color: rgba(13, 115, 119, 0.28); }
   .ds-nav__bottom { border-top-color: rgba(13, 115, 119, 0.28); }
-  .ds-nav__hamburger { background: rgba(255, 255, 255, 0.9); }
 }
 
 /* ── Botón hamburguesa (solo móvil) ── */
