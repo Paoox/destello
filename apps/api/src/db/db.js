@@ -8,6 +8,11 @@
 import pg from 'pg'
 const { Pool } = pg
 
+// Devuelve DATE (1082) y TIME (1083) como texto plano ('YYYY-MM-DD', 'HH:MM:SS')
+// para evitar corrimientos de zona horaria al construir fechas en JS.
+pg.types.setTypeParser(1082, (v) => v)
+pg.types.setTypeParser(1083, (v) => v)
+
 const useSSL = process.env.DB_SSL === 'true'
 
 export const pool = new Pool({

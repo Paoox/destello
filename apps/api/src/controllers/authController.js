@@ -8,6 +8,7 @@ import bcrypt   from 'bcryptjs'
 import { AppError }               from '../middleware/errorHandler.js'
 import { validateChispa }         from '../services/chispaService.js'
 import * as resplandorService     from '../services/resplandorService.js'
+import * as referralService       from '../services/referralService.js'
 import { query }                  from '../db/db.js'
 import { verifyFirebaseToken }    from '../services/firebaseAdmin.js'
 
@@ -165,7 +166,7 @@ export async function loginWithSocial(req, res, next) {
  */
 export async function registerUser(req, res, next) {
   try {
-    const { email, password, nombre, resplandorCode } = req.body
+    const { email, password, nombre, resplandorCode, codigoInvitado } = req.body
 
     if (!email || !password || !resplandorCode) {
       throw new AppError('email, password y resplandorCode son requeridos', 400, 'BAD_REQUEST')
@@ -232,6 +233,17 @@ export async function registerUser(req, res, next) {
 
     // 4. Consumir resplandor
     await resplandorService.consumeResplandor(resplandorCode, user.email)
+
+    // 4b. Referidos: genera el código propio y, si vino código de invitado,
+    //     acredita Estrellas al referidor. No bloquea el registro si falla.
+    try {
+      await referralService.ensureCodigoReferido(user.id)
+      if (codigoInvitado) {
+        await referralService.registrarReferido(codigoInvitado, user.email)
+      }
+    } catch (e) {
+      console.error('[referidos] no se pudo procesar el referido:', e.message)
+    }
 
     // 5. Emitir JWT
     const token = signToken({ userId: user.id, role: 'alumno' })

@@ -6,8 +6,10 @@ export default defineConfig(({ mode }) => {
   // Carga variables de .env (incluye las que NO empiezan con VITE_)
   const env = loadEnv(mode, process.cwd(), '')
 
-  // URL del backend: prioridad .env > variable de entorno del sistema > localhost
-  const apiTarget = env.VITE_API_URL || env.API_URL || 'http://localhost:3001'
+  // URL del backend en dev: prioridad .env > variable del sistema > túnel de producción.
+  // (Antes caía a localhost:3001, pero la API vive en la Toshiba/Supabase → daba
+  //  "Failed to fetch". Con el túnel, el dev local funciona sin configurar nada.)
+  const apiTarget = env.VITE_API_URL || env.API_URL || 'https://api.destello.courses'
 
   return {
     plugins: [react()],

@@ -181,6 +181,7 @@ function RegisterForm({ email, nombre: nombreInicial, resplandorCode }) {
     const [confirmPassword, setConfirmPassword] = useState('')
     const [showPass,        setShowPass]        = useState(false)
     const [showConfirm,     setShowConfirm]     = useState(false)
+    const [codigoInvitado,  setCodigoInvitado]  = useState('')
     const [error,           setError]           = useState(null)
 
     const canSubmit = nombre.trim() && passwordIsStrong(password) && password === confirmPassword && !isLoading
@@ -191,7 +192,10 @@ function RegisterForm({ email, nombre: nombreInicial, resplandorCode }) {
         if (password !== confirmPassword) { setError('Las contraseñas no coinciden.'); return }
         if (!passwordIsStrong(password))  { setError('La contraseña no cumple los requisitos.'); return }
 
-        const result = await register({ email, password, nombre: nombre.trim(), resplandorCode })
+        const result = await register({
+            email, password, nombre: nombre.trim(), resplandorCode,
+            codigoInvitado: codigoInvitado.trim() || undefined,
+        })
         if (result.ok) {
             navigate('/home')
         } else {
@@ -248,6 +252,14 @@ function RegisterForm({ email, nombre: nombreInicial, resplandorCode }) {
                         {password === confirmPassword ? '✓ Las contraseñas coinciden' : '✗ Las contraseñas no coinciden'}
                     </p>
                 )}
+
+                <Field
+                    label="Código de invitado (opcional)"
+                    placeholder="Ej. PAOLA-9F2A"
+                    value={codigoInvitado}
+                    onChange={e => setCodigoInvitado(e.target.value.toUpperCase())}
+                    hint="¿Un amigo te invitó? Escribe su código de polvo estelar y gana Estrellas juntos"
+                />
 
                 {error && <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-xs)', margin: 0 }}>{error}</p>}
 

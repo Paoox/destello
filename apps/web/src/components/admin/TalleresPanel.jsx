@@ -90,6 +90,27 @@ function EstadoBadge({ estado }) {
     )
 }
 
+function CupoCelda({ inscritos, cupo }) {
+    const insc = Number(inscritos || 0)
+    if (cupo == null || cupo === '') {
+        return <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{insc} · sin límite</span>
+    }
+    const max    = Number(cupo)
+    const lleno  = insc >= max
+    const faltan = Math.max(0, max - insc)
+    const pct    = max > 0 ? Math.min(100, Math.round((insc / max) * 100)) : 0
+    const color  = lleno ? '#ef4444' : pct >= 80 ? 'var(--color-amber-600)' : 'var(--color-jade-500)'
+    return (
+        <div style={{ minWidth: 78 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color }}>{insc}/{max}</div>
+            <div style={{ height: 4, background: 'var(--bg-surface)', borderRadius: 99, overflow: 'hidden', margin: '3px 0 2px' }}>
+                <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 99 }} />
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{lleno ? 'Lleno' : `faltan ${faltan}`}</div>
+        </div>
+    )
+}
+
 function RankingDemanda({ stats }) {
     if (!stats || stats.length === 0) return null
     const topN     = stats.slice(0, 5)
@@ -459,7 +480,7 @@ export default function TalleresPanel({ adminToken }) {
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
                             <thead>
                             <tr style={{ background: 'var(--bg-surface)' }}>
-                                {['Nombre', 'Horario', 'Fechas', 'Precio', 'Estado', 'Acción'].map(h => (
+                                {['Nombre', 'Horario', 'Fechas', 'Precio', 'Cupo', 'Estado', 'Acción'].map(h => (
                                     <th key={h} style={sTh}>{h}</th>
                                 ))}
                             </tr>
@@ -494,6 +515,9 @@ export default function TalleresPanel({ adminToken }) {
                                                 : <span style={{ color: '#22c55e', fontWeight: 600, fontSize: 12 }}>Gratis</span>
                                             }
                                         </td>
+                                        <td style={{ ...sTd, whiteSpace: 'nowrap' }}>
+                                            <CupoCelda inscritos={t.inscritos} cupo={t.cupo_maximo} />
+                                        </td>
                                         <td style={sTd}>
                                             <EstadoBadge estado={t.estado} />
                                         </td>
@@ -520,7 +544,7 @@ export default function TalleresPanel({ adminToken }) {
                                     {/* Panel de edición expandido */}
                                     {editingId === t.id && (
                                         <tr key={`${t.id}-edit`}>
-                                            <td colSpan={6} style={{ padding: '0 var(--space-4) var(--space-4)', background: 'var(--color-jade-500)05' }}>
+                                            <td colSpan={7} style={{ padding: '0 var(--space-4) var(--space-4)', background: 'var(--color-jade-500)05' }}>
                                                 <div style={{
                                                     background: 'var(--bg-card)',
                                                     border: '1px solid var(--color-jade-500)33',

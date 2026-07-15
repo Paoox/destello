@@ -50,7 +50,9 @@ CREATE TABLE talleres (
     nombre        TEXT NOT NULL,
     descripcion   TEXT,
     precio        NUMERIC(10,2),
-    horario       TEXT,                          -- ej. '9:00 AM (CDMX)'
+    horario       TEXT,                          -- ej. '12:00 PM (CDMX)' — texto para mostrar
+    hora_inicio   TIME,                          -- hora local CDMX (UTC−6) inicio de clase
+    hora_fin      TIME,                          -- hora local CDMX fin de clase (para cerrar acceso)
     fecha_inicio  DATE,                          -- fecha en que se imparte
     fecha_fin     DATE,                          -- fin (null si es de un día)
     cupo_maximo   INTEGER DEFAULT 20,            -- tope de alumnos (anti-reventa)

@@ -4,7 +4,9 @@
  * Por ahora muestra el layout base con placeholders.
  * El 3D viewer y el video real se integran en la siguiente fase.
  */
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useAuthStore } from '@store/useAuthStore.js'
 import {
   ArrowLeft,
   VideoCamera,
@@ -15,6 +17,8 @@ import {
   CameraSlash,
   Phone,
   Chat,
+  LockSimple,
+  CircleNotch,
 } from '@phosphor-icons/react'
 
 // ── Subcomponente: placeholder del video ──────────────────
@@ -130,11 +134,73 @@ function ControlesAula({ onSalir }) {
   )
 }
 
+// ── Pantalla de acceso denegado / verificando ──────────────
+function AccesoGate({ estado, navigate }) {
+  const verificando = estado === 'checking'
+  return (
+    <div style={{
+      height: '100vh', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 'var(--space-4)',
+      background: 'var(--bg-dark)', padding: 'var(--space-6)', textAlign: 'center',
+    }}>
+      <div style={{
+        width: 64, height: 64, borderRadius: '50%',
+        background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.35)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {verificando
+          ? <CircleNotch size={30} color="var(--color-jade-500)" weight="bold" style={{ animation: 'ds-spin 0.8s linear infinite' }} />
+          : <LockSimple size={30} color="var(--color-amber-600)" weight="fill" />}
+      </div>
+      <style>{`@keyframes ds-spin { to { transform: rotate(360deg); } }`}</style>
+      <h1 style={{ fontSize: 'var(--text-xl)', fontWeight: 700 }}>
+        {verificando ? 'Verificando tu acceso…' : 'Este taller está bloqueado'}
+      </h1>
+      {!verificando && (
+        <>
+          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', maxWidth: 360 }}>
+            Necesitas una chispa canjeada para entrar a esta aula. Canjea tu chispa en el inicio para desbloquearla.
+          </p>
+          <button
+            onClick={() => navigate('/home')}
+            style={{
+              background: 'var(--color-amber-600)', color: '#fff', border: 'none',
+              borderRadius: 'var(--radius-lg)', padding: 'var(--space-3) var(--space-6)',
+              fontFamily: 'var(--font-sans)', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Ir al inicio
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Página principal ───────────────────────────────────────
 export default function PageAula() {
-  // useParams() lee el :id de la URL, ej: /aula/zen → id = "zen"
+  // useParams() lee el :id de la URL, ej: /aula/taller-xxx → id = "taller-xxx"
   const { id } = useParams()
   const navigate = useNavigate()
+  const token = useAuthStore((s) => s.token)
+
+  // Control de acceso: solo entra quien tiene chispa canjeada para este taller.
+  const [acceso, setAcceso] = useState('checking') // checking | allowed | denied
+
+  useEffect(() => {
+    if (!token) { setAcceso('denied'); return }
+    fetch('/api/users/me/talleres', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        const tiene = (res?.talleres || []).some((t) => t.tallerId === id)
+        setAcceso(tiene ? 'allowed' : 'denied')
+      })
+      .catch(() => setAcceso('denied'))
+  }, [token, id])
+
+  if (acceso !== 'allowed') {
+    return <AccesoGate estado={acceso} navigate={navigate} />
+  }
 
   return (
     <div style={{

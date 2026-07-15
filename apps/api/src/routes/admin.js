@@ -22,7 +22,7 @@ import { Router }            from 'express'
 import { adminLogin, getTalleresStats } from '../controllers/adminController.js'
 import { authenticateAdmin } from '../middleware/authenticateAdmin.js'
 import * as chispaCtrl       from '../controllers/chispasController.js'
-import { listTodosLosTalleres, crearTaller, actualizarTaller, getTallerById } from '../services/tallerService.js'
+import { crearTaller, actualizarTaller, getTallerById } from '../services/tallerService.js'
 import { AppError }          from '../middleware/errorHandler.js'
 import { query }             from '../db/db.js'
 import { sendConfirmacionTaller, sendConfirmacionLugar, sendResplandor } from '../services/mailService.js'
@@ -48,8 +48,20 @@ router.get('/talleres/stats', getTalleresStats)
 
 router.get('/talleres', async (_req, res, next) => {
     try {
-        const talleres = await listTodosLosTalleres()
-        res.json({ status: 'ok', talleres })
+        // Incluye "inscritos" = chispas emitidas (no revocadas) por taller.
+        // Sirve para el control de cupo (máx 20) y evitar reventa.
+        const { rows } = await query(
+            `SELECT t.*, COALESCE(ch.inscritos, 0)::int AS inscritos
+             FROM talleres t
+             LEFT JOIN (
+                 SELECT taller_id, COUNT(*) AS inscritos
+                 FROM chispas
+                 WHERE revoked = FALSE
+                 GROUP BY taller_id
+             ) ch ON ch.taller_id = t.id
+             ORDER BY t.created_at DESC`
+        )
+        res.json({ status: 'ok', talleres: rows })
     } catch (err) { next(err) }
 })
 

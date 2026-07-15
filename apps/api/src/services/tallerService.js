@@ -88,6 +88,8 @@ export async function crearTaller(data) {
         descripcion  = null,
         precio       = 0,
         horario      = null,
+        hora_inicio  = null,
+        hora_fin     = null,
         fecha_inicio = null,
         fecha_fin    = null,
         cupo_maximo  = null,
@@ -100,11 +102,11 @@ export async function crearTaller(data) {
 
     const { rows } = await query(
         `INSERT INTO talleres
-             (id, nombre, descripcion, precio, horario,
+             (id, nombre, descripcion, precio, horario, hora_inicio, hora_fin,
               fecha_inicio, fecha_fin, cupo_maximo, imagen_url, estado, categoria)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING *`,
-        [slug, nombre, descripcion, precio, horario,
+        [slug, nombre, descripcion, precio, horario, hora_inicio || null, hora_fin || null,
             fecha_inicio || null, fecha_fin || null,
             cupo_maximo  || null, imagen_url || null, estado, categoria || null]
     )
@@ -121,6 +123,8 @@ export async function actualizarTaller(id, data) {
         descripcion,
         precio,
         horario,
+        hora_inicio,
+        hora_fin,
         fecha_inicio,
         fecha_fin,
         cupo_maximo,
@@ -135,16 +139,18 @@ export async function actualizarTaller(id, data) {
              descripcion = COALESCE($3,  descripcion),
              precio      = COALESCE($4,  precio),
              horario     = COALESCE($5,  horario),
-             fecha_inicio= COALESCE($6,  fecha_inicio),
-             fecha_fin   = COALESCE($7,  fecha_fin),
-             cupo_maximo = COALESCE($8,  cupo_maximo),
-             imagen_url  = COALESCE($9,  imagen_url),
-             estado      = COALESCE($10, estado),
-             categoria   = COALESCE($11, categoria),
+             hora_inicio = COALESCE($6,  hora_inicio),
+             hora_fin    = COALESCE($7,  hora_fin),
+             fecha_inicio= COALESCE($8,  fecha_inicio),
+             fecha_fin   = COALESCE($9,  fecha_fin),
+             cupo_maximo = COALESCE($10, cupo_maximo),
+             imagen_url  = COALESCE($11, imagen_url),
+             estado      = COALESCE($12, estado),
+             categoria   = COALESCE($13, categoria),
              updated_at  = NOW()
          WHERE id = $1
          RETURNING *`,
-        [id, nombre, descripcion, precio ?? null, horario,
+        [id, nombre, descripcion, precio ?? null, horario, hora_inicio || null, hora_fin || null,
             fecha_inicio || null, fecha_fin    || null,
             cupo_maximo  || null, imagen_url   || null,
             estado,               categoria    || null]

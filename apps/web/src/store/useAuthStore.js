@@ -37,13 +37,13 @@ export const useAuthStore = create((set, get) => ({
    * @param {{ email: string, password: string, nombre?: string, resplandorCode: string }} opts
    * @returns {{ ok: boolean, error?: string }}
    */
-  register: async ({ email, password, nombre, resplandorCode }) => {
+  register: async ({ email, password, nombre, resplandorCode, codigoInvitado }) => {
     set({ isLoading: true, error: null })
     try {
       const res = await fetch('/api/auth/register', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ email, password, nombre, resplandorCode }),
+        body:    JSON.stringify({ email, password, nombre, resplandorCode, codigoInvitado }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Error al crear cuenta')

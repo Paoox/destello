@@ -14,6 +14,7 @@ import healthRouter  from './routes/health.js'
 import chispasRouter from './routes/chispas.js'
 import adminRouter   from './routes/admin.js'
 import botRouter     from './routes/bot.js'
+import supernovasRouter from './routes/supernovas.js'
 
 import { errorHandler }  from './middleware/errorHandler.js'
 import { requestLogger } from './middleware/requestLogger.js'
@@ -40,6 +41,7 @@ app.use('/auth',    authRouter)
 app.use('/tallers', tallersRouter)
 app.use('/chispas', chispasRouter)
 app.use('/bot',     botRouter)
+app.use('/supernovas', supernovasRouter)
 
 // Rutas protegidas
 app.use('/users',  authenticate, usersRouter)

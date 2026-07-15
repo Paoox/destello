@@ -29,6 +29,7 @@ import {
   Cube,
   Clock,
   Ticket,
+  VideoCamera,
   Gift,
   Star,
   ShootingStar,
@@ -101,15 +102,18 @@ const HOME_MOCK = {
   ],
 }
 
-const MATERIAL_DIAS = 30 // vigencia del material de apoyo tras el taller
+/* Estilo por categoría (color + ícono del thumbnail). */
+function estiloCategoria(categoria = '') {
+  const zen = /zen|horizonte/i.test(categoria)
+  return { color: zen ? '#0D7377' : '#D97706', Icon: zen ? Sparkle : Tag }
+}
 
-/* Calcula cuántos días quedan de acceso al material (30 días post-taller). */
-function diasRestantesMaterial(fechaImpartido) {
-  const fin = new Date(fechaImpartido)
-  fin.setDate(fin.getDate() + MATERIAL_DIAS)
-  const hoy = new Date()
-  const ms = fin - hoy
-  return Math.ceil(ms / (1000 * 60 * 60 * 24))
+/* Fecha corta "10 ago" (interpretada al mediodía para evitar corrimientos). */
+function fmtFechaCorta(iso) {
+  if (!iso) return null
+  const d = new Date(`${String(iso).slice(0, 10)}T12:00:00`)
+  if (isNaN(d)) return null
+  return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
 }
 
 /* ============================================================
@@ -179,6 +183,18 @@ const HOME_CSS = `
 .dh-grid-talleres { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6); }
 .dh-grid-tienda   { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); margin-bottom: var(--space-6); }
 .dh-grid-promos   { display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--space-4); margin-bottom: var(--space-6); }
+
+/* ── Estado vacío / cargando de talleres ── */
+.dh-empty {
+  grid-column: 1 / -1;
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  background: var(--bg-card);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-xl);
+}
 
 /* ── Card de taller ── */
 .dh-taller { overflow: hidden; display: flex; flex-direction: column; }
@@ -335,37 +351,56 @@ const HOME_CSS = `
 }
 `
 
-/* ── Subcomponente: card de taller con acceso a material ── */
-function TallerCard({ taller, onMaterial }) {
-  const dias = diasRestantesMaterial(taller.impartido)
-  const vigente = dias > 0
-  const { Icon } = taller
+/* ── Subcomponente: card de taller desbloqueado (datos reales de la API) ── */
+function TallerCard({ taller, onMaterial, onClase }) {
+  const { color, Icon } = estiloCategoria(taller.categoria)
+  const mat = taller.material || {}
+
+  // Texto del badge según el estado más relevante.
+  let badge = 'Concluido'
+  if (taller.claseAccesibleHoy)          badge = 'En vivo hoy'
+  else if (taller.fase === 'proximo')    badge = fmtFechaCorta(taller.fechaInicio) || 'Próximo'
+  else if (mat.disponible)               badge = `Material · ${mat.diasRestantes}d`
+  else if (mat.estado === 'expirado')    badge = 'Finalizado'
+
+  const materialTexto = mat.disponible
+    ? `Material y modelos 3D · ${mat.diasRestantes} días`
+    : mat.estado === 'expirado'
+      ? 'Material no disponible'
+      : 'Material al concluir'
 
   return (
     <div className="dh-card dh-taller">
       <div
         className="dh-taller-thumb"
-        style={{ background: `linear-gradient(135deg, ${taller.color}, ${taller.color}88)` }}
+        style={{ background: `linear-gradient(135deg, ${color}, ${color}88)` }}
       >
         <Icon size={30} color="rgba(255,255,255,0.9)" weight="fill" />
         <span className="dh-taller-badge">
-          <Clock size={12} weight="bold" />
-          {vigente ? `${dias} días` : 'Expirado'}
+          <Clock size={12} weight="bold" />{badge}
         </span>
       </div>
       <div className="dh-taller-body">
         <span className="dh-taller-cat">{taller.categoria}</span>
         <h3 className="dh-taller-name">{taller.nombre}</h3>
+
+        {taller.claseAccesibleHoy && (
+          <button
+            className="dh-btn dh-btn--amber"
+            style={{ width: '100%' }}
+            onClick={() => onClase(taller.tallerId)}
+          >
+            <VideoCamera size={14} weight="fill" /> Entrar a clase
+          </button>
+        )}
+
         <button
           className="dh-btn dh-btn--material"
-          disabled={!vigente}
-          onClick={() => onMaterial(taller.id)}
-          title={vigente
-            ? 'Material de apoyo y modelos 3D'
-            : 'El acceso al material venció (30 días tras el taller)'}
+          disabled={!mat.disponible}
+          onClick={() => onMaterial(taller.tallerId)}
+          title={mat.disponible ? 'Material de apoyo y modelos 3D' : 'Se libera al concluir el taller'}
         >
-          <Cube size={14} weight="fill" />
-          {vigente ? 'Material y modelos 3D' : 'Material no disponible'}
+          <Cube size={14} weight="fill" />{materialTexto}
         </button>
       </div>
     </div>
@@ -377,28 +412,78 @@ export default function PageHome() {
   const navigate = useNavigate()
   const data = HOME_MOCK
 
-  // ── Estrellas reales del usuario (BD: usuarios.estrellas) ──
+  // ── Datos reales del usuario (BD: estrellas + código de referido) ──
   const token = useAuthStore((s) => s.token)
-  const [estrellas, setEstrellas] = useState(null) // null = cargando/desconocido
+  const [estrellas, setEstrellas]         = useState(null) // null = cargando
+  const [codigoReferido, setCodigoReferido] = useState(null)
+  const [supernovas, setSupernovas]       = useState([])
+  const [supernovaMsg, setSupernovaMsg]   = useState(null)
 
   useEffect(() => {
     if (!token) return
     fetch('/api/users/me', { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
       .then((res) => {
-        if (res?.user && typeof res.user.estrellas === 'number') {
-          setEstrellas(res.user.estrellas)
+        if (res?.user) {
+          if (typeof res.user.estrellas === 'number') setEstrellas(res.user.estrellas)
+          if (res.user.codigo_referido) setCodigoReferido(res.user.codigo_referido)
         }
       })
       .catch(() => { /* si falla, dejamos el valor por defecto */ })
   }, [token])
 
+  // Catálogo de Supernovas (público)
+  useEffect(() => {
+    fetch('/api/supernovas')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => setSupernovas(res?.supernovas || []))
+      .catch(() => {})
+  }, [])
+
   const estrellasVal = estrellas ?? data.estrellas // fallback mientras carga
+  const codigoAmigo  = codigoReferido ?? data.codigoAmigo
+  const costoMin     = supernovas.length ? Math.min(...supernovas.map((s) => s.costo_estrellas)) : null
+  const puedeCanjear = costoMin != null && estrellasVal >= costoMin
+
+  // Canjea una Supernova con Estrellas.
+  const canjearSupernova = async (id) => {
+    setSupernovaMsg(null)
+    try {
+      const r = await fetch(`/api/users/me/supernovas/${id}/canjear`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const dataR = await r.json()
+      if (r.ok) {
+        setEstrellas(dataR.restante)
+        setSupernovaMsg({ ok: true, txt: `¡Canjeaste "${dataR.supernova}"! Te contactaremos para entregártela.` })
+      } else {
+        setSupernovaMsg({ ok: false, txt: dataR.message || 'No se pudo canjear' })
+      }
+    } catch {
+      setSupernovaMsg({ ok: false, txt: 'No se pudo canjear' })
+    }
+  }
+
+  // ── Mis talleres desbloqueados (BD: chispas canjeadas + estado) ──
+  const [misTalleres, setMisTalleres]         = useState([])
+  const [loadingTalleres, setLoadingTalleres] = useState(true)
+
+  const cargarTalleres = () => {
+    if (!token) { setLoadingTalleres(false); return }
+    fetch('/api/users/me/talleres', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => setMisTalleres(res?.talleres || []))
+      .catch(() => { /* silencioso */ })
+      .finally(() => setLoadingTalleres(false))
+  }
+  useEffect(() => { cargarTalleres() }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Estado del canje de chispa (card in-line) ──
   const [canjeOpen, setCanjeOpen] = useState(false)
   const [codigo, setCodigo]       = useState('')
   const [cargando, setCargando]   = useState(false)
+  const [canjeando, setCanjeando] = useState(false)
   const [error, setError]         = useState('')
   const [resultado, setResultado] = useState(null) // { nombre, fecha, horario }
 
@@ -407,6 +492,27 @@ export default function PageHome() {
     setCodigo('')
     setError('')
     setResultado(null)
+  }
+
+  // Consume la chispa (real) y refresca la lista de talleres desbloqueados.
+  const desbloquearTaller = async () => {
+    setCanjeando(true)
+    setError('')
+    try {
+      const r = await fetch('/api/users/me/canjear', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ code: codigo.trim() }),
+      })
+      const data = await r.json()
+      if (!r.ok) { setError(data.message || 'No se pudo desbloquear el taller'); return }
+      cerrarCanje()
+      cargarTalleres()
+    } catch {
+      setError('No se pudo desbloquear el taller')
+    } finally {
+      setCanjeando(false)
+    }
   }
 
   const validarChispa = async (e) => {
@@ -447,6 +553,11 @@ export default function PageHome() {
 
   const abrirMaterial = (tallerId) => {
     // El material de apoyo y los modelos 3D viven en el aula del taller.
+    navigate(`/aula/${tallerId}`)
+  }
+
+  const entrarClase = (tallerId) => {
+    // El botón solo aparece si claseAccesibleHoy === true (validado en backend).
     navigate(`/aula/${tallerId}`)
   }
 
@@ -524,9 +635,17 @@ export default function PageHome() {
           </button>
         </div>
         <div className="dh-grid-talleres">
-          {data.talleres.map((t) => (
-            <TallerCard key={t.id} taller={t} onMaterial={abrirMaterial} />
-          ))}
+          {loadingTalleres ? (
+            <div className="dh-empty">Cargando tus talleres…</div>
+          ) : misTalleres.length === 0 ? (
+            <div className="dh-empty">
+              Aún no tienes talleres desbloqueados. ¿Tienes una chispa? Canjéala abajo y desbloquea tu primer taller. <span style={{ color: 'var(--color-amber-500)' }}>✦</span>
+            </div>
+          ) : (
+            misTalleres.map((t) => (
+              <TallerCard key={t.code} taller={t} onMaterial={abrirMaterial} onClase={entrarClase} />
+            ))
+          )}
         </div>
 
         {/* ── Canjear chispa ── */}
@@ -604,9 +723,12 @@ export default function PageHome() {
                 <button
                   className="dh-btn dh-btn--amber"
                   style={{ width: '100%', marginTop: 'var(--space-3)' }}
-                  onClick={() => navigate('/acceso')}
+                  onClick={desbloquearTaller}
+                  disabled={canjeando}
                 >
-                  <Sparkle size={16} weight="fill" /> Desbloquear taller
+                  {canjeando
+                    ? <><span className="dh-spin"><CircleNotch size={16} weight="bold" /></span> Desbloqueando…</>
+                    : <><Sparkle size={16} weight="fill" /> Desbloquear taller</>}
                 </button>
               </div>
             )}
@@ -616,14 +738,47 @@ export default function PageHome() {
         {/* ── Canjea tu Supernova (premios con Estrellas) ── */}
         <p className="dh-section-title">Canjea tu Supernova</p>
         <div className="dh-grid-tienda">
-          {data.tienda.map(({ titulo, costo, Icon }) => (
-            <div className="dh-card dh-tienda-item" key={titulo}>
-              <Icon size={24} weight="fill" color="var(--color-jade-400)" />
-              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{titulo}</div>
-              <span className="dh-cost"><Star size={12} weight="fill" /> {costo} Estrellas</span>
-            </div>
-          ))}
+          {(supernovas.length
+            ? supernovas
+            : data.tienda.map((t, i) => ({ id: `m${i}`, nombre: t.titulo, costo_estrellas: t.costo }))
+          ).map((s, i) => {
+            const Icon   = [CalendarBlank, Star, Gift][i % 3]
+            const afford = estrellasVal >= s.costo_estrellas
+            const real   = typeof s.id === 'number'
+            return (
+              <div
+                className="dh-card dh-tienda-item"
+                key={s.id ?? s.nombre}
+                style={afford ? { borderColor: 'var(--color-amber-600)' } : undefined}
+              >
+                <Icon size={24} weight="fill" color={afford ? 'var(--color-amber-500)' : 'var(--color-jade-400)'} />
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{s.nombre}</div>
+                <span className="dh-cost"><Star size={12} weight="fill" /> {s.costo_estrellas} Estrellas</span>
+                {real && (afford ? (
+                  <button
+                    className="dh-btn dh-btn--amber"
+                    style={{ fontSize: 'var(--text-xs)', padding: '6px 14px' }}
+                    onClick={() => canjearSupernova(s.id)}
+                  >
+                    Canjear
+                  </button>
+                ) : (
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                    Te faltan {s.costo_estrellas - estrellasVal}
+                  </span>
+                ))}
+              </div>
+            )
+          })}
         </div>
+        {supernovaMsg && (
+          <p style={{
+            fontSize: 'var(--text-sm)', marginTop: 'var(--space-3)',
+            color: supernovaMsg.ok ? 'var(--color-success)' : 'var(--color-error)',
+          }}>
+            {supernovaMsg.txt}
+          </p>
+        )}
 
         {/* ── Promos + próximos ── */}
         <div className="dh-grid-promos">
@@ -658,26 +813,43 @@ export default function PageHome() {
               <UsersThree size={20} weight="fill" color="var(--color-amber-600)" />
               Constelación de amigos
             </div>
-            <span className="dh-code">{data.codigoAmigo}</span>
+            <span className="dh-code">{codigoAmigo}</span>
           </div>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: '0 0 var(--space-3)' }}>
-            Comparte tu polvo estelar. Cada amigo que se une con tu código enciende una
-            Estrella; júntalas para canjear Supernovas como meses gratis o un taller.
+            Comparte tu polvo estelar. Cada amigo que se une con tu código te suma
+            Estrellas; júntalas para canjear Supernovas como meses gratis o un taller.
           </p>
-          <div className="dh-stars">
-            {Array.from({ length: data.estrellasMeta }).map((_, i) => (
-              <Star
-                key={i}
-                size={18}
-                weight="fill"
-                color={i < estrellasVal ? 'var(--color-amber-500)' : 'var(--text-disabled)'}
-              />
-            ))}
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 8 }}>
-              {estrellasVal} de {data.estrellasMeta} Estrellas · faltan {Math.max(0, data.estrellasMeta - estrellasVal)} para {data.premioProximo}
+
+          {puedeCanjear ? (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'rgba(217,119,6,0.14)', border: '1px solid var(--color-amber-600)',
+              borderRadius: 'var(--radius-lg)', padding: 'var(--space-3) var(--space-4)',
+              color: 'var(--color-amber-500)', fontSize: 'var(--text-sm)', fontWeight: 600,
+            }}>
+              <ShootingStar size={18} weight="fill" />
+              ¡Ya puedes canjear tu Supernova! Tienes {estrellasVal} Estrellas ✦
+            </div>
+          ) : costoMin != null ? (
+            <>
+              <div style={{ height: 8, background: 'var(--bg-surface)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${Math.min(100, Math.round((estrellasVal / costoMin) * 100))}%`,
+                  background: 'linear-gradient(90deg, var(--color-jade-500), var(--color-amber-600))',
+                  borderRadius: 'var(--radius-full)',
+                }} />
+              </div>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 6 }}>
+                <Star size={13} weight="fill" color="var(--color-amber-500)" />
+                {estrellasVal} de {costoMin} Estrellas · te faltan {costoMin - estrellasVal} para tu primera Supernova
+              </span>
+            </>
+          ) : (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-sm)', fontWeight: 600 }}>
+              <Star size={16} weight="fill" color="var(--color-amber-500)" /> {estrellasVal} Estrellas
             </span>
-            <ShootingStar size={16} weight="fill" color="var(--color-amber-500)" style={{ marginLeft: 4 }} />
-          </div>
+          )}
         </div>
 
       </div>

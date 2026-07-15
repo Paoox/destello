@@ -212,3 +212,149 @@ export async function revokeChispa(code) {
     )
     return rows.length > 0
 }
+
+// ── Canje ligado al usuario ─────────────────────────────────────────────────────
+
+/**
+ * Canjea (consume) una chispa a nombre de un usuario con sesión.
+ * · No se puede recanjear (used = TRUE la bloquea).
+ * · Si la chispa tiene dueño asignado, solo ese usuario puede canjearla.
+ * Marca used = TRUE, used_at = NOW(), used_by = email.
+ *
+ * @returns {{ ok: boolean, reason?: string, record?: object }}
+ */
+export async function canjearChispa(code, usuarioEmail) {
+    const normalized = code?.toUpperCase().trim()
+    const chispa     = await getChispa(normalized)
+
+    if (!chispa)        return { ok: false, reason: 'INVALID_CODE' }
+    if (chispa.revoked) return { ok: false, reason: 'REVOKED' }
+    if (chispa.used)    return { ok: false, reason: 'ALREADY_USED' }
+    if (chispa.expiresAt && new Date(chispa.expiresAt) < new Date()) {
+        return { ok: false, reason: 'EXPIRED' }
+    }
+    // La chispa se crea para un usuario específico: solo ese puede canjearla.
+    if (chispa.usuarioEmail &&
+        chispa.usuarioEmail.toLowerCase() !== usuarioEmail.toLowerCase()) {
+        return { ok: false, reason: 'NOT_OWNER' }
+    }
+
+    await query(
+        `UPDATE chispas SET used = TRUE, used_at = NOW(), used_by = $2 WHERE code = $1`,
+        [normalized, usuarioEmail.toLowerCase().trim()]
+    )
+    return { ok: true, record: await getChispa(normalized) }
+}
+
+// ── Talleres desbloqueados del usuario (con estado calculado) ───────────────────
+
+const UN_DIA_MS = 86_400_000
+const MATERIAL_DIAS = 30
+
+/** Fecha (medianoche) desde un DATE/ISO, o null. */
+function soloFecha(v) {
+    if (!v) return null
+    const d = new Date(v)
+    if (isNaN(d)) return null
+    d.setHours(0, 0, 0, 0)
+    return d
+}
+
+// Offset fijo de CDMX: UTC−6 (México ya no usa horario de verano desde 2022).
+const TZ_CDMX = '-06:00'
+const MARGEN_CLASE_MS = 30 * 60 * 1000 // 30 min antes
+
+/**
+ * Calcula el estado de un taller y de su material para el frontend.
+ * Reglas:
+ *   · El material (apoyo + modelos 3D) se libera al CONCLUIR el taller
+ *     (fecha_fin, o fecha_inicio si no hay fin) y vive 30 días contados
+ *     DESDE EL DÍA SIGUIENTE a la conclusión.
+ *   · La clase es accesible el día del taller. Si hay hora_inicio, se valida
+ *     con precisión en UTC (desde 30 min antes hasta el fin del día del taller,
+ *     hora CDMX). Sin hora_inicio, se valida a nivel de día.
+ */
+function estadoTaller({ fecha_inicio, fecha_fin, hora_inicio, hora_fin }) {
+    const hoy    = soloFecha(new Date())
+    const inicio = soloFecha(fecha_inicio)
+    const fin    = soloFecha(fecha_fin) || inicio
+    const concluye = fin
+
+    let fase = 'sin_fecha'
+    let claseAccesibleHoy = false
+    const material = { estado: 'no_disponible', disponible: false, diasRestantes: 0, vence: null }
+
+    if (inicio) {
+        if (hoy < inicio)      fase = 'proximo'
+        else if (hoy <= fin)   fase = 'en_curso'
+        else                   fase = 'concluido'
+
+        if (hora_inicio && fecha_inicio) {
+            // Validación precisa en UTC usando la hora local CDMX.
+            // Fin: hora_fin si existe, si no el final del día del taller.
+            const finDia = fecha_fin || fecha_inicio
+            const ahora  = Date.now()
+            const start  = new Date(`${fecha_inicio}T${hora_inicio}${TZ_CDMX}`).getTime()
+            const end    = hora_fin
+                ? new Date(`${finDia}T${hora_fin}${TZ_CDMX}`).getTime()
+                : new Date(`${finDia}T23:59:59${TZ_CDMX}`).getTime()
+            claseAccesibleHoy = ahora >= (start - MARGEN_CLASE_MS) && ahora <= end
+        } else {
+            // Sin hora: acceso a nivel de día (hoy dentro del rango del taller).
+            claseAccesibleHoy = hoy >= inicio && hoy <= fin
+        }
+    }
+
+    if (concluye) {
+        // Ventana: desde el día siguiente a concluir, por 30 días.
+        const desde = new Date(concluye.getTime() + UN_DIA_MS)
+        const hasta = new Date(concluye.getTime() + MATERIAL_DIAS * UN_DIA_MS)
+        material.vence = hasta.toISOString().slice(0, 10)
+        if (hoy < desde) {
+            material.estado = 'no_disponible'         // el taller aún no concluye
+        } else if (hoy <= hasta) {
+            material.estado = 'disponible'
+            material.disponible = true
+            material.diasRestantes = Math.ceil((hasta.getTime() - hoy.getTime()) / UN_DIA_MS)
+        } else {
+            material.estado = 'expirado'
+        }
+    }
+
+    return { fase, claseAccesibleHoy, material }
+}
+
+/**
+ * Lista los talleres que el usuario tiene desbloqueados (chispas ya canjeadas),
+ * con el estado calculado de taller, clase y material.
+ */
+export async function getTalleresDelUsuario(email) {
+    const { rows } = await query(
+        `SELECT c.code, c.used_at, c.expires_at,
+                t.id   AS taller_id, t.nombre, t.descripcion, t.categoria,
+                t.horario, t.hora_inicio, t.hora_fin, t.fecha_inicio, t.fecha_fin, t.imagen_url
+         FROM chispas c
+         JOIN talleres t ON t.id = c.taller_id
+         WHERE LOWER(c.usuario_email) = LOWER($1)
+           AND c.used = TRUE
+           AND c.revoked = FALSE
+         ORDER BY t.fecha_inicio DESC NULLS LAST`,
+        [email.trim()]
+    )
+
+    return rows.map((r) => ({
+        code:        r.code,
+        tallerId:    r.taller_id,
+        nombre:      r.nombre,
+        descripcion: r.descripcion,
+        categoria:   r.categoria,
+        horario:     r.horario,
+        horaInicio:  r.hora_inicio,
+        horaFin:     r.hora_fin,
+        fechaInicio: r.fecha_inicio,
+        fechaFin:    r.fecha_fin,
+        imagenUrl:   r.imagen_url,
+        canjeadaAt:  r.used_at,
+        ...estadoTaller(r),
+    }))
+}
