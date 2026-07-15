@@ -40,6 +40,9 @@ CREATE TABLE usuarios (
     codigo_referido TEXT UNIQUE,                  -- SU código para compartir (polvo estelar)
     referido_por    TEXT,                         -- email de quien lo invitó (se fija 1 vez)
     estrellas       INTEGER DEFAULT 0,            -- saldo cacheado (ganadas − canjeadas)
+    -- ── Constancia ──
+    racha            INTEGER DEFAULT 0,           -- días seguidos de actividad
+    ultima_actividad DATE,                        -- último día que entró (CDMX)
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -148,8 +151,20 @@ INSERT INTO supernovas (nombre, descripcion, costo_estrellas) VALUES
     ('Masterclass exclusiva', 'Acceso a una masterclass solo para alumnos', 300),
     ('Taller a elegir',       'Un taller del catálogo a elección',         800);
 
+-- ── Insignias (logros que la profesora otorga al alumno) ─────
+CREATE TABLE insignias (
+    id            SERIAL PRIMARY KEY,
+    usuario_email TEXT REFERENCES usuarios(email) ON UPDATE CASCADE ON DELETE CASCADE,
+    nombre        TEXT NOT NULL,                  -- ej. 'Puntería perfecta'
+    descripcion   TEXT,
+    taller_id     TEXT REFERENCES talleres(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    otorgada_por  TEXT,                           -- profesora/admin que la otorgó
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ── Índices ──────────────────────────────────────────────────
 CREATE INDEX idx_chispas_email        ON chispas(usuario_email);
+CREATE INDEX idx_insignias_usuario    ON insignias(usuario_email);
 CREATE INDEX idx_chispas_taller       ON chispas(taller_id);
 CREATE INDEX idx_resplandores_email   ON resplandores(email);
 CREATE INDEX idx_lista_espera_estado  ON lista_espera(estado);

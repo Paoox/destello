@@ -8,6 +8,7 @@ import { Router } from 'express'
 import { query } from '../db/db.js'
 import * as chispaService from '../services/chispaService.js'
 import * as referralService from '../services/referralService.js'
+import * as usuarioService from '../services/usuarioService.js'
 
 const router = Router()
 
@@ -21,17 +22,22 @@ async function emailDelUsuario(userId) {
 // (incluye estrellas y código de referido).
 router.get('/me', async (req, res, next) => {
   try {
-    // Genera el código de referido si el usuario aún no tiene uno.
+    // Genera código de referido (si falta) y registra la visita para la racha.
     await referralService.ensureCodigoReferido(req.user.userId)
+    await usuarioService.registrarActividad(req.user.userId)
+
     const { rows } = await query(
       `SELECT id, email, nombre, apellido, whatsapp, estado,
-              estrellas, codigo_referido, referido_por
+              estrellas, racha, codigo_referido, referido_por
        FROM usuarios
        WHERE id = $1`,
       [req.user.userId]
     )
-    // Si por alguna razón no está en BD, devolvemos al menos el payload del token.
-    res.json({ status: 'ok', user: rows[0] ?? req.user })
+    const user = rows[0] ?? req.user
+    // Logros = insignias otorgadas por la profesora (solo el conteo aquí).
+    if (user.email) user.logros = await usuarioService.contarInsignias(user.email)
+
+    res.json({ status: 'ok', user })
   } catch (err) {
     next(err)
   }

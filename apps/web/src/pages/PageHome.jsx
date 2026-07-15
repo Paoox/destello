@@ -415,9 +415,12 @@ export default function PageHome() {
   // ── Datos reales del usuario (BD: estrellas + código de referido) ──
   const token = useAuthStore((s) => s.token)
   const [estrellas, setEstrellas]         = useState(null) // null = cargando
+  const [racha, setRacha]                 = useState(null)
+  const [logros, setLogros]               = useState(null)
   const [codigoReferido, setCodigoReferido] = useState(null)
   const [supernovas, setSupernovas]       = useState([])
   const [supernovaMsg, setSupernovaMsg]   = useState(null)
+  const [proximos, setProximos]           = useState([])
 
   useEffect(() => {
     if (!token) return
@@ -426,6 +429,8 @@ export default function PageHome() {
       .then((res) => {
         if (res?.user) {
           if (typeof res.user.estrellas === 'number') setEstrellas(res.user.estrellas)
+          if (typeof res.user.racha === 'number')     setRacha(res.user.racha)
+          if (typeof res.user.logros === 'number')    setLogros(res.user.logros)
           if (res.user.codigo_referido) setCodigoReferido(res.user.codigo_referido)
         }
       })
@@ -440,10 +445,41 @@ export default function PageHome() {
       .catch(() => {})
   }, [])
 
-  const estrellasVal = estrellas ?? data.estrellas // fallback mientras carga
+  // Talleres próximos (público) para "Próximos cursos"
+  useEffect(() => {
+    fetch('/api/tallers')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => setProximos(res?.tallers || res?.talleres || []))
+      .catch(() => {})
+  }, [])
+
+  const estrellasVal = estrellas ?? 0 // valores reales de la BD (0 mientras cargan)
+  const rachaVal     = racha ?? 0
+  const logrosVal    = logros ?? 0
   const codigoAmigo  = codigoReferido ?? data.codigoAmigo
   const costoMin     = supernovas.length ? Math.min(...supernovas.map((s) => s.costo_estrellas)) : null
   const puedeCanjear = costoMin != null && estrellasVal >= costoMin
+
+  // Ruta de progreso = racha de constancia (Día 1 → 30).
+  const HITOS_RACHA = [1, 7, 15, 30]
+  const rutaIconos  = [CheckCircle, Medal, Medal, Trophy]
+  const rutaHitos = HITOS_RACHA.map((dia, i) => {
+    const done     = rachaVal >= dia
+    const prevDone = i === 0 ? true : rachaVal >= HITOS_RACHA[i - 1]
+    return {
+      label:  `Día ${dia}`,
+      estado: done ? 'done' : (prevDone ? 'current' : 'locked'),
+      Icon:   rutaIconos[i],
+    }
+  })
+  const rutaPct = Math.min(100, Math.round((rachaVal / 30) * 100))
+
+  // Próximos cursos = talleres 'proximamente' que aún no tomas, por fecha.
+  const misIds = new Set(misTalleres.map((t) => t.tallerId))
+  const proximosCursos = proximos
+    .filter((t) => t.estado === 'proximamente' && !misIds.has(t.id))
+    .sort((a, b) => String(a.fecha_inicio ?? '').localeCompare(String(b.fecha_inicio ?? '')))
+    .slice(0, 4)
 
   // Canjea una Supernova con Estrellas.
   const canjearSupernova = async (id) => {
@@ -594,23 +630,23 @@ export default function PageHome() {
               <div className="dh-pill-lbl">Estrellas</div>
             </div>
             <div className="dh-pill">
-              <div className="dh-pill-val"><Trophy size={16} weight="fill" color="var(--color-amber-600)" />{data.logros}</div>
+              <div className="dh-pill-val"><Trophy size={16} weight="fill" color="var(--color-amber-600)" />{logrosVal}</div>
               <div className="dh-pill-lbl">Logros</div>
             </div>
             <div className="dh-pill">
-              <div className="dh-pill-val"><Fire size={16} weight="fill" color="var(--color-amber-500)" />{data.racha}</div>
+              <div className="dh-pill-val"><Fire size={16} weight="fill" color="var(--color-amber-500)" />{rachaVal}</div>
               <div className="dh-pill-lbl">Racha</div>
             </div>
           </div>
         </div>
 
-        {/* ── Ruta de progreso ── */}
+        {/* ── Ruta de progreso (racha de constancia) ── */}
         <div className="dh-card dh-ruta">
-          <p className="dh-section-title">Ruta de progreso</p>
+          <p className="dh-section-title">Ruta de progreso · {rachaVal} {rachaVal === 1 ? 'día' : 'días'} de constancia</p>
           <div className="dh-ruta-track">
             <div className="dh-ruta-line" />
-            <div className="dh-ruta-fill" style={{ width: `${(data.progresoPct * 0.88)}%` }} />
-            {data.progresoHitos.map(({ label, estado, Icon }) => (
+            <div className="dh-ruta-fill" style={{ width: `${(rutaPct * 0.88)}%` }} />
+            {rutaHitos.map(({ label, estado, Icon }) => (
               <div className="dh-hito" key={label}>
                 <div className="dh-hito-dot" style={dotStyle(estado)}>
                   <Icon size={16} weight="fill" color={dotIconColor(estado)} />
@@ -798,11 +834,17 @@ export default function PageHome() {
             <div className="dh-block-tag" style={{ color: 'var(--color-jade-400)' }}>
               <CalendarBlank size={14} weight="fill" /> Próximos cursos
             </div>
-            {data.proximos.map((c) => (
-              <p className="dh-next-row" key={c.nombre}>
-                {c.nombre} <span>· {c.fecha}</span>
+            {proximosCursos.length === 0 ? (
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: 0 }}>
+                Pronto anunciaremos nuevos talleres ✦
               </p>
-            ))}
+            ) : (
+              proximosCursos.map((c) => (
+                <p className="dh-next-row" key={c.id}>
+                  {c.nombre} <span>· {fmtFechaCorta(c.fecha_inicio) ?? 'próximamente'}</span>
+                </p>
+              ))
+            )}
           </div>
         </div>
 
