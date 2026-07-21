@@ -10,11 +10,12 @@
  *   - Email + contraseña
  *   - Llama a POST /api/auth/social (Google) o POST /api/auth/login (email)
  */
-import { useState }                              from 'react'
-import { useNavigate, useLocation, Link }        from 'react-router-dom'
-import { Eye, EyeSlash, ArrowRight, CheckCircle, XCircle } from '@phosphor-icons/react'
+import { useState, useEffect, useRef }           from 'react'
+import { useNavigate, useLocation }              from 'react-router-dom'
+import { Eye, EyeSlash, ArrowRight, ArrowLeft, CheckCircle, XCircle, WhatsappLogo, DeviceMobile } from '@phosphor-icons/react'
 import { useAuthStore }                          from '@store/useAuthStore.js'
 import { signInWithGoogle }                      from '@services/firebase.js'
+import { WA_INSCRIBIRME_URL }                     from '../constants.js'
 import logoLight from '../Images/destello-logo-512.png'
 import logoDark  from '../Images/destello-logo-dark-512.png'
 
@@ -128,23 +129,42 @@ function passwordIsStrong(p) {
     return p.length >= 8 && /[A-Z]/.test(p) && /[0-9]/.test(p)
 }
 
+// ── CSS responsive (media queries no se pueden con estilos inline) ─────────────
+const LOGIN_CSS = `
+.login-shell {
+    padding: var(--space-8) var(--space-6);
+    /* 'safe center' centra vertical pero cae a arriba si el contenido no cabe
+       (evita que se corte la parte de arriba en formularios largos) */
+    align-items: safe center;
+}
+/* Evita el zoom automático de iOS al enfocar un input (font-size >= 16px) */
+.login-shell input { font-size: 16px !important; }
+
+@media (max-width: 480px) {
+    .login-shell        { padding: var(--space-5) var(--space-4); }
+    .login-shell .login-card { padding: var(--space-6); border-radius: var(--radius-xl); }
+    .login-shell .login-glow { width: 340px; height: 340px; }
+}
+`
+
 // ── Wrapper visual compartido ─────────────────────────────────────────────────
 function PageShell({ children }) {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     const logo = prefersDark ? logoDark : logoLight
     return (
-        <div style={{
-            position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start',
+        <div className="login-shell" style={{
+            position: 'fixed', inset: 0, display: 'flex',
             justifyContent: 'center', background: 'var(--bg-dark)',
-            padding: 'var(--space-8) var(--space-6)', boxSizing: 'border-box', overflowY: 'auto',
+            boxSizing: 'border-box', overflowY: 'auto',
         }}>
-            <div style={{
+            <style>{LOGIN_CSS}</style>
+            <div className="login-glow" style={{
                 position: 'fixed', top: '35%', left: '50%', transform: 'translate(-50%,-50%)',
                 width: 600, height: 600, borderRadius: '50%', pointerEvents: 'none',
                 background: 'radial-gradient(circle, rgba(13,115,119,0.08) 0%, transparent 70%)',
             }}/>
             <div style={{ maxWidth: 420, width: '100%', position: 'relative', zIndex: 1 }}>
-                <div style={{
+                <div className="login-card" style={{
                     background: 'var(--bg-card)', border: '1px solid var(--border-default)',
                     borderRadius: 'var(--radius-2xl)', padding: 'var(--space-8)', boxShadow: 'var(--shadow-lg)',
                 }}>
@@ -282,15 +302,11 @@ function RegisterForm({ email, nombre: nombreInicial, resplandorCode }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// FORMULARIO DE LOGIN (usuario con cuenta existente)
+// PANTALLA PRINCIPAL DE LOGIN — solo Google + liga "entrar con mi número"
 // ══════════════════════════════════════════════════════════════════════════════
-function LoginForm() {
+function GoogleChoice({ onPhone }) {
     const navigate = useNavigate()
-    const { login, isLoading, error } = useAuthStore()
 
-    const [email,         setEmail]         = useState('')
-    const [password,      setPassword]      = useState('')
-    const [showPass,      setShowPass]      = useState(false)
     const [localError,    setLocalError]    = useState(null)
     const [googleLoading, setGoogleLoading] = useState(false)
 
@@ -328,20 +344,8 @@ function LoginForm() {
         }
     }
 
-    // ── Login con email + contraseña ──────────────────────────────────────────
-    const handleSubmit = async (e) => {
-        e.preventDefault()
-        setLocalError(null)
-        await login({ email, password })
-        const { token } = useAuthStore.getState()
-        if (token) navigate('/home')
-    }
-
-    const displayError = localError || error
-
     return (
         <PageShell>
-            {/* Google OAuth */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                 <OAuthButton
                     icon={IconGoogle}
@@ -351,64 +355,282 @@ function LoginForm() {
                 />
             </div>
 
-            <Divider/>
+            {localError && (
+                <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-xs)', margin: 'var(--space-3) 0 0', textAlign: 'center' }}>
+                    {localError}
+                </p>
+            )}
 
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                <Field
-                    label="Correo electrónico" type="email" placeholder="tu@email.com"
-                    value={email} onChange={e => setEmail(e.target.value)}
-                />
-                <Field
-                    label="Contraseña"
-                    type={showPass ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    right={
-                        <button type="button" onClick={() => setShowPass(p => !p)}
-                                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0, display: 'flex' }}>
-                            {showPass ? <EyeSlash size={17}/> : <Eye size={17}/>}
-                        </button>
-                    }
-                />
+            <Divider label="o" />
 
-                {displayError && (
-                    <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-xs)', margin: 0 }}>{displayError}</p>
-                )}
-
-                <div style={{ textAlign: 'right', marginTop: -6 }}>
-                    <Link to="/recuperar-contrasena" style={{
-                        fontSize: 'var(--text-xs)', color: 'var(--color-jade-500)',
-                        fontWeight: 500, textDecoration: 'none',
-                    }}>¿Olvidaste tu contraseña?</Link>
-                </div>
-
-                <button type="submit" disabled={!email || !password || isLoading} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    width: '100%', marginTop: 'var(--space-1)', padding: 'var(--space-3)',
-                    background: email && password ? 'var(--color-jade-500)' : 'var(--bg-surface)',
-                    border: '1px solid transparent', borderRadius: 'var(--radius-lg)',
-                    color: email && password ? '#FAF7F2' : 'var(--text-muted)',
-                    fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 'var(--text-sm)',
-                    cursor: email && password ? 'pointer' : 'not-allowed',
-                    opacity: isLoading ? 0.7 : 1, transition: 'background 0.2s',
-                }}>
-                    {isLoading ? 'Entrando...' : 'Entrar'}
-                    {!isLoading && <ArrowRight size={16}/>}
-                </button>
-            </form>
+            {/* Entrar con número de WhatsApp */}
+            <button
+                onClick={onPhone}
+                style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                    width: '100%', padding: 'var(--space-3)',
+                    background: 'transparent',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-lg)', color: 'var(--text-primary)',
+                    fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)', fontWeight: 500,
+                    cursor: 'pointer', transition: 'all 0.15s',
+                }}
+            >
+                <WhatsappLogo size={19} weight="fill" color="#25D366" />
+                Entrar con mi número
+            </button>
 
             <p style={{
                 marginTop: 'var(--space-5)', textAlign: 'center',
                 fontSize: 'var(--text-xs)', color: 'var(--text-disabled)',
             }}>
                 ¿No tienes cuenta?{' '}
-                <Link to="/acceso" style={{ color: 'var(--color-jade-500)', fontWeight: 600, textDecoration: 'none' }}>
-                    Activa tu Resplandor
-                </Link>
+                <a href={WA_INSCRIBIRME_URL} target="_blank" rel="noreferrer"
+                   style={{ color: 'var(--color-jade-500)', fontWeight: 600, textDecoration: 'none' }}>
+                    Inscríbete por WhatsApp
+                </a>
             </p>
         </PageShell>
     )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FLUJO DE CÓDIGO POR WHATSAPP — captura de número + código OTP de 6 dígitos
+// ══════════════════════════════════════════════════════════════════════════════
+function PhoneAuth({ onBack }) {
+    const navigate = useNavigate()
+
+    const [step,     setStep]     = useState('number')      // 'number' | 'code'
+    const [phone,    setPhone]    = useState('')            // 10 dígitos
+    const [code,     setCode]     = useState(['', '', '', '', '', ''])
+    const [error,    setError]    = useState(null)
+    const [loading,  setLoading]  = useState(false)
+    const [resendIn, setResendIn] = useState(0)
+
+    const boxRefs   = useRef([])
+    const phoneValid = /^\d{10}$/.test(phone)
+    const codeStr    = code.join('')
+
+    // ── Contador para reenviar ────────────────────────────────────────────────
+    useEffect(() => {
+        if (resendIn <= 0) return
+        const t = setInterval(() => setResendIn(s => (s <= 1 ? 0 : s - 1)), 1000)
+        return () => clearInterval(t)
+    }, [resendIn])
+
+    // ── Enviar código (MOCK — falta cablear POST /api/auth/phone/send-code) ────
+    const sendCode = async () => {
+        if (!phoneValid) { setError('Ingresa tu número a 10 dígitos.'); return }
+        setError(null)
+        setLoading(true)
+        // TODO backend: await fetch('/api/auth/phone/send-code', { ...body: { whatsapp: phone } })
+        await new Promise(r => setTimeout(r, 600))
+        setLoading(false)
+        setStep('code')
+        setResendIn(30)
+        setTimeout(() => boxRefs.current[0]?.focus(), 50)
+    }
+
+    // ── Verificar código (MOCK — falta cablear POST /api/auth/phone/verify) ────
+    const verify = async () => {
+        if (codeStr.length !== 6) { setError('El código tiene 6 dígitos.'); return }
+        setError(null)
+        setLoading(true)
+        // TODO backend: valida el código, emite JWT y navigate('/home')
+        await new Promise(r => setTimeout(r, 600))
+        setLoading(false)
+        setError('✨ Pantalla lista. Falta conectar el backend para validar el código.')
+    }
+
+    // ── Manejo de las cajitas del código ──────────────────────────────────────
+    const onCodeChange = (i, val) => {
+        const digit = val.replace(/\D/g, '').slice(-1)
+        const next  = [...code]
+        next[i] = digit
+        setCode(next)
+        if (digit && i < 5) boxRefs.current[i + 1]?.focus()
+    }
+    const onCodeKeyDown = (i, e) => {
+        if (e.key === 'Backspace' && !code[i] && i > 0) boxRefs.current[i - 1]?.focus()
+    }
+    const onCodePaste = (e) => {
+        const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+        if (!pasted) return
+        e.preventDefault()
+        const next = ['', '', '', '', '', '']
+        pasted.split('').forEach((d, idx) => { next[idx] = d })
+        setCode(next)
+        boxRefs.current[Math.min(pasted.length, 5)]?.focus()
+    }
+
+    return (
+        <PageShell>
+            {/* Volver */}
+            <button
+                onClick={step === 'code' ? () => { setStep('number'); setError(null) } : onBack}
+                style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    background: 'none', border: 'none', color: 'var(--text-muted)',
+                    fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+                    cursor: 'pointer', padding: 0, marginBottom: 'var(--space-4)',
+                }}
+            >
+                <ArrowLeft size={14} /> Volver
+            </button>
+
+            {step === 'number' ? (
+                <>
+                    <div style={{ textAlign: 'center', marginBottom: 'var(--space-5)' }}>
+                        <div style={{
+                            width: 48, height: 48, borderRadius: 'var(--radius-xl)',
+                            background: 'rgba(37,211,102,0.12)', border: '1px solid rgba(37,211,102,0.3)',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            marginBottom: 'var(--space-3)',
+                        }}>
+                            <WhatsappLogo size={26} weight="fill" color="#25D366" />
+                        </div>
+                        <h2 style={{ margin: '0 0 var(--space-1)', fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            Entra con tu número
+                        </h2>
+                        <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                            Te enviaremos un código por WhatsApp para confirmar que eres tú.
+                        </p>
+                    </div>
+
+                    <label style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontWeight: 500 }}>
+                        Número de WhatsApp
+                    </label>
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8, marginTop: 4,
+                        background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
+                        borderRadius: 'var(--radius-lg)', padding: '0 var(--space-3)',
+                    }}>
+                        <span style={{ fontSize: 16, color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            🇲🇽 +52
+                        </span>
+                        <div style={{ width: 1, height: 22, background: 'var(--border-default)' }} />
+                        <input
+                            type="tel"
+                            inputMode="numeric"
+                            placeholder="10 dígitos"
+                            value={phone}
+                            onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                            onKeyDown={e => { if (e.key === 'Enter' && phoneValid) sendCode() }}
+                            style={{
+                                flex: 1, border: 'none', background: 'transparent', outline: 'none',
+                                padding: 'var(--space-3) 0', color: 'var(--text-primary)',
+                                fontSize: 16, fontFamily: 'var(--font-sans)', letterSpacing: '0.06em',
+                            }}
+                        />
+                    </div>
+
+                    {error && <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-xs)', margin: 'var(--space-2) 0 0' }}>{error}</p>}
+
+                    <button
+                        onClick={sendCode}
+                        disabled={!phoneValid || loading}
+                        style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                            width: '100%', marginTop: 'var(--space-5)', padding: 'var(--space-3)',
+                            background: phoneValid ? 'var(--color-jade-500)' : 'var(--bg-surface)',
+                            border: '1px solid transparent', borderRadius: 'var(--radius-lg)',
+                            color: phoneValid ? '#FAF7F2' : 'var(--text-muted)',
+                            fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 'var(--text-sm)',
+                            cursor: phoneValid ? 'pointer' : 'not-allowed',
+                            opacity: loading ? 0.7 : 1, transition: 'background 0.2s',
+                        }}
+                    >
+                        {loading ? 'Enviando...' : 'Enviarme el código'}
+                        {!loading && <ArrowRight size={16} />}
+                    </button>
+                </>
+            ) : (
+                <>
+                    <div style={{ textAlign: 'center', marginBottom: 'var(--space-5)' }}>
+                        <div style={{
+                            width: 48, height: 48, borderRadius: 'var(--radius-xl)',
+                            background: 'rgba(13,115,119,0.12)', border: '1px solid rgba(13,115,119,0.3)',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            marginBottom: 'var(--space-3)',
+                        }}>
+                            <DeviceMobile size={26} weight="fill" color="var(--color-jade-500)" />
+                        </div>
+                        <h2 style={{ margin: '0 0 var(--space-1)', fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            Escribe tu código
+                        </h2>
+                        <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                            Te lo mandamos por WhatsApp al{' '}
+                            <span style={{ color: 'var(--text-primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                +52 {phone}
+                            </span>
+                        </p>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'center' }} onPaste={onCodePaste}>
+                        {code.map((d, i) => (
+                            <input
+                                key={i}
+                                ref={el => (boxRefs.current[i] = el)}
+                                type="tel"
+                                inputMode="numeric"
+                                maxLength={1}
+                                value={d}
+                                onChange={e => onCodeChange(i, e.target.value)}
+                                onKeyDown={e => onCodeKeyDown(i, e)}
+                                style={{
+                                    width: 44, height: 54, textAlign: 'center',
+                                    background: 'var(--bg-surface)', border: `1px solid ${d ? 'var(--color-jade-500)' : 'var(--border-default)'}`,
+                                    borderRadius: 'var(--radius-lg)', color: 'var(--text-primary)',
+                                    fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-sans)',
+                                    outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s',
+                                }}
+                            />
+                        ))}
+                    </div>
+
+                    {error && <p style={{ color: error.startsWith('✨') ? 'var(--color-amber-600)' : 'var(--color-error)', fontSize: 'var(--text-xs)', margin: 'var(--space-3) 0 0', textAlign: 'center' }}>{error}</p>}
+
+                    <button
+                        onClick={verify}
+                        disabled={codeStr.length !== 6 || loading}
+                        style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                            width: '100%', marginTop: 'var(--space-5)', padding: 'var(--space-3)',
+                            background: codeStr.length === 6 ? 'var(--color-jade-500)' : 'var(--bg-surface)',
+                            border: '1px solid transparent', borderRadius: 'var(--radius-lg)',
+                            color: codeStr.length === 6 ? '#FAF7F2' : 'var(--text-muted)',
+                            fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 'var(--text-sm)',
+                            cursor: codeStr.length === 6 ? 'pointer' : 'not-allowed',
+                            opacity: loading ? 0.7 : 1, transition: 'background 0.2s',
+                        }}
+                    >
+                        {loading ? 'Verificando...' : 'Verificar y entrar'}
+                        {!loading && <ArrowRight size={16} />}
+                    </button>
+
+                    <p style={{ marginTop: 'var(--space-4)', textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                        {resendIn > 0 ? (
+                            <>Reenviar código en {resendIn}s</>
+                        ) : (
+                            <button onClick={sendCode} style={{ background: 'none', border: 'none', color: 'var(--color-jade-500)', fontWeight: 600, cursor: 'pointer', fontSize: 'var(--text-xs)', padding: 0, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                                Reenviar código
+                            </button>
+                        )}
+                    </p>
+                </>
+            )}
+        </PageShell>
+    )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LOGIN — alterna entre Google y flujo de número
+// ══════════════════════════════════════════════════════════════════════════════
+function LoginForm() {
+    const [method, setMethod] = useState('choose')  // 'choose' | 'phone'
+
+    if (method === 'phone') return <PhoneAuth onBack={() => setMethod('choose')} />
+    return <GoogleChoice onPhone={() => setMethod('phone')} />
 }
 
 // ── Exportación principal ─────────────────────────────────────────────────────

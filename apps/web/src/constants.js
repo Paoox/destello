@@ -8,6 +8,9 @@ export const WA_NUMBER = '5577888800'
 /** URL completa de WhatsApp con mensaje de bienvenida */
 export const WA_CHISPA_URL = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent('Hola! quiero mi Chispa de acceso a Destello 🌟')}`
 
+/** URL de WhatsApp para inscribirse / entrar a la lista de espera */
+export const WA_INSCRIBIRME_URL = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent('Hola ✦ Quiero inscribirme a un taller de Destello y conocer la disponibilidad')}`
+
 /** URL base del sitio */
 export const SITE_URL = 'https://destello.courses'
 
