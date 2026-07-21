@@ -41,13 +41,13 @@ function OAuthButton({ icon: Icon, label, onClick, loading }) {
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                width: '100%', padding: 'var(--space-3)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+                width: '100%', padding: 'var(--space-4)',
                 background: hovered ? 'var(--bg-surface)' : 'transparent',
                 border: '1px solid',
                 borderColor: hovered ? 'var(--color-jade-500)' : 'var(--border-default)',
                 borderRadius: 'var(--radius-lg)', color: 'var(--text-primary)',
-                fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)', fontWeight: 500,
+                fontSize: 'var(--text-base)', fontFamily: 'var(--font-sans)', fontWeight: 600,
                 cursor: loading ? 'wait' : 'pointer',
                 opacity: loading ? 0.7 : 1,
                 transition: 'all 0.15s',
@@ -133,17 +133,20 @@ function passwordIsStrong(p) {
 const LOGIN_CSS = `
 .login-shell {
     padding: var(--space-8) var(--space-6);
-    /* 'safe center' centra vertical pero cae a arriba si el contenido no cabe
-       (evita que se corte la parte de arriba en formularios largos) */
+    /* 'safe center' centra vertical pero cae a arriba si el contenido no cabe */
     align-items: safe center;
+    /* corta cualquier desbordamiento horizontal (glows decorativos) que en móvil
+       hacía que el navegador encogiera toda la página */
+    overflow-x: hidden;
 }
 /* Evita el zoom automático de iOS al enfocar un input (font-size >= 16px) */
 .login-shell input { font-size: 16px !important; }
 
-@media (max-width: 480px) {
-    .login-shell        { padding: var(--space-5) var(--space-4); }
-    .login-shell .login-card { padding: var(--space-6); border-radius: var(--radius-xl); }
-    .login-shell .login-glow { width: 340px; height: 340px; }
+/* En móvil: card más ancha, con más aire, y todo más grande (accesible) */
+@media (max-width: 560px) {
+    .login-shell             { padding: var(--space-5) var(--space-4); }
+    .login-shell .login-card { padding: var(--space-7) var(--space-6); border-radius: var(--radius-xl); }
+    .login-shell .login-glow { width: 90vw; height: 90vw; }
 }
 `
 
@@ -160,24 +163,25 @@ function PageShell({ children }) {
             <style>{LOGIN_CSS}</style>
             <div className="login-glow" style={{
                 position: 'fixed', top: '35%', left: '50%', transform: 'translate(-50%,-50%)',
-                width: 600, height: 600, borderRadius: '50%', pointerEvents: 'none',
+                width: 'min(600px, 90vw)', height: 'min(600px, 90vw)',
+                borderRadius: '50%', pointerEvents: 'none',
                 background: 'radial-gradient(circle, rgba(13,115,119,0.08) 0%, transparent 70%)',
             }}/>
-            <div style={{ maxWidth: 420, width: '100%', position: 'relative', zIndex: 1 }}>
+            <div style={{ maxWidth: 460, width: '100%', position: 'relative', zIndex: 1 }}>
                 <div className="login-card" style={{
                     background: 'var(--bg-card)', border: '1px solid var(--border-default)',
                     borderRadius: 'var(--radius-2xl)', padding: 'var(--space-8)', boxShadow: 'var(--shadow-lg)',
                 }}>
                     <div style={{ textAlign: 'center', marginBottom: 'var(--space-6)' }}>
                         <img src={logo} alt="Destello" style={{
-                            display: 'block', width: 52, height: 52, margin: '0 auto var(--space-3)',
+                            display: 'block', width: 68, height: 68, margin: '0 auto var(--space-4)',
                             objectFit: 'contain', filter: 'drop-shadow(0 0 14px rgba(13,115,119,0.4))',
                         }}/>
                         <h1 style={{
-                            fontSize: 'var(--text-2xl)', fontWeight: 700,
-                            margin: '0 0 var(--space-1)', letterSpacing: '-0.02em', color: 'var(--text-primary)',
+                            fontSize: 'var(--text-3xl)', fontWeight: 700,
+                            margin: '0 0 var(--space-2)', letterSpacing: '-0.02em', color: 'var(--text-primary)',
                         }}>Destello</h1>
-                        <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                        <p style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text-muted)' }}>
                             Tu espacio de aprendizaje{' '}
                             <span style={{ color: 'var(--color-amber-600,#D97706)', fontWeight: 600 }}>inmersivo</span>
                         </p>
@@ -374,22 +378,22 @@ function GoogleChoice({ onPhone }) {
             <button
                 onClick={onPhone}
                 style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                    width: '100%', padding: 'var(--space-3)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+                    width: '100%', padding: 'var(--space-4)',
                     background: 'transparent',
                     border: '1px solid var(--border-default)',
                     borderRadius: 'var(--radius-lg)', color: 'var(--text-primary)',
-                    fontSize: 'var(--text-sm)', fontFamily: 'var(--font-sans)', fontWeight: 500,
+                    fontSize: 'var(--text-base)', fontFamily: 'var(--font-sans)', fontWeight: 600,
                     cursor: 'pointer', transition: 'all 0.15s',
                 }}
             >
-                <WhatsappLogo size={19} weight="fill" color="#25D366" />
+                <WhatsappLogo size={22} weight="fill" color="#25D366" />
                 Entrar con mi número
             </button>
 
             <p style={{
-                marginTop: 'var(--space-5)', textAlign: 'center',
-                fontSize: 'var(--text-xs)', color: 'var(--text-disabled)',
+                marginTop: 'var(--space-6)', textAlign: 'center',
+                fontSize: 'var(--text-sm)', color: 'var(--text-muted)',
             }}>
                 ¿No tienes cuenta?{' '}
                 <a href={WA_INSCRIBIRME_URL} target="_blank" rel="noreferrer"
