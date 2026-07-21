@@ -43,9 +43,34 @@ router.get('/me', async (req, res, next) => {
   }
 })
 
-router.put('/me', (req, res) => {
-  // TODO: actualizar perfil en DB
-  res.json({ status: 'ok', message: 'Perfil actualizado' })
+// Actualiza el perfil del usuario autenticado.
+// Body admite: { nombre, apellido, whatsapp }. Solo actualiza lo que llega.
+// El nombre completo (nombre + apellido) es el que se usará en el certificado.
+router.put('/me', async (req, res, next) => {
+  try {
+    const { nombre, apellido, whatsapp } = req.body
+
+    const sets = []
+    const vals = []
+    let i = 1
+    if (nombre   !== undefined) { sets.push(`nombre   = $${i++}`); vals.push(String(nombre).trim()) }
+    if (apellido !== undefined) { sets.push(`apellido = $${i++}`); vals.push(String(apellido).trim()) }
+    if (whatsapp !== undefined) { sets.push(`whatsapp = $${i++}`); vals.push(String(whatsapp).replace(/\D/g, '').slice(-10)) }
+
+    if (!sets.length) return res.json({ status: 'ok', message: 'Nada que actualizar' })
+
+    vals.push(req.user.userId)
+    const { rows } = await query(
+      `UPDATE usuarios SET ${sets.join(', ')} WHERE id = $${i}
+       RETURNING id, email, nombre, apellido, whatsapp, estado`,
+      vals
+    )
+    if (!rows.length) return res.status(404).json({ status: 'error', message: 'Usuario no encontrado' })
+
+    res.json({ status: 'ok', user: rows[0] })
+  } catch (err) {
+    next(err)
+  }
 })
 
 router.get('/me/progress', (req, res) => {

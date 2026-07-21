@@ -122,7 +122,7 @@ export async function loginWithSocial(req, res, next) {
 
     // 2. Buscar usuario en la BD
     const { rows } = await query(
-        `SELECT id, email, nombre, estado FROM usuarios WHERE email = $1`,
+        `SELECT id, email, nombre, apellido, whatsapp, estado FROM usuarios WHERE email = $1`,
         [emailNorm]
     )
 
@@ -150,6 +150,8 @@ export async function loginWithSocial(req, res, next) {
         id:       usuario.id,
         email:    usuario.email,
         nombre:   usuario.nombre,
+        apellido: usuario.apellido,
+        whatsapp: usuario.whatsapp,   // el front decide si pedir onboarding
         role:     'alumno',
         provider,
       },

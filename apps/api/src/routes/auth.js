@@ -9,14 +9,17 @@
  * POST /auth/logout               → cierra sesión
  */
 import { Router }    from 'express'
-import * as ctrl     from '../controllers/authController.js'
-import * as respCtrl from '../controllers/resplandorController.js'
+import * as ctrl      from '../controllers/authController.js'
+import * as respCtrl  from '../controllers/resplandorController.js'
+import * as phoneCtrl from '../controllers/phoneAuthController.js'
 
 const router = Router()
 
 router.post('/login',               ctrl.loginWithCode)
 router.post('/register',            ctrl.registerUser)
 router.post('/social',              ctrl.loginWithSocial)
+router.post('/phone/send-code',     phoneCtrl.sendCode)
+router.post('/phone/verify',        phoneCtrl.verifyCode)
 router.post('/resplandor/validate', respCtrl.validateResplandorCode)
 router.post('/resplandor/consume',  respCtrl.consumeResplandorCode)
 router.post('/refresh',             ctrl.refreshToken)

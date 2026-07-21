@@ -423,28 +423,59 @@ function PhoneAuth({ onBack, onVerified }) {
         return () => clearInterval(t)
     }, [resendIn])
 
-    // ── Enviar código (MOCK — falta cablear POST /api/auth/phone/send-code) ────
+    // ── Enviar código por WhatsApp ────────────────────────────────────────────
     const sendCode = async () => {
         if (!phoneValid) { setError('Ingresa tu número a 10 dígitos.'); return }
         setError(null)
         setLoading(true)
-        // TODO backend: await fetch('/api/auth/phone/send-code', { ...body: { whatsapp: phone } })
-        await new Promise(r => setTimeout(r, 600))
-        setLoading(false)
-        setStep('code')
-        setResendIn(30)
-        setTimeout(() => boxRefs.current[0]?.focus(), 50)
+        try {
+            const res  = await fetch('/api/auth/phone/send-code', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ whatsapp: phone }),
+            })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) { setError(data.message || 'No se pudo enviar el código.'); return }
+            setStep('code')
+            setResendIn(30)
+            setTimeout(() => boxRefs.current[0]?.focus(), 50)
+        } catch {
+            setError('Error de conexión. Intenta de nuevo.')
+        } finally {
+            setLoading(false)
+        }
     }
 
-    // ── Verificar código (MOCK — falta cablear POST /api/auth/phone/verify) ────
+    // ── Verificar código ──────────────────────────────────────────────────────
     const verify = async () => {
         if (codeStr.length !== 6) { setError('El código tiene 6 dígitos.'); return }
         setError(null)
         setLoading(true)
-        // TODO backend: POST /api/auth/phone/verify → valida el código y liga el número
-        await new Promise(r => setTimeout(r, 600))
-        setLoading(false)
-        onVerified?.(phone)   // avanza al formulario de nombre
+        try {
+            // Si viene del onboarding de Google ya hay token → liga el número.
+            const token = sessionStorage.getItem('destello_token')
+            const res = await fetch('/api/auth/phone/verify', {
+                method:  'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({ whatsapp: phone, code: codeStr }),
+            })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) { setError(data.message || 'Código inválido.'); return }
+
+            // Guardar sesión (verify emite un JWT nuevo en ambos flujos)
+            useAuthStore.setState({ token: data.token, user: data.user, error: null })
+            sessionStorage.setItem('destello_token', data.token)
+            if (data.user) sessionStorage.setItem('destello_user', JSON.stringify(data.user))
+
+            onVerified?.(data.user)
+        } catch {
+            setError('Error de conexión. Intenta de nuevo.')
+        } finally {
+            setLoading(false)
+        }
     }
 
     // ── Manejo de las cajitas del código ──────────────────────────────────────
@@ -645,10 +676,30 @@ function NameForm({ onDone }) {
         if (!canSubmit) { setError('Escribe al menos tu nombre y apellido paterno.'); return }
         setError(null)
         setLoading(true)
-        // TODO backend: guarda nombre completo en el perfil (POST /api/users/me)
-        await new Promise(r => setTimeout(r, 600))
-        setLoading(false)
-        onDone?.({ nombres: nombres.trim(), paterno: paterno.trim(), materno: materno.trim() })
+        try {
+            const token    = sessionStorage.getItem('destello_token')
+            const apellido = `${paterno.trim()} ${materno.trim()}`.trim()
+            const res = await fetch('/api/users/me', {
+                method:  'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({ nombre: nombres.trim(), apellido }),
+            })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) { setError(data.message || 'No se pudo guardar tu nombre.'); return }
+
+            if (data.user) {
+                useAuthStore.setState({ user: data.user })
+                sessionStorage.setItem('destello_user', JSON.stringify(data.user))
+            }
+            onDone?.()
+        } catch {
+            setError('Error de conexión. Intenta de nuevo.')
+        } finally {
+            setLoading(false)
+        }
     }
 
     return (
@@ -708,8 +759,14 @@ function LoginForm() {
     const navigate = useNavigate()
     const [stage, setStage] = useState('login')  // 'login' | 'phone' | 'name'
 
+    // Tras verificar el número: si ya tiene nombre completo → home; si no → nombre.
+    const afterPhone = (user) => {
+        if (user?.nombre && String(user.nombre).trim()) navigate('/home')
+        else setStage('name')
+    }
+
     if (stage === 'name')  return <NameForm onDone={() => navigate('/home')} />
-    if (stage === 'phone') return <PhoneAuth onBack={() => setStage('login')} onVerified={() => setStage('name')} />
+    if (stage === 'phone') return <PhoneAuth onBack={() => setStage('login')} onVerified={afterPhone} />
     return <GoogleChoice onPhone={() => setStage('phone')} />
 }
 
