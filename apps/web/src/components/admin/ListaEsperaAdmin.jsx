@@ -2,7 +2,7 @@
  * Destello Admin — ListaEsperaAdmin
  */
 import { useState, useEffect, useCallback } from 'react'
-import { WhatsappLogo, Envelope, ArrowClockwise, CheckCircle, WarningCircle, SealCheck } from '@phosphor-icons/react'
+import { WhatsappLogo, Envelope, ArrowClockwise, CheckCircle, WarningCircle, SealCheck, PaperPlaneTilt } from '@phosphor-icons/react'
 
 const ESTADOS_OPTS = [
     { value: 'pendiente',        label: '⏳ Pendiente',         color: '#f59e0b' },
@@ -164,11 +164,15 @@ export default function ListaEsperaAdmin({ adminToken }) {
     }
 
     const confirmarPago = async (r) => {
-        if (!confirm(
-            `¿Confirmar el pago de ${r.nombre || r.email}?\n\n` +
-            `Se creará/activará su cuenta, se le asignará el taller y se le enviará ` +
-            `la bienvenida por WhatsApp y correo (con el enlace para crear su cuenta).`
-        )) return
+        const esReenvio = r.estado === 'pagado'
+        const msg = esReenvio
+            ? `¿Reenviar el acceso a ${r.nombre || r.email}?\n\n` +
+              `Se volverá a enviar la bienvenida por WhatsApp y correo (con el enlace para crear su cuenta). ` +
+              `La cuenta y el taller que ya existen se conservan.`
+            : `¿Confirmar el pago de ${r.nombre || r.email}?\n\n` +
+              `Se creará/activará su cuenta, se le asignará el taller y se le enviará ` +
+              `la bienvenida por WhatsApp y correo (con el enlace para crear su cuenta).`
+        if (!confirm(msg)) return
 
         setConfirmandoPago(r.id)
         try {
@@ -176,10 +180,10 @@ export default function ListaEsperaAdmin({ adminToken }) {
             const data = await res.json()
             if (res.ok) {
                 const canales = [data.waEnviado && 'WhatsApp', data.mailEnviado && 'correo'].filter(Boolean).join(' y ')
-                showToast(`Cuenta lista${canales ? ` · bienvenida por ${canales}` : ''} ✓`)
+                showToast(`${esReenvio ? 'Acceso reenviado' : 'Cuenta lista'}${canales ? ` · ${canales}` : ''} ✓`)
                 setLista(prev => prev.map(x => x.id === r.id ? { ...x, estado: 'pagado' } : x))
             } else {
-                showToast(data.message || 'Error al confirmar pago', false)
+                showToast(data.message || 'Error al procesar', false)
             }
         } catch { showToast('Error de conexión', false) }
         finally { setConfirmandoPago(null) }
@@ -294,26 +298,34 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                 </td>
                                 <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
                                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                        {/* Confirmar pago → crea/activa cuenta + chispa + bienvenida */}
-                                        {r.estado === 'cupo_confirmado' && (
-                                            <button
-                                                onClick={() => confirmarPago(r)}
-                                                disabled={confirmandoPago === r.id}
-                                                title="Confirmar pago → crea la cuenta, asigna el taller y envía la bienvenida"
-                                                style={{
-                                                    display: 'flex', alignItems: 'center', gap: 5,
-                                                    height: 28, padding: '0 10px',
-                                                    background: '#8b5cf622', border: '1px solid #8b5cf6',
-                                                    borderRadius: 'var(--radius-md)',
-                                                    color: confirmandoPago === r.id ? 'var(--text-muted)' : '#8b5cf6',
-                                                    cursor: confirmandoPago === r.id ? 'wait' : 'pointer',
-                                                    fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
-                                                    fontWeight: 600, whiteSpace: 'nowrap',
-                                                }}>
-                                                <SealCheck size={14} weight="fill" />
-                                                {confirmandoPago === r.id ? 'Confirmando...' : 'Confirmar pago'}
-                                            </button>
-                                        )}
+                                        {/* Confirmar pago (cupo_confirmado) o Reenviar acceso (pagado) */}
+                                        {(r.estado === 'cupo_confirmado' || r.estado === 'pagado') && (() => {
+                                            const esReenvio = r.estado === 'pagado'
+                                            const acento    = esReenvio ? 'var(--color-jade-500)' : '#8b5cf6'
+                                            return (
+                                                <button
+                                                    onClick={() => confirmarPago(r)}
+                                                    disabled={confirmandoPago === r.id}
+                                                    title={esReenvio
+                                                        ? 'Reenviar acceso (bienvenida por correo + WhatsApp)'
+                                                        : 'Confirmar pago → crea la cuenta, asigna el taller y envía la bienvenida'}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: 5,
+                                                        height: 28, padding: '0 10px',
+                                                        background: `${acento}22`, border: `1px solid ${acento}`,
+                                                        borderRadius: 'var(--radius-md)',
+                                                        color: confirmandoPago === r.id ? 'var(--text-muted)' : acento,
+                                                        cursor: confirmandoPago === r.id ? 'wait' : 'pointer',
+                                                        fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+                                                        fontWeight: 600, whiteSpace: 'nowrap',
+                                                    }}>
+                                                    {esReenvio ? <PaperPlaneTilt size={14} weight="fill" /> : <SealCheck size={14} weight="fill" />}
+                                                    {confirmandoPago === r.id
+                                                        ? (esReenvio ? 'Reenviando...' : 'Confirmando...')
+                                                        : (esReenvio ? 'Reenviar acceso' : 'Confirmar pago')}
+                                                </button>
+                                            )
+                                        })()}
                                         {/* WA — envía directo desde el bot Faro */}
                                         {r.whatsapp && (
                                             <button
