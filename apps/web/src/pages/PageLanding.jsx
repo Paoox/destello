@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
     Sparkle, Lightning, Users, BookOpen,
-    GlobeHemisphereWest, ArrowRight, WhatsappLogo,
+    GlobeHemisphereWest, WhatsappLogo,
     Star, Cube, VideoCamera,
 } from '@phosphor-icons/react'
 import logoLight from '../Images/destello-logo-512.png'
@@ -240,13 +240,12 @@ export default function PageLanding() {
     const logo = prefersDark ? logoDark : logoLight
 
     const [waHovered,   setWaHovered]   = useState(false)
-    const [codeHovered, setCodeHovered] = useState(false)
     const [talleres,    setTalleres]    = useState([])
     const [talLoading,  setTalLoading]  = useState(true)
 
     const irWhatsApp = () => {
         window.open(
-            `https://wa.me/${WA_NUMBER}?text=Hola! quiero mi Chispa de acceso a Destello 🌟`,
+            `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent('Hola ✦ Quiero inscribirme a un taller de Destello y conocer la disponibilidad')}`,
             '_blank'
         )
     }
@@ -340,11 +339,28 @@ export default function PageLanding() {
                         que aprende contigo.
                     </p>
 
-                    {/* CTAs */}
+                    {/* CTAs — columna centrada: mensaje → botón → login */}
                     <div style={{
-                        display: 'flex', flexWrap: 'wrap',
-                        gap: 'var(--space-3)', justifyContent: 'center',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center',
+                        gap: 'var(--space-5)',
                     }}>
+
+                        {/* Aviso amable de disponibilidad limitada → lista de espera */}
+                        <p style={{
+                            textAlign: 'center',
+                            fontSize: 'var(--text-sm)',
+                            color: 'var(--text-muted)',
+                            lineHeight: 1.6,
+                            maxWidth: 420,
+                            margin: 0,
+                        }}>
+                            Nuestros talleres tienen{' '}
+                            <span style={{ color: 'var(--color-jade-500)', fontWeight: 600 }}>
+                                cupo limitado
+                            </span>
+                            . Escríbenos por WhatsApp para conocer los talleres disponibles
+                            y apartar tu lugar en la lista de espera. ✦
+                        </p>
 
                         {/* CTA principal — WhatsApp */}
                         <button
@@ -353,7 +369,7 @@ export default function PageLanding() {
                             onMouseLeave={() => setWaHovered(false)}
                             style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 8,
-                                padding: 'var(--space-4) var(--space-6)',
+                                padding: 'var(--space-4) var(--space-8)',
                                 background: waHovered ? '#1aab59' : '#25D366',
                                 border: 'none', borderRadius: 'var(--radius-full)',
                                 color: '#fff', fontFamily: 'var(--font-sans)',
@@ -365,35 +381,12 @@ export default function PageLanding() {
                             }}
                         >
                             <WhatsappLogo size={20} weight="fill" />
-                            Quiero mi Chispa
-                        </button>
-
-                        {/* CTA secundario — código */}
-                        <button
-                            onClick={() => navigate('/acceso')}
-                            onMouseEnter={() => setCodeHovered(true)}
-                            onMouseLeave={() => setCodeHovered(false)}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 8,
-                                padding: 'var(--space-4) var(--space-6)',
-                                background: 'transparent',
-                                border: `1px solid ${codeHovered ? 'var(--color-jade-500)' : 'var(--border-default)'}`,
-                                borderRadius: 'var(--radius-full)',
-                                color: codeHovered ? 'var(--color-jade-500)' : 'var(--text-primary)',
-                                fontFamily: 'var(--font-sans)',
-                                fontWeight: 600, fontSize: 'var(--text-base)',
-                                cursor: 'pointer',
-                                transform: codeHovered ? 'translateY(-2px)' : 'translateY(0)',
-                                transition: 'all 0.18s ease',
-                            }}
-                        >
-                            Ya tengo mi Chispa
-                            <ArrowRight size={18} />
+                            Inscribirme ✦
                         </button>
 
                         {/* Link para usuarios con cuenta */}
                         <p style={{
-                            marginTop: 'var(--space-4)',
+                            margin: 0,
                             textAlign: 'center',
                             fontSize: 'var(--text-sm)',
                             color: 'var(--text-muted)',
@@ -566,8 +559,8 @@ export default function PageLanding() {
                             fontSize: 'var(--text-sm)', color: 'var(--text-muted)',
                             maxWidth: 480, marginInline: 'auto', lineHeight: 1.7,
                         }}>
-                            En Destello usamos dos tipos de accesos para que todo sea
-                            seguro, personalizado y sin fricción.
+                            Solo dos pasos para empezar a aprender con nosotros.
+                            Sin códigos que copiar ni complicaciones.
                         </p>
                     </div>
 
@@ -611,7 +604,7 @@ export default function PageLanding() {
                                     fontSize: 'var(--text-xs)', fontWeight: 700,
                                     color: 'var(--color-jade-500)', letterSpacing: '0.08em',
                                 }}>
-                                    PASO 1 · CUENTA
+                                    PASO 1 · TU LUGAR
                                 </span>
                             </div>
 
@@ -621,16 +614,15 @@ export default function PageLanding() {
                                     margin: '0 0 var(--space-2)',
                                     color: 'var(--color-jade-500)',
                                 }}>
-                                    Tu Resplandor
+                                    Aparta tu lugar
                                 </h3>
                                 <p style={{
                                     fontSize: 'var(--text-sm)', color: 'var(--text-muted)',
                                     lineHeight: 1.75, margin: 0,
                                 }}>
-                                    Es tu <strong style={{ color: 'var(--text-primary)' }}>invitación personal</strong>.
-                                    Lo recibes por correo cuando te unimos a Destello.
-                                    Es único, intransferible y de un solo uso —
-                                    con él creas tu cuenta y solo funciona una vez.
+                                    Nos escribes por <strong style={{ color: 'var(--text-primary)' }}>WhatsApp</strong>,
+                                    eliges el taller que te late y te sumamos a la lista de espera.
+                                    Cuando se libera tu cupo, guardamos tu lugar por 48 horas.
                                 </p>
                             </div>
 
@@ -642,16 +634,12 @@ export default function PageLanding() {
                                 border: '1px dashed rgba(13,115,119,0.3)',
                                 marginTop: 'auto',
                             }}>
-                                <Sparkle size={14} color="var(--color-jade-500)" />
+                                <WhatsappLogo size={16} color="var(--color-jade-500)" weight="fill" />
                                 <span style={{
-                                    fontFamily: 'var(--font-mono)',
                                     fontSize: 'var(--text-sm)', fontWeight: 600,
-                                    color: 'var(--color-jade-500)', letterSpacing: '0.12em',
+                                    color: 'var(--color-jade-500)',
                                 }}>
-                                    RESP-••••-••••
-                                </span>
-                                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                                    formato del código
+                                    Todo empieza por WhatsApp
                                 </span>
                             </div>
                         </div>
@@ -694,7 +682,7 @@ export default function PageLanding() {
                                     fontSize: 'var(--text-xs)', fontWeight: 700,
                                     color: 'var(--color-amber-600)', letterSpacing: '0.08em',
                                 }}>
-                                    PASO 2 · TALLER
+                                    PASO 2 · TU ACCESO
                                 </span>
                             </div>
 
@@ -704,16 +692,16 @@ export default function PageLanding() {
                                     margin: '0 0 var(--space-2)',
                                     color: 'var(--color-amber-600)',
                                 }}>
-                                    Tu Chispa
+                                    Crea tu cuenta y entra
                                 </h3>
                                 <p style={{
                                     fontSize: 'var(--text-sm)', color: 'var(--text-muted)',
                                     lineHeight: 1.75, margin: 0,
                                 }}>
-                                    Es la <strong style={{ color: 'var(--text-primary)' }}>llave de cada taller</strong>.
-                                    Una vez que tienes cuenta, cada experiencia que desbloqueas
-                                    tiene su propia Chispa. Puede ser de pago, cortesía o demo —
-                                    y mientras esté activa, el contenido es tuyo.
+                                    Cuando confirmamos tu pago te enviamos tu acceso por
+                                    WhatsApp y correo. Creas tu cuenta con un clic y tu taller
+                                    aparece <strong style={{ color: 'var(--text-primary)' }}>listo en tu inicio</strong> —
+                                    sin códigos que copiar ni pegar.
                                 </p>
                             </div>
 
@@ -725,16 +713,12 @@ export default function PageLanding() {
                                 border: '1px dashed rgba(217,119,6,0.3)',
                                 marginTop: 'auto',
                             }}>
-                                <Lightning size={14} color="var(--color-amber-600)" weight="fill" />
+                                <Lightning size={16} color="var(--color-amber-600)" weight="fill" />
                                 <span style={{
-                                    fontFamily: 'var(--font-mono)',
                                     fontSize: 'var(--text-sm)', fontWeight: 600,
-                                    color: 'var(--color-amber-600)', letterSpacing: '0.12em',
+                                    color: 'var(--color-amber-600)',
                                 }}>
-                                    DEST-••••-••••
-                                </span>
-                                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                                    formato del código
+                                    Tu taller aparece listo, sin códigos
                                 </span>
                             </div>
                         </div>
@@ -762,8 +746,8 @@ export default function PageLanding() {
                         fontSize: 'var(--text-base)', color: 'var(--text-muted)',
                         margin: '0 0 var(--space-8)', lineHeight: 1.6,
                     }}>
-                        Consigue tu Chispa de acceso por WhatsApp y únete a la lista
-                        de los primeros alumnos con un{' '}
+                        Escríbenos por WhatsApp para conocer los talleres disponibles,
+                        apartar tu lugar en la lista de espera y recibir un{' '}
                         <span style={{ color: 'var(--color-amber-600)', fontWeight: 600 }}>
               regalo exclusivo
             </span>
@@ -783,7 +767,7 @@ export default function PageLanding() {
                         }}
                     >
                         <WhatsappLogo size={20} weight="fill" />
-                        Quiero mi Chispa ✦
+                        Inscribirme ✦
                     </button>
                 </div>
             </section>
