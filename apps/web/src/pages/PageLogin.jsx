@@ -131,20 +131,12 @@ function passwordIsStrong(p) {
 
 // ── CSS responsive (media queries no se pueden con estilos inline) ─────────────
 const LOGIN_CSS = `
-.login-shell {
-    padding: var(--space-8) var(--space-6);
-    /* 'safe center' centra vertical pero cae a arriba si el contenido no cabe */
-    align-items: safe center;
-    /* corta cualquier desbordamiento horizontal (glows decorativos) que en móvil
-       hacía que el navegador encogiera toda la página */
-    overflow-x: hidden;
-}
+.login-shell { padding: 20px; overflow-x: hidden; }
 /* Evita el zoom automático de iOS al enfocar un input (font-size >= 16px) */
 .login-shell input { font-size: 16px !important; }
 
 /* En móvil: card casi a todo lo ancho (≈20px de margen), con más aire */
 @media (max-width: 560px) {
-    .login-shell             { padding: 20px; }
     .login-shell .login-card { padding: var(--space-7) var(--space-6); border-radius: var(--radius-xl); }
     .login-shell .login-glow { width: 90vw; height: 90vw; }
 }
@@ -156,15 +148,15 @@ function PageShell({ children }) {
     const logo = prefersDark ? logoDark : logoLight
     return (
         <div className="login-shell" style={{
-            position: 'fixed', top: 0, left: 0, right: 0, height: '100dvh',
-            display: 'flex', justifyContent: 'center', background: 'var(--bg-dark)',
-            boxSizing: 'border-box', overflowY: 'auto',
+            position: 'relative', width: '100%', minHeight: '100dvh',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'var(--bg-dark)', boxSizing: 'border-box',
         }}>
             <style>{LOGIN_CSS}</style>
             <div className="login-glow" style={{
-                position: 'fixed', top: '35%', left: '50%', transform: 'translate(-50%,-50%)',
+                position: 'absolute', top: '32%', left: '50%', transform: 'translate(-50%,-50%)',
                 width: 'min(600px, 90vw)', height: 'min(600px, 90vw)',
-                borderRadius: '50%', pointerEvents: 'none',
+                borderRadius: '50%', pointerEvents: 'none', zIndex: 0,
                 background: 'radial-gradient(circle, rgba(13,115,119,0.08) 0%, transparent 70%)',
             }}/>
             <div style={{ maxWidth: 460, width: '100%', position: 'relative', zIndex: 1 }}>
