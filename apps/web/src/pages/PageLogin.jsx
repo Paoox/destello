@@ -142,9 +142,9 @@ const LOGIN_CSS = `
 /* Evita el zoom automático de iOS al enfocar un input (font-size >= 16px) */
 .login-shell input { font-size: 16px !important; }
 
-/* En móvil: card más ancha, con más aire, y todo más grande (accesible) */
+/* En móvil: card casi a todo lo ancho (≈20px de margen), con más aire */
 @media (max-width: 560px) {
-    .login-shell             { padding: var(--space-5) var(--space-4); }
+    .login-shell             { padding: 20px; }
     .login-shell .login-card { padding: var(--space-7) var(--space-6); border-radius: var(--radius-xl); }
     .login-shell .login-glow { width: 90vw; height: 90vw; }
 }

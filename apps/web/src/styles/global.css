@@ -27,6 +27,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Evita el desbordamiento horizontal que en móvil hace que el navegador
+   encoja (zoom-out) toda la página y todo se vea diminuto. */
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
 /* ── Scroll personalizado ─────────────────────────────────── */
 ::-webkit-scrollbar        { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track  { background: var(--bg-dark); }
