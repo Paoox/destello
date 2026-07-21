@@ -329,11 +329,18 @@ function GoogleChoice({ onPhone }) {
                 return
             }
 
-            // Guardar token en el store y navegar
+            // Guardar token en el store
             useAuthStore.setState({ token: data.token, user: data.user, error: null })
             sessionStorage.setItem('destello_token', data.token)
             if (data.user) sessionStorage.setItem('destello_user', JSON.stringify(data.user))
-            navigate('/home')
+
+            // Si ya tiene número verificado → directo a home.
+            // Si no → arranca el onboarding: verificar número por WhatsApp + nombre.
+            if (data.user?.whatsapp) {
+                navigate('/home')
+            } else {
+                onPhone()
+            }
         } catch (err) {
             // El usuario cerró el popup — no es error real
             if (err.code === 'auth/popup-closed-by-user' ||
@@ -397,9 +404,7 @@ function GoogleChoice({ onPhone }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // FLUJO DE CÓDIGO POR WHATSAPP — captura de número + código OTP de 6 dígitos
 // ══════════════════════════════════════════════════════════════════════════════
-function PhoneAuth({ onBack }) {
-    const navigate = useNavigate()
-
+function PhoneAuth({ onBack, onVerified }) {
     const [step,     setStep]     = useState('number')      // 'number' | 'code'
     const [phone,    setPhone]    = useState('')            // 10 dígitos
     const [code,     setCode]     = useState(['', '', '', '', '', ''])
@@ -436,10 +441,10 @@ function PhoneAuth({ onBack }) {
         if (codeStr.length !== 6) { setError('El código tiene 6 dígitos.'); return }
         setError(null)
         setLoading(true)
-        // TODO backend: valida el código, emite JWT y navigate('/home')
+        // TODO backend: POST /api/auth/phone/verify → valida el código y liga el número
         await new Promise(r => setTimeout(r, 600))
         setLoading(false)
-        setError('✨ Pantalla lista. Falta conectar el backend para validar el código.')
+        onVerified?.(phone)   // avanza al formulario de nombre
     }
 
     // ── Manejo de las cajitas del código ──────────────────────────────────────
@@ -624,13 +629,88 @@ function PhoneAuth({ onBack }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// LOGIN — alterna entre Google y flujo de número
+// FORMULARIO DE NOMBRE — para el certificado (nombre + apellidos)
+// ══════════════════════════════════════════════════════════════════════════════
+function NameForm({ onDone }) {
+    const [nombres,   setNombres]   = useState('')
+    const [paterno,   setPaterno]   = useState('')
+    const [materno,   setMaterno]   = useState('')
+    const [error,     setError]     = useState(null)
+    const [loading,   setLoading]   = useState(false)
+
+    const canSubmit = nombres.trim() && paterno.trim() && !loading
+
+    const handleSubmit = async (e) => {
+        e.preventDefault()
+        if (!canSubmit) { setError('Escribe al menos tu nombre y apellido paterno.'); return }
+        setError(null)
+        setLoading(true)
+        // TODO backend: guarda nombre completo en el perfil (POST /api/users/me)
+        await new Promise(r => setTimeout(r, 600))
+        setLoading(false)
+        onDone?.({ nombres: nombres.trim(), paterno: paterno.trim(), materno: materno.trim() })
+    }
+
+    return (
+        <PageShell>
+            <div style={{ textAlign: 'center', marginBottom: 'var(--space-5)' }}>
+                <h2 style={{ margin: '0 0 var(--space-1)', fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    ¿Cómo te llamas?
+                </h2>
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    Escríbelo tal como quieres que aparezca en tu certificado.
+                </p>
+            </div>
+
+            {/* Aviso importante — el certificado se emite con este nombre */}
+            <div style={{
+                display: 'flex', gap: 8, alignItems: 'flex-start',
+                background: 'rgba(217,119,6,0.10)', border: '1px solid rgba(217,119,6,0.3)',
+                borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)',
+                marginBottom: 'var(--space-5)',
+            }}>
+                <CheckCircle size={16} weight="fill" color="var(--color-amber-600)" style={{ flexShrink: 0, marginTop: 2 }} />
+                <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    <strong style={{ color: 'var(--text-primary)' }}>Importante:</strong> tu certificado se
+                    emitirá con este nombre. Revísalo bien antes de continuar.
+                </p>
+            </div>
+
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                <Field label="Nombre(s)"        placeholder="Tu nombre o nombres" value={nombres} onChange={e => setNombres(e.target.value)} />
+                <Field label="Apellido paterno"  placeholder="Apellido paterno"    value={paterno} onChange={e => setPaterno(e.target.value)} />
+                <Field label="Apellido materno (opcional)" placeholder="Apellido materno" value={materno} onChange={e => setMaterno(e.target.value)} />
+
+                {error && <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-xs)', margin: 0 }}>{error}</p>}
+
+                <button type="submit" disabled={!canSubmit} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    width: '100%', marginTop: 'var(--space-1)', padding: 'var(--space-3)',
+                    background: canSubmit ? 'var(--color-jade-500)' : 'var(--bg-surface)',
+                    border: '1px solid transparent', borderRadius: 'var(--radius-lg)',
+                    color: canSubmit ? '#FAF7F2' : 'var(--text-muted)',
+                    fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 'var(--text-sm)',
+                    cursor: canSubmit ? 'pointer' : 'not-allowed',
+                    opacity: loading ? 0.7 : 1, transition: 'background 0.2s',
+                }}>
+                    {loading ? 'Guardando...' : 'Guardar y entrar'}
+                    {!loading && <ArrowRight size={16} />}
+                </button>
+            </form>
+        </PageShell>
+    )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LOGIN — máquina de estados: login → número → nombre → home
 // ══════════════════════════════════════════════════════════════════════════════
 function LoginForm() {
-    const [method, setMethod] = useState('choose')  // 'choose' | 'phone'
+    const navigate = useNavigate()
+    const [stage, setStage] = useState('login')  // 'login' | 'phone' | 'name'
 
-    if (method === 'phone') return <PhoneAuth onBack={() => setMethod('choose')} />
-    return <GoogleChoice onPhone={() => setMethod('phone')} />
+    if (stage === 'name')  return <NameForm onDone={() => navigate('/home')} />
+    if (stage === 'phone') return <PhoneAuth onBack={() => setStage('login')} onVerified={() => setStage('name')} />
+    return <GoogleChoice onPhone={() => setStage('phone')} />
 }
 
 // ── Exportación principal ─────────────────────────────────────────────────────
