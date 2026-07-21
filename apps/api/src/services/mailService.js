@@ -50,6 +50,16 @@ export async function sendResplandor({ to, nombre, code }) {
     return sendMail({ to, subject, html })
 }
 
+/**
+ * Bienvenida tras confirmar el pago. Ya no lleva código: invita a crear la
+ * cuenta en /login (por Google o número). Incluye botón + QR a /login.
+ */
+export async function sendBienvenida({ to, nombre }) {
+    const subject = `¡Tu pago está confirmado! Crea tu cuenta en Destello ✦`
+    const html    = templateBienvenida({ nombre })
+    return sendMail({ to, subject, html })
+}
+
 // ── Base HTML ─────────────────────────────────────────────────────────────────
 
 function templateBase(content) {
@@ -179,6 +189,69 @@ function templateResplandor({ nombre, code }) {
     <div class="footer">
       <p class="footer-text">
         ¿Tienes dudas? Escríbenos por WhatsApp al <strong style="color:#9CA3B0;">+52 55 7788 8800</strong>
+      </p>
+    </div>`)
+}
+
+// ── Template: Bienvenida (pago confirmado, sin código) ───────────────────────
+
+function templateBienvenida({ nombre }) {
+    const nombreCorto = nombre?.trim().split(' ')[0] || 'bienvenido/a'
+    const loginUrl    = 'https://destello.courses/login'
+    const qrUrl       = 'https://destello.courses/qr-login.png'
+
+    return templateBase(`
+    <div class="header">
+      <div class="logo-mark">✦</div>
+      <div class="logo-name">Destello</div>
+      <div class="logo-sub">Plataforma de aprendizaje inmersivo 3D</div>
+    </div>
+    <div class="body">
+      <div class="greeting">¡Hola, ${nombreCorto}! 🎉</div>
+      <p class="text">
+        ¡Tu pago quedó <strong style="color:#22c55e;">confirmado</strong>! Ya eres parte de Destello.
+        Solo falta un paso: crear tu cuenta para entrar a la plataforma y a tu taller.
+      </p>
+
+      <div class="btn-wrap">
+        <a href="${loginUrl}" class="btn">Crear mi cuenta →</a>
+      </div>
+
+      <p class="text" style="text-align:center;font-size:13px;margin-top:8px;">
+        O escanea este código con la cámara de tu teléfono:
+      </p>
+
+      <div style="text-align:center;margin:14px 0 8px;">
+        <img src="${qrUrl}" alt="Escanea para entrar a Destello"
+             width="180" height="180"
+             style="width:180px;height:180px;border-radius:14px;background:#FFFFFF;padding:10px;" />
+      </div>
+
+      <p class="text" style="text-align:center;font-size:12px;color:#6B7280;">
+        ¿No ves el código? Entra directo a
+        <a href="${loginUrl}" style="color:#0D9EA3;">destello.courses/login</a>
+      </p>
+
+      <hr class="divider">
+
+      <p class="section-label">¿Cómo entro?</p>
+      <table class="step-table">
+        <tr><td class="step-num-cell"><span class="step-num">1</span></td>
+            <td class="step-text">Toca el botón o escanea el QR para abrir Destello.</td></tr>
+      </table>
+      <table class="step-table">
+        <tr><td class="step-num-cell"><span class="step-num">2</span></td>
+            <td class="step-text">Entra con <strong style="color:#FAF7F2;">Google</strong> o con tu <strong style="color:#FAF7F2;">número de WhatsApp</strong>.</td></tr>
+      </table>
+      <table class="step-table">
+        <tr><td class="step-num-cell"><span class="step-num">3</span></td>
+            <td class="step-text">¡Listo! Tu taller ya te espera en tu inicio, sin códigos que copiar. ✦</td></tr>
+      </table>
+    </div>
+    <div class="footer">
+      <p class="footer-text">
+        ¿Tienes dudas? Escríbenos por WhatsApp al <strong style="color:#9CA3B0;">+52 55 7788 8800</strong><br>
+        o responde directamente a este correo.
       </p>
     </div>`)
 }

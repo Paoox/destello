@@ -25,7 +25,8 @@ import * as chispaCtrl       from '../controllers/chispasController.js'
 import { crearTaller, actualizarTaller, getTallerById } from '../services/tallerService.js'
 import { AppError }          from '../middleware/errorHandler.js'
 import { query }             from '../db/db.js'
-import { sendConfirmacionTaller, sendConfirmacionLugar, sendResplandor } from '../services/mailService.js'
+import { sendConfirmacionTaller, sendConfirmacionLugar, sendResplandor, sendBienvenida } from '../services/mailService.js'
+import { sendWhatsapp }      from '../services/botService.js'
 import crypto                from 'node:crypto'
 
 const router = Router()
@@ -245,6 +246,126 @@ router.post('/lista-espera/:id/confirmar', async (req, res, next) => {
         }
 
         res.status(201).json({ status: 'ok', resplandor: { code } })
+    } catch (err) { next(err) }
+})
+
+/**
+ * POST /admin/lista-espera/:id/confirmar-pago
+ * Flujo nuevo (pago confirmado). En una sola acción:
+ *   1. Crea/activa la cuenta en `usuarios` (dedup por correo O whatsapp).
+ *   2. Genera la Chispa del taller (tras bambalinas) ligada al usuario.
+ *   3. Cambia lista_espera a 'pagado'.
+ *   4. Envía bienvenida por correo (botón + QR a /login) y por WhatsApp (URL).
+ * El usuario no captura códigos: al entrar por Google/número el taller ya aparece.
+ */
+router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
+    try {
+        const { rows } = await query(
+            `SELECT le.*, t.nombre AS taller_nombre
+             FROM lista_espera le
+                      LEFT JOIN talleres t ON t.id = le.taller_id
+             WHERE le.id = $1`,
+            [req.params.id]
+        )
+        if (!rows.length) throw new AppError('Registro no encontrado', 404, 'NOT_FOUND')
+        const reg = rows[0]
+
+        const emailNorm = reg.email ? reg.email.toLowerCase().trim() : null
+        const wa        = reg.whatsapp ? String(reg.whatsapp).replace(/\D/g, '').slice(-10) : null
+
+        // Hoy el correo es la identidad del usuario (FK de chispas). Es obligatorio.
+        if (!emailNorm) {
+            throw new AppError('Este registro no tiene correo; no se puede crear la cuenta.', 400, 'NO_EMAIL')
+        }
+
+        // 1. Crear o reutilizar la cuenta (dedup por correo O whatsapp)
+        const { rows: encontrados } = await query(
+            `SELECT * FROM usuarios
+             WHERE email = $1 OR ($2::text IS NOT NULL AND whatsapp = $2)
+             LIMIT 1`,
+            [emailNorm, wa]
+        )
+
+        let usuario
+        if (encontrados.length) {
+            const { rows: upd } = await query(
+                `UPDATE usuarios
+                 SET estado   = 'activo',
+                     nombre   = COALESCE(nombre, $2),
+                     whatsapp = COALESCE(whatsapp, $3),
+                     email    = COALESCE(email, $1)
+                 WHERE id = $4
+                 RETURNING *`,
+                [emailNorm, reg.nombre, wa, encontrados[0].id]
+            )
+            usuario = upd[0]
+        } else {
+            const { rows: ins } = await query(
+                `INSERT INTO usuarios (email, nombre, whatsapp, estado)
+                 VALUES ($1, $2, $3, 'activo')
+                 RETURNING *`,
+                [emailNorm, reg.nombre, wa]
+            )
+            usuario = ins[0]
+        }
+
+        // 2. Chispa automática del taller (si aún no tiene una activa de ese taller)
+        let chispaCode = null
+        if (reg.taller_id) {
+            const { rows: existentes } = await query(
+                `SELECT code FROM chispas
+                 WHERE usuario_email = $1 AND taller_id = $2 AND used = FALSE AND revoked = FALSE
+                 LIMIT 1`,
+                [usuario.email, reg.taller_id]
+            )
+            if (existentes.length) {
+                chispaCode = existentes[0].code
+            } else {
+                const seg       = () => crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 4)
+                chispaCode      = `DEST-${seg()}-${seg()}`
+                const expiresAt = new Date(Date.now() + 30 * 86400000)   // 30 días
+                await query(
+                    `INSERT INTO chispas
+                        (code, taller_id, taller_nombre, expires_at, usuario_nombre, usuario_email, usuario_wa)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [chispaCode, reg.taller_id, reg.taller_nombre, expiresAt, usuario.nombre, usuario.email, usuario.whatsapp]
+                )
+            }
+        }
+
+        // 3. lista_espera → pagado
+        await query(`UPDATE lista_espera SET estado = 'pagado' WHERE id = $1`, [req.params.id])
+
+        // 4. Bienvenida por correo + WhatsApp (no bloquean la respuesta si fallan)
+        let mailEnviado = false
+        let waEnviado   = false
+
+        try {
+            await sendBienvenida({ to: usuario.email, nombre: usuario.nombre ?? reg.nombre ?? '' })
+            mailEnviado = true
+        } catch (e) { console.error('[bienvenida mail]', e.message) }
+
+        if (wa) {
+            try {
+                const primerNombre = (usuario.nombre ?? reg.nombre ?? '').split(' ')[0]
+                const msg =
+                    `✦ *Destello*\n\n` +
+                    `¡Hola ${primerNombre}! Tu pago quedó *confirmado*. 🎉\n\n` +
+                    `Ya puedes crear tu cuenta y entrar aquí:\n` +
+                    `https://destello.courses/login\n\n` +
+                    `Entra con Google o con tu número. ¡Nos vemos dentro! 🌟`
+                await sendWhatsapp(wa, msg)
+                waEnviado = true
+            } catch (e) { console.error('[bienvenida wa]', e.message) }
+        }
+
+        res.json({
+            status:      'ok',
+            usuario:     { id: usuario.id, email: usuario.email, whatsapp: usuario.whatsapp },
+            chispa:      chispaCode,
+            mailEnviado,
+            waEnviado,
+        })
     } catch (err) { next(err) }
 })
 

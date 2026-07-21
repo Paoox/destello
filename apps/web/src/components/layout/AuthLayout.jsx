@@ -8,7 +8,10 @@ import { Outlet } from 'react-router-dom'
 export default function AuthLayout() {
   return (
     <div style={{
-      minHeight: '100vh',
+      // 100dvh = altura visible real en móvil (excluye la barra del navegador).
+      // Evita el scroll de sobra que dejaba 100vh. overflow:hidden lo remata.
+      minHeight: '100dvh',
+      overflow: 'hidden',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',

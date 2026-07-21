@@ -178,3 +178,17 @@ export async function apiConfirmarCupo(adminToken, id, body = {}) {
     })
     return handleResponse(res)
 }
+
+/**
+ * Confirma el pago (flujo nuevo). Crea/activa la cuenta, genera la chispa del
+ * taller y envía la bienvenida por WhatsApp + correo (con URL/QR a /login).
+ * @param {string} adminToken
+ * @param {string} id  — ID del registro en lista_espera
+ */
+export async function apiConfirmarPago(adminToken, id) {
+    const res = await fetch(`/api/admin/lista-espera/${id}/confirmar-pago`, {
+        method:  'POST',
+        headers: authHeaders(adminToken),
+    })
+    return handleResponse(res)
+}

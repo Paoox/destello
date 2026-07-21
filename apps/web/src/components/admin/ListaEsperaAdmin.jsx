@@ -2,7 +2,7 @@
  * Destello Admin — ListaEsperaAdmin
  */
 import { useState, useEffect, useCallback } from 'react'
-import { WhatsappLogo, Envelope, ArrowClockwise, CheckCircle, WarningCircle } from '@phosphor-icons/react'
+import { WhatsappLogo, Envelope, ArrowClockwise, CheckCircle, WarningCircle, SealCheck } from '@phosphor-icons/react'
 
 const ESTADOS_OPTS = [
     { value: 'pendiente',        label: '⏳ Pendiente',         color: '#f59e0b' },
@@ -81,6 +81,7 @@ export default function ListaEsperaAdmin({ adminToken }) {
     const [updating,     setUpdating]     = useState(null)
     const [enviandoMail, setEnviandoMail] = useState(null)
     const [enviandoWa,   setEnviandoWa]   = useState(null)
+    const [confirmandoPago, setConfirmandoPago] = useState(null)
     const [toast,        setToast]        = useState(null)
     const [filterEstado, setFilterEstado] = useState('all')
 
@@ -160,6 +161,28 @@ export default function ListaEsperaAdmin({ adminToken }) {
             }
         } catch { showToast('Error de conexión', false) }
         finally { setEnviandoWa(null) }
+    }
+
+    const confirmarPago = async (r) => {
+        if (!confirm(
+            `¿Confirmar el pago de ${r.nombre || r.email}?\n\n` +
+            `Se creará/activará su cuenta, se le asignará el taller y se le enviará ` +
+            `la bienvenida por WhatsApp y correo (con el enlace para crear su cuenta).`
+        )) return
+
+        setConfirmandoPago(r.id)
+        try {
+            const res  = await fetch(`/api/admin/lista-espera/${r.id}/confirmar-pago`, { method: 'POST', headers })
+            const data = await res.json()
+            if (res.ok) {
+                const canales = [data.waEnviado && 'WhatsApp', data.mailEnviado && 'correo'].filter(Boolean).join(' y ')
+                showToast(`Cuenta lista${canales ? ` · bienvenida por ${canales}` : ''} ✓`)
+                setLista(prev => prev.map(x => x.id === r.id ? { ...x, estado: 'pagado' } : x))
+            } else {
+                showToast(data.message || 'Error al confirmar pago', false)
+            }
+        } catch { showToast('Error de conexión', false) }
+        finally { setConfirmandoPago(null) }
     }
 
     const filtered = lista.filter(r => filterEstado === 'all' || r.estado === filterEstado)
@@ -270,7 +293,27 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                     />
                                 </td>
                                 <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                                    <div style={{ display: 'flex', gap: 6 }}>
+                                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                        {/* Confirmar pago → crea/activa cuenta + chispa + bienvenida */}
+                                        {r.estado === 'cupo_confirmado' && (
+                                            <button
+                                                onClick={() => confirmarPago(r)}
+                                                disabled={confirmandoPago === r.id}
+                                                title="Confirmar pago → crea la cuenta, asigna el taller y envía la bienvenida"
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: 5,
+                                                    height: 28, padding: '0 10px',
+                                                    background: '#8b5cf622', border: '1px solid #8b5cf6',
+                                                    borderRadius: 'var(--radius-md)',
+                                                    color: confirmandoPago === r.id ? 'var(--text-muted)' : '#8b5cf6',
+                                                    cursor: confirmandoPago === r.id ? 'wait' : 'pointer',
+                                                    fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+                                                    fontWeight: 600, whiteSpace: 'nowrap',
+                                                }}>
+                                                <SealCheck size={14} weight="fill" />
+                                                {confirmandoPago === r.id ? 'Confirmando...' : 'Confirmar pago'}
+                                            </button>
+                                        )}
                                         {/* WA — envía directo desde el bot Faro */}
                                         {r.whatsapp && (
                                             <button

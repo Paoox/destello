@@ -153,8 +153,8 @@ function PageShell({ children }) {
     const logo = prefersDark ? logoDark : logoLight
     return (
         <div className="login-shell" style={{
-            position: 'fixed', inset: 0, display: 'flex',
-            justifyContent: 'center', background: 'var(--bg-dark)',
+            position: 'fixed', top: 0, left: 0, right: 0, height: '100dvh',
+            display: 'flex', justifyContent: 'center', background: 'var(--bg-dark)',
             boxSizing: 'border-box', overflowY: 'auto',
         }}>
             <style>{LOGIN_CSS}</style>
