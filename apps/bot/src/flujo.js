@@ -11,8 +11,18 @@
  *
  * FLUJO REGISTRO — opción 1 del menú:
  *   → REG_CORREO   (pedir email)
- *     ├── email existe → REG_TALLER  (usar datos existentes, sin preguntar nada más)
- *     └── email nuevo  → REG_NOMBRE → REG_APELLIDO → [registrar] → REG_TALLER
+ *     ├── email existe → [si falta WA → REG_WHATSAPP] → REG_TALLER
+ *     └── email nuevo  → REG_NOMBRE → REG_APELLIDO → [REG_WHATSAPP si @lid] → REG_TALLER
+ *
+ * FLUJO VER TALLERES — opción 2 del menú:
+ *   → VER_TALLERES (lista numerada sin tope)
+ *     ├── número de taller → se preselecciona (conv.tallerPre) → REG_CORREO → inscripción directa
+ *     └── "menu" / "salir"
+ *
+ * NOTA @lid: si el JID es un ID interno de WhatsApp (`@lid`) el número no es
+ * extraíble. Se intenta primero `senderPn` (que Baileys entrega con el número
+ * real); si tampoco está, el bot lo pide explícitamente en REG_WHATSAPP.
+ * NUNCA se guarda el raw del @lid como whatsapp.
  */
 
 import fetch from 'node-fetch'
@@ -46,7 +56,7 @@ const PASO = {
     REG_CORREO:   'REG_CORREO',   // pedir email primero (unifica nuevo/existente)
     REG_NOMBRE:   'REG_NOMBRE',
     REG_APELLIDO: 'REG_APELLIDO',
-    REG_WHATSAPP: 'REG_WHATSAPP', // pedir número cuando el JID es @lid
+    REG_WHATSAPP: 'REG_WHATSAPP', // pedir número cuando no se pudo extraer del JID
     REG_TALLER:   'REG_TALLER',
     // Sin código
     SIN_CODIGO:   'SIN_CODIGO',
@@ -55,17 +65,24 @@ const PASO = {
 }
 
 /**
- * Extrae el número de teléfono local (10 dígitos) del JID de WhatsApp.
- *   "521XXXXXXXXXX@s.whatsapp.net" → 13 dígitos → quitar "521" → 10 locales
- *   "52XXXXXXXXXX@s.whatsapp.net"  → 12 dígitos → quitar "52"  → 10 locales
- *   "XXXXXXXXXXXXXXX@lid"          → ID interno de WA, NO extraíble → devuelve null
+ * Extrae el número local de 10 dígitos.
+ *   "521XXXXXXXXXX@s.whatsapp.net" → 13 dígitos → quitar "521"
+ *   "52XXXXXXXXXX@s.whatsapp.net"  → 12 dígitos → quitar "52"
+ *   "XXXXXXXXXXXXXXX@lid"          → ID interno, NO extraíble → null
+ *
+ * @param {string}  jid      JID del chat
+ * @param {string?} senderPn JID real que Baileys puede adjuntar cuando el chat es @lid
  */
-function extractWhatsapp(jid) {
-    if (!jid || jid.includes('@lid')) return null
-    const raw = jid.replace('@s.whatsapp.net', '').replace('@c.us', '')
+function extractWhatsapp(jid, senderPn = null) {
+    // Si el JID es @lid, el número real puede venir en senderPn
+    const fuente = (jid && jid.includes('@lid')) ? senderPn : jid
+    if (!fuente || fuente.includes('@lid')) return null
+
+    const raw = String(fuente).replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/\D/g, '')
     if (raw.startsWith('521') && raw.length === 13) return raw.slice(3)
-    if (raw.startsWith('52') && raw.length === 12) return raw.slice(2)
-    return raw
+    if (raw.startsWith('52')  && raw.length === 12) return raw.slice(2)
+    if (raw.length === 10) return raw
+    return null
 }
 
 const conversaciones = new Map()
@@ -134,12 +151,10 @@ const POST_ACCION_TEXTO =
     '1️⃣  Volver al menú\n' +
     '2️⃣  Salir'
 
-const VER_TALLERES_OPCIONES =
+const VER_TALLERES_PIE =
     '─────────────────────\n' +
-    '¿Qué te gustaría hacer?\n\n' +
-    '1️⃣  Registrarme a la lista de espera\n' +
-    '2️⃣  Volver al menú\n' +
-    '3️⃣  Salir'
+    '👉 Escribe el *número* del taller que te interesa y te apunto a la lista de espera.\n\n' +
+    '_O escribe *menu* para volver · *salir* para terminar._'
 
 const ADIOS_TEXTO =
     '¡Hasta pronto! 👋✨\n\n' +
@@ -156,6 +171,10 @@ const SALUDO_INICIAL =
     '4️⃣  Medios de pago\n' +
     '5️⃣  Tengo una duda'
 
+const PEDIR_WHATSAPP_TEXTO =
+    '📱 Para poder avisarte de tu lugar, ¿cuál es tu número de *WhatsApp a 10 dígitos*?\n\n' +
+    '_Escríbelo sin espacios ni guiones, ej: 5512345678_'
+
 function fmtFecha(iso) {
     if (!iso) return null
     const d = new Date(iso)
@@ -163,28 +182,124 @@ function fmtFecha(iso) {
     return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
 }
 
-function menuTalleres(talleres) {
+/** Numeración sin tope: emoji hasta el 10, número normal de ahí en adelante. */
+const EMOJIS_NUM = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟']
+function numeroLista(i) {
+    return EMOJIS_NUM[i] || `*${i + 1}.*`
+}
+
+function menuTalleres(talleres, titulo = '*Talleres disponibles:*') {
     if (!talleres.length) {
         return '😔 Por el momento no hay talleres disponibles. ¡Pronto abriremos nuevas fechas!'
     }
-    const emojis = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣']
     return (
-        '*Talleres disponibles:*\n\n' +
+        titulo + '\n\n' +
         talleres.map((t, i) => {
             const precio  = t.precio > 0 ? `\n   💰 $${Number(t.precio).toLocaleString('es-MX')} MXN` : '\n   💰 Gratis'
             const horario = t.horario     ? `\n   🕐 ${t.horario}` : ''
             const fecha   = fmtFecha(t.fecha_inicio) ? `\n   📅 ${fmtFecha(t.fecha_inicio)}` : ''
             const prox    = t.estado === 'proximamente' ? ' _(Próximamente)_' : ''
-            return `${emojis[i]}  *${t.nombre}*${prox}${precio}${horario}${fecha}`
+            return `${numeroLista(i)}  *${t.nombre}*${prox}${precio}${horario}${fecha}`
         }).join('\n\n')
+    )
+}
+
+/** Resuelve un taller a partir de un número o del nombre escrito. */
+function resolverTaller(input, talleres) {
+    const txt = String(input).toLowerCase().trim()
+    const num = parseInt(txt, 10)
+    if (!isNaN(num) && num >= 1 && num <= talleres.length) return talleres[num - 1]
+    if (txt.length < 3) return null
+    return talleres.find(t => t.nombre.toLowerCase().includes(txt)) || null
+}
+
+/**
+ * Inscribe en lista de espera y deja la conversación en POST_ACCION.
+ * Único punto donde se llama a /bot/lista-espera.
+ */
+async function inscribirEnTaller(jid, conv, taller) {
+    const { correo, nombre, tienePerfil } = conv
+
+    const resultado = await agregarALista({
+        email:    correo,
+        tallerId: taller.id,
+        nombre,
+        whatsapp: conv.whatsapp || null,
+    })
+
+    conversaciones.set(jid, { paso: PASO.POST_ACCION })
+
+    if (resultado.status === 'error') {
+        return (
+            '😕 Tuvimos un problema al guardar tu registro. Intenta de nuevo en un momento, por favor.\n\n' +
+            POST_ACCION_TEXTO
+        )
+    }
+
+    if (!resultado.nuevo) {
+        return (
+            `ℹ️ *${nombre?.split(' ')[0] || 'Hola'}*, ya estás en la lista de espera de *${taller.nombre}*.\n\n` +
+            'Te avisaremos en cuanto haya un lugar disponible. 🙌\n\n' +
+            POST_ACCION_TEXTO
+        )
+    }
+
+    if (tienePerfil) {
+        return (
+            '🎉 *¡Listo!* Quedaste registrado/a en la lista de espera de:\n\n' +
+            `📚 *${taller.nombre}*\n\n` +
+            'Te notificaremos aquí y por correo cuando confirmemos tu cupo. ¡Estás muy cerca! ✨\n\n' +
+            POST_ACCION_TEXTO
+        )
+    }
+
+    return (
+        '🎉 *¡Registro completado!*\n\n' +
+        `Quedaste en la lista de espera de:\n📚 *${taller.nombre}*\n\n` +
+        '📬 Te notificaremos por correo si alcanzaste lugar. En caso de que sí, ' +
+        'recibirás tu *resplandor* para crear tu perfil en Destello.\n\n' +
+        '_¡Mantente pendiente!_ 🌟\n\n' +
+        POST_ACCION_TEXTO
+    )
+}
+
+/**
+ * Paso siguiente una vez que ya tenemos correo + nombre + whatsapp:
+ *   - si venía un taller preseleccionado (opción 2) → inscribir directo
+ *   - si no → mostrar la lista para que elija
+ */
+async function continuarTrasDatos(jid, conv, encabezado) {
+    if (conv.tallerPre) {
+        return `${encabezado}\n\n` + await inscribirEnTaller(jid, conv, conv.tallerPre)
+    }
+
+    const talleres = conv.talleres?.length ? conv.talleres : await getTalleresActivos()
+
+    if (!talleres.length) {
+        conversaciones.set(jid, { paso: PASO.POST_ACCION })
+        return (
+            `${encabezado}\n\n` +
+            '😔 Por el momento no hay talleres disponibles, pero cuando abran nuevas fechas puedes volver a escribirme.\n\n' +
+            POST_ACCION_TEXTO
+        )
+    }
+
+    conversaciones.set(jid, { ...conv, paso: PASO.REG_TALLER, talleres })
+    return (
+        `${encabezado}\n\n` +
+        '¿A qué taller te quieres inscribir?\n\n' +
+        menuTalleres(talleres)
     )
 }
 
 // ── Procesador principal ──────────────────────────────────────
 
-export async function procesarMensaje(jid, texto) {
+export async function procesarMensaje(jid, texto, senderPn = null) {
     const msg  = texto.trim()
     const conv = conversaciones.get(jid) || { paso: PASO.MENU, esNuevo: true }
+
+    // Número real del remitente (null si es @lid sin senderPn)
+    const waDelJid = extractWhatsapp(jid, senderPn)
 
     // "menu" o "cancelar" reinician siempre
     if (['menu', 'menú', 'cancelar', 'inicio'].includes(msg.toLowerCase())) {
@@ -225,7 +340,7 @@ export async function procesarMensaje(jid, texto) {
                     )
                 }
                 conversaciones.set(jid, { paso: PASO.VER_TALLERES, talleres })
-                return menuTalleres(talleres) + '\n\n' + VER_TALLERES_OPCIONES
+                return menuTalleres(talleres) + '\n\n' + VER_TALLERES_PIE
             }
 
             case '3':
@@ -253,32 +368,35 @@ export async function procesarMensaje(jid, texto) {
         }
     }
 
-    // ── VER TALLERES: opciones post-lista ─────────────────────
+    // ── VER TALLERES: elegir taller directo desde la lista ────
     if (conv.paso === PASO.VER_TALLERES) {
-        switch (msg.trim()) {
-            case '1':
-                conversaciones.set(jid, { paso: PASO.REG_CORREO })
-                return (
-                    '¡Perfecto! 😊\n\n' +
-                    '¿Cuál es tu *correo electrónico*?'
-                )
+        const talleres = conv.talleres || []
+        const taller   = resolverTaller(msg, talleres)
 
-            case '2':
-                conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
-                return MENU_TEXTO()
-
-            case '3':
-                conversaciones.delete(jid)
-                return ADIOS_TEXTO
-
-            default:
-                return VER_TALLERES_OPCIONES
+        if (!taller) {
+            return (
+                '⚠️ No reconocí esa opción.\n\n' +
+                menuTalleres(talleres) + '\n\n' +
+                VER_TALLERES_PIE
+            )
         }
+
+        conversaciones.set(jid, {
+            ...conv,
+            paso:      PASO.REG_CORREO,
+            tallerPre: taller,
+            talleres,
+        })
+        return (
+            `¡Excelente elección! 📚 *${taller.nombre}*\n\n` +
+            '¿Cuál es tu *correo electrónico*?\n\n' +
+            '_Lo usamos para identificar tu perfil en Destello._'
+        )
     }
 
     // ── REGISTRO: correo (punto de entrada unificado) ─────────
-    //   - Usuario existe (activo o espera) → taller directo
-    //   - Usuario nuevo → pedir nombre y apellido, luego registrar
+    //   - Usuario existe → [si le falta WhatsApp, pedirlo] → taller
+    //   - Usuario nuevo   → nombre → apellido → [WhatsApp si hace falta] → taller
     if (conv.paso === PASO.REG_CORREO) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
         if (!emailRegex.test(msg)) {
@@ -288,43 +406,28 @@ export async function procesarMensaje(jid, texto) {
         const { existe, usuario } = await buscarUsuario(msg)
 
         if (existe) {
-            const talleres = await getTalleresActivos()
-
-            if (!talleres.length) {
-                conversaciones.set(jid, { paso: PASO.POST_ACCION })
-                return (
-                    `Hola *${usuario.nombre?.split(' ')[0]}* 👋\n\n` +
-                    '😔 No hay talleres disponibles por el momento.\n\n' +
-                    POST_ACCION_TEXTO
-                )
-            }
-
-            conversaciones.set(jid, {
+            const whatsapp = usuario.whatsapp || waDelJid
+            const base = {
                 ...conv,
-                paso:        PASO.REG_TALLER,
                 correo:      msg,
                 nombre:      usuario.nombre,
-                whatsapp:    usuario.whatsapp ?? null,
-                talleres,
+                whatsapp:    whatsapp || null,
                 tienePerfil: usuario.estado === 'activo',
-            })
+            }
+            const saludo = usuario.estado === 'espera'
+                ? `¡Te reconocí, *${usuario.nombre?.split(' ')[0]}*! 👋`
+                : `¡Hola de nuevo, *${usuario.nombre?.split(' ')[0]}*! 😊`
 
-            if (usuario.estado === 'espera') {
-                return (
-                    `¡Te reconocí, *${usuario.nombre?.split(' ')[0]}*! 👋\n\n` +
-                    '¿A qué taller te quieres inscribir?\n\n' +
-                    menuTalleres(talleres)
-                )
+            // ⚠️ Usuario existente sin WhatsApp y JID @lid → pedirlo antes de seguir
+            if (!whatsapp) {
+                conversaciones.set(jid, { ...base, paso: PASO.REG_WHATSAPP })
+                return `${saludo}\n\n` + PEDIR_WHATSAPP_TEXTO
             }
 
-            return (
-                `¡Hola de nuevo, *${usuario.nombre?.split(' ')[0]}*! 😊\n\n` +
-                '¿A qué taller te quieres inscribir?\n\n' +
-                menuTalleres(talleres)
-            )
+            return await continuarTrasDatos(jid, base, saludo)
         }
 
-        // No existe → pedir nombre
+        // No existe → pedir nombre (aún no se registra nada en BD)
         conversaciones.set(jid, { ...conv, paso: PASO.REG_NOMBRE, correo: msg })
         return (
             '¡Bienvenido/a! 🎉\n\n' +
@@ -343,51 +446,23 @@ export async function procesarMensaje(jid, texto) {
         )
     }
 
-    // ── REGISTRO: apellido → registrar usuario ────────────────
+    // ── REGISTRO: apellido ────────────────────────────────────
     if (conv.paso === PASO.REG_APELLIDO) {
-        const nombreCompleto = `${conv.nombre} ${msg.trim()}`
-        const whatsapp       = extractWhatsapp(jid)
+        const nombreCompleto = `${conv.nombre} ${msg.trim()}`.trim()
+        const base = { ...conv, nombre: nombreCompleto, whatsapp: waDelJid, tienePerfil: false }
 
-        // Registrar usuario en la BD
-        await registrarUsuario({ email: conv.correo, nombre: nombreCompleto, whatsapp })
-
-        // Si el JID es @lid no pudimos sacar el número → pedirlo
-        if (!whatsapp) {
-            conversaciones.set(jid, { ...conv, paso: PASO.REG_WHATSAPP, nombre: nombreCompleto })
-            return (
-                '✅ *¡Datos guardados!*\n\n' +
-                'Para poder contactarte, ¿cuál es tu número de WhatsApp de *10 dígitos*?\n\n' +
-                '_Ejemplo: 5512345678_'
-            )
+        // Sin número extraíble (@lid) → pedirlo ANTES de registrar en BD
+        if (!waDelJid) {
+            conversaciones.set(jid, { ...base, paso: PASO.REG_WHATSAPP })
+            return `Gracias, *${conv.nombre}* 🙌\n\n` + PEDIR_WHATSAPP_TEXTO
         }
 
-        const talleres = await getTalleresActivos()
+        await registrarUsuario({ email: conv.correo, nombre: nombreCompleto, whatsapp: waDelJid })
 
-        if (!talleres.length) {
-            conversaciones.set(jid, { paso: PASO.POST_ACCION })
-            return (
-                '✅ *¡Registro guardado!*\n\n' +
-                '😔 Por el momento no hay talleres disponibles, pero cuando abran nuevas fechas puedes volver a escribirme.\n\n' +
-                POST_ACCION_TEXTO
-            )
-        }
-
-        conversaciones.set(jid, {
-            ...conv,
-            paso:        PASO.REG_TALLER,
-            nombre:      nombreCompleto,
-            whatsapp,
-            talleres,
-            tienePerfil: false,
-        })
-        return (
-            '✅ *¡Registro guardado!*\n\n' +
-            '¿A qué taller te quieres inscribir?\n\n' +
-            menuTalleres(talleres)
-        )
+        return await continuarTrasDatos(jid, base, '✅ *¡Registro guardado!*')
     }
 
-    // ── REGISTRO: número de WhatsApp (cuando JID es @lid) ────
+    // ── REGISTRO: número de WhatsApp (cuando el JID es @lid) ──
     if (conv.paso === PASO.REG_WHATSAPP) {
         const numero = msg.replace(/\D/g, '')
         if (numero.length !== 10) {
@@ -399,50 +474,20 @@ export async function procesarMensaje(jid, texto) {
 
         await registrarUsuario({ email: conv.correo, nombre: conv.nombre, whatsapp: numero })
 
-        const talleres = await getTalleresActivos()
-
-        if (!talleres.length) {
-            conversaciones.set(jid, { paso: PASO.POST_ACCION })
-            return (
-                '✅ *¡Listo!* 📱\n\n' +
-                '😔 Por el momento no hay talleres disponibles, pero cuando abran nuevas fechas puedes volver.\n\n' +
-                POST_ACCION_TEXTO
-            )
-        }
-
-        conversaciones.set(jid, {
-            ...conv,
-            paso:        PASO.REG_TALLER,
-            whatsapp:    numero,
-            talleres,
-            tienePerfil: false,
-        })
-        return (
-            '¡Listo! 📱\n\n' +
-            '¿A qué taller te quieres inscribir?\n\n' +
-            menuTalleres(talleres)
-        )
+        const base = { ...conv, whatsapp: numero }
+        return await continuarTrasDatos(jid, base, '✅ *¡Listo!* 📱')
     }
 
     // ── REGISTRO: selección de taller ────────────────────────
     if (conv.paso === PASO.REG_TALLER) {
-        const { talleres = [], nombre, correo, tienePerfil } = conv
+        const { talleres = [] } = conv
 
         if (!talleres.length) {
             conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
             return '😔 No hay talleres disponibles en este momento.\n\n' + MENU_TEXTO()
         }
 
-        const input = msg.toLowerCase().trim()
-        let tallerElegido = null
-
-        const num = parseInt(input)
-        if (!isNaN(num) && num >= 1 && num <= talleres.length) {
-            tallerElegido = talleres[num - 1]
-        }
-        if (!tallerElegido) {
-            tallerElegido = talleres.find(t => t.nombre.toLowerCase().includes(input))
-        }
+        const tallerElegido = resolverTaller(msg, talleres)
 
         if (!tallerElegido) {
             return (
@@ -451,41 +496,7 @@ export async function procesarMensaje(jid, texto) {
             )
         }
 
-        const whatsapp  = conv.whatsapp || extractWhatsapp(jid)
-        const resultado = await agregarALista({
-            email:    correo,
-            tallerId: tallerElegido.id,
-            nombre,
-            whatsapp,
-        })
-
-        conversaciones.set(jid, { paso: PASO.POST_ACCION })
-
-        if (!resultado.nuevo) {
-            return (
-                `ℹ️ *${nombre?.split(' ')[0] || 'Hola'}*, ya estás en la lista de espera de *${tallerElegido.nombre}*.\n\n` +
-                'Te avisaremos en cuanto haya un lugar disponible. 🙌\n\n' +
-                POST_ACCION_TEXTO
-            )
-        }
-
-        if (tienePerfil) {
-            return (
-                `🎉 *¡Listo!* Quedaste registrado/a en la lista de espera de:\n\n` +
-                `📚 *${tallerElegido.nombre}*\n\n` +
-                'Te notificaremos aquí y por correo cuando confirmemos tu cupo. ¡Estás muy cerca! ✨\n\n' +
-                POST_ACCION_TEXTO
-            )
-        }
-
-        return (
-            `🎉 *¡Registro completado!*\n\n` +
-            `Quedaste en la lista de espera de:\n📚 *${tallerElegido.nombre}*\n\n` +
-            '📬 Te notificaremos por correo si alcanzaste lugar. En caso de que sí, ' +
-            'recibirás tu *resplandor* para crear tu perfil en Destello.\n\n' +
-            '_¡Mantente pendiente!_ 🌟\n\n' +
-            POST_ACCION_TEXTO
-        )
+        return await inscribirEnTaller(jid, conv, tallerElegido)
     }
 
     // ── SIN CÓDIGO: buscar por correo ─────────────────────────

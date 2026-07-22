@@ -147,11 +147,17 @@ async function conectar() {
 
             if (!texto) continue
 
-            console.log(`📨 ${jid}: "${texto}"`)
+            // Cuando el chat es @lid (ID interno de WA), Baileys puede adjuntar
+            // el número real en senderPn / participantPn. Lo pasamos al flujo
+            // para no tener que pedirle el número al usuario.
+            const senderPn = (msg.key.senderPn || msg.key.participantPn || null)
+                ?.replace(/:\d+@/, '@') || null
+
+            console.log(`📨 ${jid}${senderPn ? ` (pn: ${senderPn})` : ''}: "${texto}"`)
 
             try {
                 await sock.sendPresenceUpdate('composing', jid)
-                const respuesta = await procesarMensaje(jid, texto)
+                const respuesta = await procesarMensaje(jid, texto, senderPn)
                 await new Promise(r => setTimeout(r, 800))
                 await sock.sendMessage(jid, { text: respuesta })
                 await sock.sendPresenceUpdate('paused', jid)
