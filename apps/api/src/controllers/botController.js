@@ -15,10 +15,10 @@ import { AppError } from '../middleware/errorHandler.js'
  */
 export async function registrarUsuario(req, res, next) {
     try {
-        const { email, nombre, whatsapp } = req.body
+        const { email, nombre, apellido, whatsapp } = req.body
         if (!email) throw new AppError('email es requerido', 400, 'BAD_REQUEST')
 
-        const usuario = await upsertUsuario({ email, nombre, whatsapp })
+        const usuario = await upsertUsuario({ email, nombre, apellido, whatsapp })
         res.status(201).json({ status: 'ok', usuario })
     } catch (err) {
         next(err)

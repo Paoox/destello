@@ -43,6 +43,11 @@ export async function diagnosticar(email) {
         faltaWhatsapp: !usuario.whatsapp,
         // Lugar que Paola ya confirmó pero sigue sin pagarse
         cupoConfirmado: listas.find(l => l.estado === 'cupo_confirmado') || null,
+        // Pagado en la lista pero el usuario NO está activo → estado inconsistente
+        // (pasaba al marcar el estado con el selector, que no activaba al usuario)
+        pagadoSinActivar: usuario.estado !== 'activo'
+            ? listas.find(l => l.estado === 'pagado') || null
+            : null,
     }
 }
 

@@ -94,8 +94,13 @@ const conversaciones = new Map()
  * temporal (talleres cargados, taller preseleccionado) que sí debe limpiarse.
  */
 function datosUsuario(conv = {}) {
-    const { correo, nombre, whatsapp, tienePerfil } = conv
-    return { correo, nombre, whatsapp, tienePerfil }
+    const { correo, nombre, apellido, whatsapp, tienePerfil } = conv
+    return { correo, nombre, apellido, whatsapp, tienePerfil }
+}
+
+/** Nombre completo para tablas que tienen una sola columna (lista_espera). */
+function nombreCompleto(conv = {}) {
+    return [conv.nombre, conv.apellido].filter(Boolean).join(' ').trim() || null
 }
 
 // ── Helpers de API ────────────────────────────────────────────
@@ -116,12 +121,12 @@ async function buscarUsuario(email) {
     } catch { return { existe: false } }
 }
 
-async function registrarUsuario({ email, nombre, whatsapp }) {
+async function registrarUsuario({ email, nombre, apellido, whatsapp }) {
     try {
         const res = await fetch(`${API_URL}/bot/registrar`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ email, nombre, whatsapp }),
+            body:    JSON.stringify({ email, nombre, apellido, whatsapp }),
         })
         return await res.json()
     } catch { return { status: 'error' } }
@@ -290,7 +295,9 @@ function resolverTaller(input, talleres) {
  * Único punto donde se llama a /bot/lista-espera.
  */
 async function inscribirEnTaller(jid, conv, taller) {
-    const { correo, nombre, tienePerfil } = conv
+    const { correo, tienePerfil } = conv
+    // lista_espera tiene una sola columna de nombre → aquí sí va completo
+    const nombre = nombreCompleto(conv) || conv.nombre
 
     const resultado = await agregarALista({
         email:    correo,
@@ -436,6 +443,24 @@ async function resolverAcceso(jid, conv, correo, waDelJid) {
     }
 
     // ── C. Está en lista pero sin permiso todavía ─────────────
+
+    // Su pago SÍ está registrado pero la cuenta no quedó activada.
+    // Es una inconsistencia nuestra, no del usuario → se reporta.
+    if (d.pagadoSinActivar) {
+        await reportarAcceso({
+            email:    correo,
+            nombre:   datos.nombre,
+            whatsapp: datos.whatsapp,
+            motivo:   MOTIVOS.SIN_PLATAFORMA,
+            detalle:  `Pago registrado en "${d.pagadoSinActivar.taller_nombre}" pero usuarios.estado sigue en espera. Activar cuenta.`,
+        })
+        return cerrar(
+            `*${primerNombre}*, tu pago de *${d.pagadoSinActivar.taller_nombre}* ya está registrado ✅\n\n` +
+            'Nos falta terminar de activar tu acceso. Danos unos minutos y te escribimos ' +
+            'por aquí en cuanto esté listo. 🙌'
+        )
+    }
+
     if (d.cupoConfirmado) {
         return cerrar(
             `*${primerNombre}*, ya tienes tu lugar apartado en *${d.cupoConfirmado.taller_nombre}* 🎟️\n\n` +
@@ -636,9 +661,11 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
     }
 
     // ── REGISTRO: apellido ────────────────────────────────────
+    //   Nombre y apellido se guardan en columnas SEPARADAS de `usuarios`.
+    //   No concatenarlos: el certificado y el diploma los necesitan aparte.
     if (conv.paso === PASO.REG_APELLIDO) {
-        const nombreCompleto = `${conv.nombre} ${msg.trim()}`.trim()
-        const base = { ...conv, nombre: nombreCompleto, whatsapp: waDelJid, tienePerfil: false }
+        const apellido = msg.trim()
+        const base = { ...conv, apellido, whatsapp: waDelJid, tienePerfil: false }
 
         // Sin número extraíble (@lid) → pedirlo ANTES de registrar en BD
         if (!waDelJid) {
@@ -646,7 +673,12 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
             return `Gracias, *${conv.nombre}* 🙌\n\n` + PEDIR_WHATSAPP_TEXTO
         }
 
-        await registrarUsuario({ email: conv.correo, nombre: nombreCompleto, whatsapp: waDelJid })
+        await registrarUsuario({
+            email:    conv.correo,
+            nombre:   conv.nombre,
+            apellido,
+            whatsapp: waDelJid,
+        })
 
         return await continuarTrasDatos(jid, base, '✅ *¡Registro guardado!*')
     }
@@ -661,7 +693,12 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
             )
         }
 
-        await registrarUsuario({ email: conv.correo, nombre: conv.nombre, whatsapp: numero })
+        await registrarUsuario({
+            email:    conv.correo,
+            nombre:   conv.nombre,
+            apellido: conv.apellido,
+            whatsapp: numero,
+        })
 
         const base = { ...conv, whatsapp: numero }
         return await continuarTrasDatos(jid, base, '✅ *¡Listo!* 📱')

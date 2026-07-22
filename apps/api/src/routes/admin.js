@@ -106,6 +106,16 @@ router.get('/lista-espera', async (_req, res, next) => {
     } catch (err) { next(err) }
 })
 
+/**
+ * PATCH /admin/lista-espera/:id
+ * Cambia el estado desde el selector del panel.
+ *
+ * ⚠️ Marcar 'pagado' DEBE activar también al usuario. Si solo se cambiara el
+ * estado de la lista, la persona quedaría pagada pero con `usuarios.estado =
+ * 'espera'`, y el login por número la rechazaría (phoneAuthController exige
+ * 'activo'). Este era un desfase real: el selector y el botón "confirmar pago"
+ * hacían cosas distintas.
+ */
 router.patch('/lista-espera/:id', async (req, res, next) => {
     try {
         const { estado } = req.body
@@ -115,7 +125,24 @@ router.patch('/lista-espera/:id', async (req, res, next) => {
             [req.params.id, estado]
         )
         if (!rows.length) throw new AppError('Registro no encontrado', 404, 'NOT_FOUND')
-        res.json({ status: 'ok', registro: rows[0] })
+
+        const registro = rows[0]
+        let usuarioActivado = false
+
+        if (estado === 'pagado' && registro.email) {
+            const { rows: u } = await query(
+                `UPDATE usuarios
+                 SET estado   = 'activo',
+                     whatsapp = COALESCE(whatsapp, $2),
+                     nombre   = COALESCE(nombre,   $3)
+                 WHERE LOWER(email) = LOWER($1)
+                 RETURNING id`,
+                [registro.email, registro.whatsapp || null, registro.nombre || null]
+            )
+            usuarioActivado = u.length > 0
+        }
+
+        res.json({ status: 'ok', registro, usuarioActivado })
     } catch (err) { next(err) }
 })
 

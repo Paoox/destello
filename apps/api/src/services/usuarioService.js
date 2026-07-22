@@ -15,18 +15,19 @@ import { query } from '../db/db.js'
  * @param {string} [opts.whatsapp]
  * @returns {Object} usuario creado o actualizado
  */
-export async function upsertUsuario({ email, nombre, whatsapp }) {
+export async function upsertUsuario({ email, nombre, apellido, whatsapp }) {
     const emailNorm = email.toLowerCase().trim()
 
     const { rows } = await query(
-        `INSERT INTO usuarios (email, nombre, whatsapp, estado)
-         VALUES ($1, $2, $3, 'espera')
+        `INSERT INTO usuarios (email, nombre, apellido, whatsapp, estado)
+         VALUES ($1, $2, $3, $4, 'espera')
          ON CONFLICT (email) DO UPDATE SET
              nombre     = COALESCE(EXCLUDED.nombre,    usuarios.nombre),
+             apellido   = COALESCE(EXCLUDED.apellido,  usuarios.apellido),
              whatsapp   = COALESCE(EXCLUDED.whatsapp,  usuarios.whatsapp),
              updated_at = NOW()
-         RETURNING id, email, nombre, whatsapp, estado, created_at`,
-        [emailNorm, nombre || null, whatsapp || null]
+         RETURNING id, email, nombre, apellido, whatsapp, estado, created_at`,
+        [emailNorm, nombre || null, apellido || null, whatsapp || null]
     )
     return rows[0]
 }
