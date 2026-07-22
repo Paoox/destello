@@ -10,14 +10,20 @@ import {
     agregarALista,
     listasDeUsuario,
     pendientesDeUsuario,
+    diagnosticoDeAcceso,
+    completarWhatsappDeUsuario,
+    reportarAcceso,
 } from '../controllers/botController.js'
 
 const router = Router()
 
-router.post('/registrar',          registrarUsuario)
-router.get('/usuario/:email',      buscarUsuario)
-router.post('/lista-espera',       agregarALista)
-router.get('/listas/:email',       listasDeUsuario)
-router.get('/pendientes/:email',   pendientesDeUsuario)
+router.post('/registrar',            registrarUsuario)
+router.get('/usuario/:email',        buscarUsuario)
+router.post('/lista-espera',         agregarALista)
+router.get('/listas/:email',         listasDeUsuario)
+router.get('/pendientes/:email',     pendientesDeUsuario)
+router.get('/diagnostico/:email',    diagnosticoDeAcceso)
+router.post('/completar-whatsapp',   completarWhatsappDeUsuario)
+router.post('/reporte-acceso',       reportarAcceso)
 
 export default router

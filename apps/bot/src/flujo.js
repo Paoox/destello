@@ -5,7 +5,7 @@
  * MENÚ PRINCIPAL
  *   1. Registrarme a un taller
  *   2. Ver talleres disponibles
- *   3. No me llegó mi chispa o resplandor
+ *   3. No me llegó mi acceso  (diagnostica por correo y resuelve lo que puede)
  *   4. Medios de pago
  *   5. Tengo una duda
  *
@@ -58,8 +58,9 @@ const PASO = {
     REG_APELLIDO: 'REG_APELLIDO',
     REG_WHATSAPP: 'REG_WHATSAPP', // pedir número cuando no se pudo extraer del JID
     REG_TALLER:   'REG_TALLER',
-    // Sin código
-    SIN_CODIGO:   'SIN_CODIGO',
+    // Sin acceso (opción 3)
+    SIN_CODIGO:   'SIN_CODIGO',   // pedir correo
+    SIN_ACCESO:   'SIN_ACCESO',   // escalamiento cuando lo resuelto no le sirvió
     // Después de completar cualquier flujo
     POST_ACCION:  'POST_ACCION',
 }
@@ -86,6 +87,16 @@ function extractWhatsapp(jid, senderPn = null) {
 }
 
 const conversaciones = new Map()
+
+/**
+ * Datos del alumno que se conservan al cambiar de flujo dentro de la MISMA
+ * conversación, para no volver a preguntarle el correo. Deja fuera el estado
+ * temporal (talleres cargados, taller preseleccionado) que sí debe limpiarse.
+ */
+function datosUsuario(conv = {}) {
+    const { correo, nombre, whatsapp, tienePerfil } = conv
+    return { correo, nombre, whatsapp, tienePerfil }
+}
 
 // ── Helpers de API ────────────────────────────────────────────
 
@@ -127,12 +138,49 @@ async function agregarALista({ email, tallerId, nombre, whatsapp }) {
     } catch { return { status: 'error' } }
 }
 
-async function getPendientes(email) {
+/** Listas de espera del usuario, con el estado de cada una. */
+async function getListas(email) {
     try {
-        const res  = await fetch(`${API_URL}/bot/pendientes/${encodeURIComponent(email)}`)
+        const res  = await fetch(`${API_URL}/bot/listas/${encodeURIComponent(email)}`)
         const data = await res.json()
-        return data
-    } catch { return { chispas: [], resplandores: [] } }
+        return data.listas || []
+    } catch { return [] }
+}
+
+/** Foto completa del acceso: si tiene permiso, sus talleres y sus listas. */
+async function getDiagnostico(email) {
+    try {
+        const res = await fetch(`${API_URL}/bot/diagnostico/${encodeURIComponent(email)}`)
+        return await res.json()
+    } catch { return { status: 'error' } }
+}
+
+
+/**
+ * Guarda el número de quien ya tiene permiso pero no lo tiene registrado.
+ * Sin este dato no puede entrar con "mi número" en el login.
+ */
+async function completarWhatsapp(email, whatsapp) {
+    try {
+        const res = await fetch(`${API_URL}/bot/completar-whatsapp`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ email, whatsapp }),
+        })
+        return await res.json()
+    } catch { return { actualizado: false } }
+}
+
+/** Levanta un reporte para que la admin lo revise. NO libera nada. */
+async function reportarAcceso({ email, nombre, whatsapp, motivo, detalle }) {
+    try {
+        const res = await fetch(`${API_URL}/bot/reporte-acceso`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ email, nombre, whatsapp, motivo, detalle }),
+        })
+        return await res.json()
+    } catch { return { status: 'error' } }
 }
 
 // ── Textos reutilizables ──────────────────────────────────────
@@ -142,7 +190,7 @@ const MENU_TEXTO = (nombre = '') =>
     '¿En qué puedo ayudarte?\n\n' +
     '1️⃣  Quiero registrarme a un taller\n' +
     '2️⃣  Ver talleres disponibles\n' +
-    '3️⃣  No me llegó mi chispa o resplandor\n' +
+    '3️⃣  No me llegó mi acceso\n' +
     '4️⃣  Medios de pago\n' +
     '5️⃣  Tengo una duda'
 
@@ -167,9 +215,33 @@ const SALUDO_INICIAL =
     '¿Cómo puedo ayudarte hoy?\n\n' +
     '1️⃣  Quiero registrarme a un taller\n' +
     '2️⃣  Ver talleres disponibles\n' +
-    '3️⃣  No me llegó mi chispa o resplandor\n' +
+    '3️⃣  No me llegó mi acceso\n' +
     '4️⃣  Medios de pago\n' +
     '5️⃣  Tengo una duda'
+
+const MOTIVOS = {
+    SIN_PLATAFORMA: 'sin_acceso_plataforma',
+    SIN_TALLER:     'sin_acceso_taller',
+}
+
+/**
+ * Escalamiento: se muestra DESPUÉS de haberle resuelto lo que la BD permitía.
+ * Solo llega aquí quien ya tiene cuenta y talleres activos, así que si insiste
+ * es un caso real que la admin debe mirar.
+ */
+const SIN_ACCESO_MENU =
+    '¿Sigue sin funcionarte?\n\n' +
+    '1️⃣  Sigo sin ver mi taller\n' +
+    '2️⃣  No puedo entrar a mi cuenta\n' +
+    '3️⃣  Todo bien, volver al menú'
+
+const REPORTE_ENVIADO_TEXTO =
+    '✅ *Listo, ya lo reportamos.*\n\n' +
+    'Danos unos *20 minutos* para revisar tu caso y liberar tu acceso. ' +
+    'En cuanto esté te escribimos por aquí. 🙌\n\n' +
+    '💡 _Recuerda que el material del taller se abre *después* de haber tomado la clase, ' +
+    'así que si tu taller aún no empieza es normal que todavía no veas contenido._\n\n' +
+    POST_ACCION_TEXTO
 
 const PEDIR_WHATSAPP_TEXTO =
     '📱 Para poder avisarte de tu lugar, ¿cuál es tu número de *WhatsApp a 10 dígitos*?\n\n' +
@@ -256,8 +328,8 @@ async function inscribirEnTaller(jid, conv, taller) {
     return (
         '🎉 *¡Registro completado!*\n\n' +
         `Quedaste en la lista de espera de:\n📚 *${taller.nombre}*\n\n` +
-        '📬 Te notificaremos por correo si alcanzaste lugar. En caso de que sí, ' +
-        'recibirás tu *resplandor* para crear tu perfil en Destello.\n\n' +
+        '📬 Te avisamos por aquí y por correo en cuanto confirmemos tu lugar, ' +
+        'junto con los datos para completar tu inscripción.\n\n' +
         '_¡Mantente pendiente!_ 🌟\n\n' +
         POST_ACCION_TEXTO
     )
@@ -276,7 +348,7 @@ async function continuarTrasDatos(jid, conv, encabezado) {
     const talleres = conv.talleres?.length ? conv.talleres : await getTalleresActivos()
 
     if (!talleres.length) {
-        conversaciones.set(jid, { paso: PASO.POST_ACCION })
+        conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
         return (
             `${encabezado}\n\n` +
             '😔 Por el momento no hay talleres disponibles, pero cuando abran nuevas fechas puedes volver a escribirme.\n\n' +
@@ -292,6 +364,112 @@ async function continuarTrasDatos(jid, conv, encabezado) {
     )
 }
 
+/**
+ * Opción 3 — "No me llegó mi acceso".
+ * Resuelve solo lo que puede y pregunta únicamente cuando hace falta.
+ *
+ * Reglas de negocio (ver docs/flujo-acceso-bot.md):
+ *   - Al usuario NUNCA se le manda un código. Solo la liga de login.
+ *   - `usuarios.estado = 'activo'` significa que Paola ya le dio permiso.
+ *   - Si está activo y le falta el WhatsApp en la BD, el bot lo guarda solo:
+ *     sin ese dato el login por número no funciona.
+ *   - El bot NUNCA activa un taller ni registra un pago. Solo reporta.
+ */
+async function resolverAcceso(jid, conv, correo, waDelJid) {
+    const d = await getDiagnostico(correo)
+
+    const datos = {
+        ...datosUsuario(conv),
+        correo,
+        nombre:   d.usuario?.nombre   || conv.nombre || null,
+        whatsapp: d.usuario?.whatsapp || waDelJid    || null,
+    }
+    const primerNombre = datos.nombre?.split(' ')[0] || 'Hola'
+    const cerrar = (texto) => {
+        conversaciones.set(jid, { ...datos, paso: PASO.POST_ACCION })
+        return texto + '\n\n' + POST_ACCION_TEXTO
+    }
+
+    // Si la API falla, no dejamos al usuario sin respuesta
+    if (d.status !== 'ok') {
+        return cerrar(
+            '😕 No pude revisar tu información en este momento.\n\n' +
+            'Intenta de nuevo en unos minutos, por favor.'
+        )
+    }
+
+    // ── A. No está registrado ─────────────────────────────────
+    if (!d.existe) {
+        return cerrar(
+            `🔍 No encontramos ningún registro con *${correo}*.\n\n` +
+            'Puede que te hayas registrado con otro correo, o que aún no estés inscrito/a.\n\n' +
+            '_Escribe *menu* y elige la opción 1 para registrarte a un taller._'
+        )
+    }
+
+    // ── B. Ya tiene permiso de entrar ─────────────────────────
+    if (d.activo) {
+        // Sin número guardado no puede entrar por WhatsApp. Lo completamos en
+        // silencio con el número desde el que nos está escribiendo.
+        if (d.faltaWhatsapp && waDelJid) {
+            await completarWhatsapp(correo, waDelJid)
+        }
+
+        const conTalleres = d.talleres?.length > 0
+            ? '\n\nTus talleres activos:\n' +
+              d.talleres.map(t => `• *${t.nombre}*${fmtCuando(t)}`).join('\n') +
+              '\n\n💡 _El material de cada taller se abre *después* de la clase, así que si el ' +
+              'tuyo todavía no empieza es normal que aún no veas contenido._'
+            : '\n\n_Todavía no tienes talleres asignados, pero tu cuenta ya funciona._'
+
+        conversaciones.set(jid, { ...datos, paso: PASO.SIN_ACCESO })
+        return (
+            `¡Todo listo, *${primerNombre}*! ✨\n\n` +
+            'Tu cuenta ya está activa. Entra aquí:\n' +
+            '🔗 *destello.courses/login*\n\n' +
+            'Puedes entrar con *Google* o con *tu número de WhatsApp* — si eliges tu número, ' +
+            'te mandamos un código de 6 dígitos por este mismo chat.' +
+            conTalleres + '\n\n' +
+            '─────────────────────\n' +
+            SIN_ACCESO_MENU
+        )
+    }
+
+    // ── C. Está en lista pero sin permiso todavía ─────────────
+    if (d.cupoConfirmado) {
+        return cerrar(
+            `*${primerNombre}*, ya tienes tu lugar apartado en *${d.cupoConfirmado.taller_nombre}* 🎟️\n\n` +
+            'Todavía no nos aparece registrado tu pago, por eso tu acceso sigue sin activarse.\n\n' +
+            'Si ya pagaste, mándanos tu *comprobante* por este chat y lo verificamos. 🙌\n\n' +
+            '─────────────────────\n' +
+            PAGO_TEXTO
+        )
+    }
+
+    if (d.listas?.length > 0) {
+        return cerrar(
+            `📋 *${primerNombre}*, estás en la lista de espera de:\n\n` +
+            d.listas.map(l => `• *${l.taller_nombre}*`).join('\n') + '\n\n' +
+            'Todavía no confirmamos tu lugar, por eso aún no tienes acceso. ' +
+            'En cuanto haya cupo te avisamos por aquí y por correo. 🙌'
+        )
+    }
+
+    // Registrado pero sin ningún taller
+    return cerrar(
+        `*${primerNombre}*, te encontramos pero no estás inscrito/a en ningún taller.\n\n` +
+        '_Escribe *menu* y elige la opción 1 para registrarte._'
+    )
+}
+
+/** " — inicia el 3 de agosto" / " — en curso", según las fechas del taller. */
+function fmtCuando(taller) {
+    const inicio = fmtFecha(taller.fechaInicio)
+    if (!inicio) return ''
+    const yaEmpezo = new Date(taller.fechaInicio) <= new Date()
+    return yaEmpezo ? ' _(en curso)_' : ` — inicia el ${inicio}`
+}
+
 // ── Procesador principal ──────────────────────────────────────
 
 export async function procesarMensaje(jid, texto, senderPn = null) {
@@ -303,7 +481,7 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
 
     // "menu" o "cancelar" reinician siempre
     if (['menu', 'menú', 'cancelar', 'inicio'].includes(msg.toLowerCase())) {
-        conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+        conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.MENU, esNuevo: false })
         return MENU_TEXTO()
     }
 
@@ -333,7 +511,7 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
             case '2': {
                 const talleres = await getTalleresActivos()
                 if (!talleres.length) {
-                    conversaciones.set(jid, { paso: PASO.POST_ACCION })
+                    conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
                     return (
                         '😔 Por el momento no hay talleres disponibles. ¡Pronto abriremos nuevas fechas!\n\n' +
                         POST_ACCION_TEXTO
@@ -343,19 +521,24 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
                 return menuTalleres(talleres) + '\n\n' + VER_TALLERES_PIE
             }
 
-            case '3':
-                conversaciones.set(jid, { paso: PASO.SIN_CODIGO })
+            case '3': {
+                // Si ya nos dio su correo en esta conversación, no se lo volvemos a pedir
+                if (conv.correo) {
+                    return await resolverAcceso(jid, conv, conv.correo, waDelJid)
+                }
+                conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.SIN_CODIGO })
                 return (
                     'Entendido, te ayudo a revisarlo. 🔍\n\n' +
                     '¿Cuál es el correo con el que te registraste?'
                 )
+            }
 
             case '4':
-                conversaciones.set(jid, { paso: PASO.POST_ACCION })
+                conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
                 return PAGO_TEXTO + '\n\n' + POST_ACCION_TEXTO
 
             case '5':
-                conversaciones.set(jid, { paso: PASO.POST_ACCION })
+                conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
                 return (
                     '💬 *¿Tienes una duda?*\n\n' +
                     'Próximamente tendremos una sección de preguntas frecuentes.\n\n' +
@@ -379,6 +562,12 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
                 menuTalleres(talleres) + '\n\n' +
                 VER_TALLERES_PIE
             )
+        }
+
+        // Si ya nos dio sus datos en esta conversación, lo inscribimos directo
+        if (conv.correo && conv.nombre) {
+            return `¡Excelente elección! 📚 *${taller.nombre}*\n\n` +
+                   await inscribirEnTaller(jid, { ...conv, tallerPre: null }, taller)
         }
 
         conversaciones.set(jid, {
@@ -499,40 +688,66 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
         return await inscribirEnTaller(jid, conv, tallerElegido)
     }
 
-    // ── SIN CÓDIGO: buscar por correo ─────────────────────────
+    // ── SIN ACCESO: recibir el correo ─────────────────────────
     if (conv.paso === PASO.SIN_CODIGO) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
         if (!emailRegex.test(msg)) {
             return '⚠️ Ese correo no parece válido. Escríbelo completo, ej: _tunombre@gmail.com_'
         }
+        return await resolverAcceso(jid, conv, msg.toLowerCase(), waDelJid)
+    }
 
-        const pendientes = await getPendientes(msg)
-        conversaciones.set(jid, { paso: PASO.POST_ACCION })
+    // ── SIN ACCESO: menú de 3 ─────────────────────────────────
+    if (conv.paso === PASO.SIN_ACCESO) {
+        const { correo, nombre, whatsapp } = conv
 
-        if (pendientes.chispas?.length > 0) {
-            const lista = pendientes.chispas.map(c => `• *${c.taller_nombre}*: \`${c.code}\``).join('\n')
-            return (
-                '✅ Encontramos tu(s) código(s):\n\n' +
-                lista + '\n\n' +
-                '📱 Úsalos en: *destello.courses/acceso*\n\n' +
-                POST_ACCION_TEXTO
-            )
+        switch (msg.trim()) {
+            case '1': {
+                // Ya pagó y no ve su taller → SIEMPRE reporte, nunca liberar solo.
+                // Adjuntamos sus talleres para que la admin sepa cuál revisar.
+                const listas   = await getListas(correo)
+                const contexto = listas.length
+                    ? listas.map(l => `${l.taller_nombre} (${l.estado})`).join(' · ')
+                    : 'sin talleres en lista de espera'
+
+                await reportarAcceso({
+                    email:   correo,
+                    nombre,
+                    whatsapp,
+                    motivo:  MOTIVOS.SIN_TALLER,
+                    detalle: `Ya se le mostró que tiene taller activo y AUN ASÍ no lo ve. ` +
+                             `Posible problema en la plataforma. Sus talleres: ${contexto}`,
+                })
+                conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
+                return REPORTE_ENVIADO_TEXTO
+            }
+
+            case '2': {
+                // Tiene cuenta pero no logra entrar → problema de login, lo revisa la admin
+                await reportarAcceso({
+                    email:   correo,
+                    nombre,
+                    whatsapp,
+                    motivo:  MOTIVOS.SIN_PLATAFORMA,
+                    detalle: 'Tiene cuenta activa pero no puede entrar. Posible problema de contraseña.',
+                })
+                conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
+                return (
+                    '✅ *Ya lo reportamos.*\n\n' +
+                    'Vamos a revisar tu cuenta y te escribimos por aquí en cuanto esté lista. 🙌\n\n' +
+                    '_Mientras tanto puedes intentar con "¿olvidaste tu contraseña?" en ' +
+                    '*destello.courses/login*._\n\n' +
+                    POST_ACCION_TEXTO
+                )
+            }
+
+            case '3':
+                conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.MENU, esNuevo: false })
+                return MENU_TEXTO()
+
+            default:
+                return SIN_ACCESO_MENU
         }
-
-        if (pendientes.resplandores?.length > 0) {
-            return (
-                '✉️ Tu *resplandor* fue enviado a ese correo.\n\n' +
-                'Por favor revisa también tu carpeta de *spam o correo no deseado*.\n\n' +
-                'Si sigues sin encontrarlo, escríbenos y lo revisamos. 😊\n\n' +
-                POST_ACCION_TEXTO
-            )
-        }
-
-        return (
-            `🔍 No encontramos códigos pendientes para *${msg}*.\n\n` +
-            'Puede que aún no hayas sido seleccionado/a o que tu pago esté en proceso de verificación.\n\n' +
-            POST_ACCION_TEXTO
-        )
     }
 
     // ── POST ACCIÓN ───────────────────────────────────────────
@@ -540,7 +755,7 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
         const resp = msg.toLowerCase().trim()
 
         if (['1', 'menu', 'menú', 'volver'].includes(resp)) {
-            conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+            conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.MENU, esNuevo: false })
             return MENU_TEXTO()
         }
 

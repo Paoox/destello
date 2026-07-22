@@ -37,6 +37,7 @@ services:
       - MAIL_FROM=${MAIL_FROM}
       - BOT_HTTP_URL=${BOT_HTTP_URL}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - ADMIN_WA=${ADMIN_WA}
     depends_on:
       redis:
         condition: service_healthy

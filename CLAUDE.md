@@ -19,6 +19,8 @@
 ## Infraestructura
 
 ### Servidor (Toshiba — Debian 13 trixie, local en casa de Paola)
+- **Ruta real del repo en la Toshiba: `/home/pao/destello`** (usuario `pao`).
+  ⚠️ NO es `/home/develop/destello` — esa ruta aparecía en notas viejas y es incorrecta.
 - **API:** Express + PostgreSQL + Redis corriendo en **Docker** en puerto 3001
 - **Cloudflare Named Tunnel:** URL fija `https://api.destello.courses` (Tunnel ID: `27b3edf7-0450-4b50-a0ac-2497b2445a8c`)
 - Los archivos de configuración de servicios viven SOLO en el servidor, **NO en el repo**
@@ -26,14 +28,26 @@
 Servicios systemd que arrancan automáticamente:
 - `destello-api` → levanta Docker con API Express
 - `destello-tunnel` → Named Tunnel Cloudflare (URL fija, nunca cambia)
+- `destello-bot` → Bot Faro de WhatsApp
+  (`WorkingDirectory=/home/pao/destello/apps/bot`, corre con node v20.20.2 de nvm)
 
-Comandos Docker en Toshiba:
+⚠️ En la Toshiba **no hay pm2**. El bot se reinicia con systemd, no con `pm2 restart`.
+
+Comandos en la Toshiba:
 ```bash
-cd ~/destello   # o /home/develop/destello
-docker compose up --build -d api   # reconstruir y reiniciar API (obligatorio tras cambios en apps/api/)
+cd ~/destello
+git pull
+
+# API (Docker) — obligatorio tras cambios en apps/api/
+docker compose up --build -d api
 docker compose logs -f api
-docker compose ps
+
+# Bot Faro — obligatorio tras cambios en apps/bot/
+sudo systemctl restart destello-bot
+journalctl -u destello-bot -f
 ```
+
+Nota: `severian.service` también corre en la Toshiba — es OTRO bot, no tocarlo.
 
 ### Frontend (Vercel)
 - URL: `destello.courses` / `destello-web.vercel.app`
@@ -93,20 +107,40 @@ destello/
 
 ## Sistema de Accesos (núcleo del negocio)
 
-### Dos tipos de tokens
+### ⚠️ Los códigos NO se le mandan al usuario
+
+**Desde el 20 jul 2026 el usuario nunca recibe un código.** Ni `RESP-` ni `DEST-`.
+Ambos son registros INTERNOS que solo relacionan usuario ↔ taller en la BD.
+Lo único que se le envía es **la liga de login** (WhatsApp) o **el QR** (correo).
+
+Cómo entra la gente — `/login`, sin códigos:
+- **Google** (requiere que el correo exista en `usuarios`)
+- **Número + OTP** de 6 dígitos que manda el bot Faro
+  (requiere `estado = 'activo'` **y** `usuarios.whatsapp` lleno)
+
+`/acceso` (validar código) quedó huérfana en el router, sin enlazar. No usarla.
+
+**`usuarios.estado` = permiso, NO "cuenta creada":**
+- `activo` → Paola le dio acceso. `phoneAuthController` lo exige para el login.
+- `espera` → está en lista, todavía sin permiso.
+
+### Dos tipos de tokens (internos)
 
 **Resplandor (`RESP-XXXX-XXXX`)**
-- Invitación para que el usuario cree su cuenta por PRIMERA vez
-- Solo 1 resplandor activo por usuario (si tiene uno activo, hay que revocarlo antes de crear otro)
-- Al usarse: `used = TRUE` → habilita login + `/perfil` + `/habitat` básico
+- Registro interno de que a esa persona se le autorizó crear cuenta
+- Solo 1 activo por usuario
 - Columna en BD: `resplandores.email`
 
 **Chispa (`DEST-XXXX-XXXX`)**
-- Llave de acceso a un taller específico para usuarios que YA tienen cuenta
+- Vincula un usuario con un taller. **No hay canje**: al crearla, el taller
+  aparece solo en `/home`. Por eso el usuario nunca elige ni reclama taller.
 - Un usuario puede tener muchas chispas (una por taller)
 - Al vencer → rooms y contenido del taller se bloquean automáticamente
-- **FK constraint `chispas_usuario_email_fkey`** es INTENCIONAL — solo se crea para usuarios con cuenta, NUNCA eliminar
+- **FK constraint `chispas_usuario_email_fkey`** es INTENCIONAL — NUNCA eliminar
 - Columna en BD: `chispas.usuario_email` (≠ de `resplandores.email`)
+
+⚠️ Para asignarle cualquier cosa (taller, demo, artilugio) la persona debe tener
+cuenta creada como todos: nombre, apellido, correo y WhatsApp.
 
 ### Flujo completo
 
@@ -115,12 +149,13 @@ destello/
 2. Admin confirma cupo → envía correo con métodos de pago (sin código aún)
 3. Usuario paga → manda comprobante por WA al admin
 4. Admin verifica → genera Resplandor en panel
-5. Admin envía Resplandor por WA + correo al usuario
-6. Usuario va a /acceso → usa Resplandor → crea su cuenta → Resplandor: used=TRUE
-7. Admin puede crear Chispa (requiere Resplandor usado)
-8. Admin genera Chispa → la envía por WA
-9. Usuario usa Chispa → desbloquea taller + rooms en Habitat
+5. Admin activa al usuario (`estado = 'activo'`) y le manda la LIGA de login
+6. Usuario entra en /login con Google o con su número + OTP — SIN código
+7. Admin genera Chispa → el taller aparece SOLO en /home (no hay canje)
 ```
+
+⚠️ Los pasos que decían "usuario usa su código en /acceso" ya no aplican.
+Ver `docs/flujo-acceso-bot.md` para el detalle del flujo actual.
 
 ---
 
@@ -240,19 +275,26 @@ Métodos de pago incluidos en templates:
 ### Menú del bot (5 opciones)
 1. Registrarte a taller → captura datos → lista de espera
 2. Ver talleres (falta: inscripción desde aquí)
-3. No me llegó mi código → busca por email → reenvía
+3. No me llegó mi acceso → busca por email → devuelve chispa o avisa del resplandor
+   (el copy visible al usuario NO usa "chispa"/"resplandor" — son nombres internos)
 4. Medios de pago → SPEI + efectivo
 5. Dudas → "próximamente"
 
 ### Estado en `flujo.js` — lo que YA funciona (NO tocar)
 - Nombre y apellido se capturan en pasos SEPARADOS
-- `extractWhatsapp(jid)` maneja formatos MX (`521XXXXXXXXXX` y `52XXXXXXXXXX`)
 - Estado `POST_ACCION` al terminar cualquier flujo
 - Palabras clave "menu", "cancelar", "salir", "adios" en cualquier momento
-
-### Pendiente en bot
-- **Fix `@lid`** en `extractWhatsapp()`: si JID tiene `@lid` devolver `null` y pedir número explícitamente
-- **Opción 2:** añadir opción de inscribirse a lista de espera desde la vista de talleres
+- **`extractWhatsapp(jid, senderPn)`** — resuelve el número real (10 dígitos):
+  1. Si el JID es `@lid`, usa `senderPn` que Baileys adjunta con el número real
+     (`index.js` lo saca de `msg.key.senderPn ?? msg.key.participantPn`)
+  2. Si no hay `senderPn`, devuelve `null` → el bot pide el número en `REG_WHATSAPP`
+  3. NUNCA devuelve el raw del `@lid`. Verificado en prod el 21 jul 2026.
+- **Opción 2 (Ver talleres)** — se escribe el número del taller directo desde la lista
+  y te inscribe a ese taller (`conv.tallerPre`), sin volver al menú. `menu` / `salir`
+  como palabras para no chocar con la numeración.
+- Lista de talleres **sin tope**: emoji del 1 al 10, luego `11.`, `12.`…
+- Registro en BD solo cuando ya hay nombre + número (no se crean usuarios a medias)
+- `inscribirEnTaller()` es el ÚNICO punto que llama a `POST /bot/lista-espera`
 
 ---
 
@@ -302,8 +344,6 @@ Tabs: **Accesos** | **Talleres** | **Lista de espera**
 ## Lo que Falta (Próximas Sesiones)
 
 ### 🟡 Pendiente
-- **Fix `@lid` en bot Faro** — `extractWhatsapp()` devuelve raw en vez de `null` para JIDs internos de WA
-- **Opción 2 del bot** — inscripción a lista de espera desde la vista de talleres
 - **Dashboard Analytics** en panel admin — métricas de conversión, rentabilidad, reincidencia
 - **Error en consola frontend** — `Cannot read properties of undefined (reading 'payload')`. Nota: `useAuthStore.js` actual NO tiene referencia a `payload` (0 matches en `apps/web/src`); ya corregido o viene de una librería. Reproducir y leer stack trace para ubicarlo.
 - **Vigencia de Chispa en frontend** — bloquear rooms/contenido automáticamente al vencer
@@ -318,6 +358,10 @@ Tabs: **Accesos** | **Talleres** | **Lista de espera**
 ---
 
 ## Lo que Está Terminado y Funciona
+
+- ✅ **Bot Faro — fix `@lid` + opción 2 con inscripción directa** (21 jul 2026). Verificado en prod:
+  un chat `@lid` resolvió el número vía `senderPn` sin preguntarle nada al usuario, y el flujo
+  "ver talleres → número → correo → nombre/apellido → inscrito" funcionó de corrido.
 
 - ✅ **Login con Google (Firebase OAuth)** — funciona end-to-end (13 jul 2026). `signInWithGoogle()` → `POST /auth/social` → Firebase Admin verifica idToken → JWT Destello. Solo para usuarios ya registrados (si el email no tiene cuenta → `USER_NOT_FOUND`, correcto). Causa raíz del bug: al `docker-compose.yml` le faltaban las env vars `FIREBASE_*`, `RESEND_API_KEY`, `MAIL_FROM`, `BOT_HTTP_URL`, `JWT_EXPIRES_IN`, y a `apps/api/package.json` la dependencia `resend`. La `FIREBASE_PRIVATE_KEY` se pasa por interpolación `${...}` desde `.env` (no `env_file`).
 - ✅ Named Tunnel Cloudflare — URL fija `https://api.destello.courses`
