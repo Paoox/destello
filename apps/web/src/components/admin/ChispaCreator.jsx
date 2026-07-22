@@ -78,13 +78,10 @@ export default function ChispaCreator({ adminToken, onCreated }) {
         setTimeout(() => setCopied(false), 2000)
     }
 
-    // Mensaje listo para pegar en WhatsApp
-    const vigenciaLabel = expiresInDays == null
-        ? 'Sin vigencia'
-        : VIGENCIA_OPTS.find(o => o.value === expiresInDays)?.label ?? `${expiresInDays} días`
-
+    // Flujo nuevo: el usuario NO pega códigos. Ya le asignamos el acceso tras
+    // bambalinas; solo entra, crea su cuenta y el taller aparece listo en su Home.
     const waMessage = lastChispa
-        ? `¡Hola${usuarioNombre ? ` ${usuarioNombre.split(' ')[0]}` : ''}! 🌟\nAquí está tu código de acceso a *Destello*:\n\n*${lastChispa.code}*\n\nTaller: ${tallerNombre || tallerId}\nVigencia: ${vigenciaLabel}\n\nÚsalo en: https://destello.mx/acceso`
+        ? `¡Hola${usuarioNombre ? ` ${usuarioNombre.split(' ')[0]}` : ''}! 🌟\nYa te asignamos tu acceso al taller *${tallerNombre || tallerId}* en *Destello*.\n\nSolo entra y crea tu cuenta aquí:\nhttps://destello.courses/login\n\nEntra con Google o con tu número y tu taller aparecerá listo. ✦`
         : ''
 
     return (

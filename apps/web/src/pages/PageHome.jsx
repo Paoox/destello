@@ -28,7 +28,6 @@ import {
   Fire,
   Cube,
   Clock,
-  Ticket,
   VideoCamera,
   Gift,
   Star,
@@ -38,12 +37,8 @@ import {
   ArrowRight,
   Medal,
   CheckCircle,
-  CircleNotch,
-  Warning,
-  X,
   UsersThree,
 } from '@phosphor-icons/react'
-import { apiValidarChispa, apiListTalleres } from '@services/publicApi.js'
 
 /* ============================================================
    Datos mock — reemplazar por API cuando exista el backend
@@ -414,12 +409,12 @@ export default function PageHome() {
 
   // ── Datos reales del usuario (BD: estrellas + código de referido) ──
   const token = useAuthStore((s) => s.token)
+  const [nombre, setNombre]               = useState(null) // nombre real (BD)
   const [estrellas, setEstrellas]         = useState(null) // null = cargando
   const [racha, setRacha]                 = useState(null)
   const [logros, setLogros]               = useState(null)
   const [codigoReferido, setCodigoReferido] = useState(null)
   const [supernovas, setSupernovas]       = useState([])
-  const [supernovaMsg, setSupernovaMsg]   = useState(null)
   const [proximos, setProximos]           = useState([])
 
   useEffect(() => {
@@ -428,6 +423,7 @@ export default function PageHome() {
       .then((r) => (r.ok ? r.json() : null))
       .then((res) => {
         if (res?.user) {
+          if (res.user.nombre) setNombre(res.user.nombre)
           if (typeof res.user.estrellas === 'number') setEstrellas(res.user.estrellas)
           if (typeof res.user.racha === 'number')     setRacha(res.user.racha)
           if (typeof res.user.logros === 'number')    setLogros(res.user.logros)
@@ -456,6 +452,7 @@ export default function PageHome() {
   const estrellasVal = estrellas ?? 0 // valores reales de la BD (0 mientras cargan)
   const rachaVal     = racha ?? 0
   const logrosVal    = logros ?? 0
+  const nombreVal    = nombre ?? data.nombre // nombre real de la BD (o mock mientras carga)
   const codigoAmigo  = codigoReferido ?? data.codigoAmigo
   const costoMin     = supernovas.length ? Math.min(...supernovas.map((s) => s.costo_estrellas)) : null
   const puedeCanjear = costoMin != null && estrellasVal >= costoMin
@@ -473,26 +470,6 @@ export default function PageHome() {
     }
   })
   const rutaPct = Math.min(100, Math.round((rachaVal / 30) * 100))
-
-  // Canjea una Supernova con Estrellas.
-  const canjearSupernova = async (id) => {
-    setSupernovaMsg(null)
-    try {
-      const r = await fetch(`/api/users/me/supernovas/${id}/canjear`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const dataR = await r.json()
-      if (r.ok) {
-        setEstrellas(dataR.restante)
-        setSupernovaMsg({ ok: true, txt: `¡Canjeaste "${dataR.supernova}"! Te contactaremos para entregártela.` })
-      } else {
-        setSupernovaMsg({ ok: false, txt: dataR.message || 'No se pudo canjear' })
-      }
-    } catch {
-      setSupernovaMsg({ ok: false, txt: 'No se pudo canjear' })
-    }
-  }
 
   // ── Mis talleres desbloqueados (BD: chispas canjeadas + estado) ──
   const [misTalleres, setMisTalleres]         = useState([])
@@ -515,78 +492,6 @@ export default function PageHome() {
     .filter((t) => t.estado === 'proximamente' && !misIds.has(t.id))
     .sort((a, b) => String(a.fecha_inicio ?? '').localeCompare(String(b.fecha_inicio ?? '')))
     .slice(0, 4)
-
-  // ── Estado del canje de chispa (card in-line) ──
-  const [canjeOpen, setCanjeOpen] = useState(false)
-  const [codigo, setCodigo]       = useState('')
-  const [cargando, setCargando]   = useState(false)
-  const [canjeando, setCanjeando] = useState(false)
-  const [error, setError]         = useState('')
-  const [resultado, setResultado] = useState(null) // { nombre, fecha, horario }
-
-  const cerrarCanje = () => {
-    setCanjeOpen(false)
-    setCodigo('')
-    setError('')
-    setResultado(null)
-  }
-
-  // Consume la chispa (real) y refresca la lista de talleres desbloqueados.
-  const desbloquearTaller = async () => {
-    setCanjeando(true)
-    setError('')
-    try {
-      const r = await fetch('/api/users/me/canjear', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body:    JSON.stringify({ code: codigo.trim() }),
-      })
-      const data = await r.json()
-      if (!r.ok) { setError(data.message || 'No se pudo desbloquear el taller'); return }
-      cerrarCanje()
-      cargarTalleres()
-    } catch {
-      setError('No se pudo desbloquear el taller')
-    } finally {
-      setCanjeando(false)
-    }
-  }
-
-  const validarChispa = async (e) => {
-    e?.preventDefault()
-    const code = codigo.trim()
-    if (!code) return
-    setCargando(true)
-    setError('')
-    setResultado(null)
-    try {
-      // 1) Valida la chispa (sin consumirla) → devuelve el taller ligado.
-      const { record } = await apiValidarChispa(code)
-      // 2) Cruza con el catálogo de talleres para obtener fecha y horario.
-      let fecha = null, horario = null, nombre = record?.tallerNombre ?? null
-      try {
-        const talleres = await apiListTalleres()
-        const t = talleres.find((x) => x.id === record?.tallerId)
-        if (t) {
-          nombre  = nombre ?? t.nombre
-          fecha   = t.fecha_inicio ?? t.fecha_disponible ?? null
-          horario = t.horario ?? null
-        }
-      } catch { /* si falla el catálogo, mostramos al menos el nombre */ }
-      setResultado({ nombre: nombre ?? 'Tu taller', fecha, horario })
-    } catch (err) {
-      setError(err.message ?? 'No pudimos validar esa chispa')
-    } finally {
-      setCargando(false)
-    }
-  }
-
-  const fmtFecha = (iso) => {
-    if (!iso) return null
-    const d = new Date(iso)
-    if (isNaN(d)) return null
-    return d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
-  }
 
   const abrirMaterial = (tallerId) => {
     // El material de apoyo y los modelos 3D viven en el aula del taller.
@@ -619,7 +524,7 @@ export default function PageHome() {
         <div className="dh-header">
           <div>
             <h1 className="dh-hello">
-              ¡Hola, {data.nombre}! <span style={{ color: 'var(--color-amber-600)' }}>✦</span>
+              ¡Hola, {nombreVal}! <span style={{ color: 'var(--color-amber-600)' }}>✦</span>
             </h1>
             <p className="dh-sub">Tu viaje creativo continúa</p>
           </div>
@@ -676,7 +581,7 @@ export default function PageHome() {
             <div className="dh-empty">Cargando tus talleres…</div>
           ) : misTalleres.length === 0 ? (
             <div className="dh-empty">
-              Aún no tienes talleres desbloqueados. ¿Tienes una chispa? Canjéala abajo y desbloquea tu primer taller. <span style={{ color: 'var(--color-amber-500)' }}>✦</span>
+              Aún no tienes talleres. En cuanto se confirme tu pago, tu taller aparecerá aquí listo para ti. <span style={{ color: 'var(--color-amber-500)' }}>✦</span>
             </div>
           ) : (
             misTalleres.map((t) => (
@@ -685,137 +590,41 @@ export default function PageHome() {
           )}
         </div>
 
-        {/* ── Canjear chispa ── */}
-        {!canjeOpen ? (
-          /* Estado colapsado: al hacer click, se transforma en la card de canje */
-          <div
-            className="dh-chispa dh-chispa--tappable"
-            role="button"
-            tabIndex={0}
-            onClick={() => setCanjeOpen(true)}
-            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setCanjeOpen(true)}
-          >
-            <div className="dh-chispa-left">
-              <div className="dh-chispa-orb">
-                <Fire size={24} weight="fill" color="#fff" />
-              </div>
-              <div>
-                <div style={{ fontSize: 'var(--text-base)', fontWeight: 700 }}>¿Tienes una chispa?</div>
-                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                  Canjéala y desbloquea tu nuevo taller al instante
-                </div>
-              </div>
-            </div>
-            <span className="dh-btn dh-btn--amber">
-              <Ticket size={16} weight="fill" /> Canjear chispa
-            </span>
-          </div>
-        ) : (
-          /* Card de canje: pega el código → muestra taller y fecha */
-          <div className="dh-card dh-block dh-canje">
-            <div className="dh-canje-head">
-              <div className="dh-canje-title">
-                <Ticket size={18} weight="fill" color="var(--color-amber-600)" />
-                Canjea tu chispa
-              </div>
-              <button className="dh-canje-close" onClick={cerrarCanje} aria-label="Cerrar">
-                <X size={18} weight="bold" />
-              </button>
-            </div>
-
-            <form className="dh-canje-form" onSubmit={validarChispa}>
-              <input
-                className="dh-input"
-                placeholder="DEST-XXXX-XXXX"
-                value={codigo}
-                onChange={(e) => setCodigo(e.target.value)}
-                autoFocus
-                maxLength={16}
-              />
-              <button type="submit" className="dh-btn dh-btn--amber" disabled={cargando || !codigo.trim()}>
-                {cargando
-                  ? <><span className="dh-spin"><CircleNotch size={16} weight="bold" /></span> Validando…</>
-                  : <>Validar</>}
-              </button>
-            </form>
-
-            {error && (
-              <div className="dh-canje-error">
-                <Warning size={14} weight="fill" /> {error}
-              </div>
-            )}
-
-            {resultado && (
-              <div className="dh-canje-result">
-                <div className="dh-result-row" style={{ color: 'var(--color-success)' }}>
-                  <CheckCircle size={16} weight="fill" /> Chispa válida
-                </div>
-                <p className="dh-result-name">{resultado.nombre}</p>
-                {resultado.fecha && (
-                  <div className="dh-result-row" style={{ color: 'var(--text-secondary)' }}>
-                    <CalendarBlank size={15} weight="fill" color="var(--color-jade-400)" />
-                    Se imparte el {fmtFecha(resultado.fecha)}{resultado.horario ? ` · ${resultado.horario}` : ''}
-                  </div>
-                )}
-                <button
-                  className="dh-btn dh-btn--amber"
-                  style={{ width: '100%', marginTop: 'var(--space-3)' }}
-                  onClick={desbloquearTaller}
-                  disabled={canjeando}
-                >
-                  {canjeando
-                    ? <><span className="dh-spin"><CircleNotch size={16} weight="bold" /></span> Desbloqueando…</>
-                    : <><Sparkle size={16} weight="fill" /> Desbloquear taller</>}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Canjea tu Supernova (premios con Estrellas) ── */}
-        <p className="dh-section-title">Canjea tu Supernova</p>
+        {/* ── Tienda de Supernovas (próximamente) ──
+           La tienda aún no existe; por ahora se muestra como teaser temático
+           para que el Home se vea completo. Cuando exista el catálogo real,
+           reactivar el canje (ver canjearSupernova + POST /users/me/supernovas/:id/canjear). */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--space-3)' }}>
+          <p className="dh-section-title" style={{ margin: 0 }}>Tienda de Supernovas</p>
+          <span style={{
+            fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-amber-500)',
+            background: 'rgba(217,119,6,0.14)', border: '1px dashed var(--color-amber-600)',
+            padding: '2px 10px', borderRadius: 'var(--radius-full)',
+          }}>
+            Muy pronto
+          </span>
+        </div>
         <div className="dh-grid-tienda">
           {(supernovas.length
             ? supernovas
             : data.tienda.map((t, i) => ({ id: `m${i}`, nombre: t.titulo, costo_estrellas: t.costo }))
-          ).map((s, i) => {
-            const Icon   = [CalendarBlank, Star, Gift][i % 3]
-            const afford = estrellasVal >= s.costo_estrellas
-            const real   = typeof s.id === 'number'
+          ).slice(0, 3).map((s, i) => {
+            const Icon = [CalendarBlank, Star, Gift][i % 3]
             return (
-              <div
-                className="dh-card dh-tienda-item"
-                key={s.id ?? s.nombre}
-                style={afford ? { borderColor: 'var(--color-amber-600)' } : undefined}
-              >
-                <Icon size={24} weight="fill" color={afford ? 'var(--color-amber-500)' : 'var(--color-jade-400)'} />
+              <div className="dh-card dh-tienda-item" key={s.id ?? s.nombre} style={{ opacity: 0.9 }}>
+                <Icon size={24} weight="fill" color="var(--color-jade-400)" />
                 <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{s.nombre}</div>
                 <span className="dh-cost"><Star size={12} weight="fill" /> {s.costo_estrellas} Estrellas</span>
-                {real && (afford ? (
-                  <button
-                    className="dh-btn dh-btn--amber"
-                    style={{ fontSize: 'var(--text-xs)', padding: '6px 14px' }}
-                    onClick={() => canjearSupernova(s.id)}
-                  >
-                    Canjear
-                  </button>
-                ) : (
-                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                    Te faltan {s.costo_estrellas - estrellasVal}
-                  </span>
-                ))}
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <ShootingStar size={13} weight="fill" color="var(--color-amber-500)" /> Muy pronto
+                </span>
               </div>
             )
           })}
         </div>
-        {supernovaMsg && (
-          <p style={{
-            fontSize: 'var(--text-sm)', marginTop: 'var(--space-3)',
-            color: supernovaMsg.ok ? 'var(--color-success)' : 'var(--color-error)',
-          }}>
-            {supernovaMsg.txt}
-          </p>
-        )}
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
+          Junta Estrellas invitando amigos ✦ Pronto podrás canjearlas por Supernovas.
+        </p>
 
         {/* ── Promos + próximos ── */}
         <div className="dh-grid-promos">

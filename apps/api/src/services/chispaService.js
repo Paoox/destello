@@ -75,6 +75,23 @@ export async function createChispa({
                                    }) {
     if (!tallerId) throw new Error('tallerId es requerido')
 
+    // Normaliza correo/WhatsApp del dueño (si viene) y GARANTIZA que el usuario
+    // exista antes de insertar la chispa: la FK chispas_usuario_email_fkey lo exige.
+    // Gracias a esto el admin puede asignar un taller/demo con solo correo + número
+    // (si el usuario no existe, se crea; si existe, no se pisan sus datos).
+    const emailOwner = usuarioEmail ? usuarioEmail.toLowerCase().trim() : null
+    const waOwner    = usuarioWa ? String(usuarioWa).replace(/\D/g, '').slice(-10) : null
+    if (emailOwner) {
+        await query(
+            `INSERT INTO usuarios (email, nombre, whatsapp, estado)
+             VALUES ($1, $2, $3, 'activo')
+             ON CONFLICT (email) DO UPDATE
+               SET nombre   = COALESCE(usuarios.nombre,   EXCLUDED.nombre),
+                   whatsapp = COALESCE(usuarios.whatsapp, EXCLUDED.whatsapp)`,
+            [emailOwner, usuarioNombre || null, waOwner]
+        )
+    }
+
     const code      = await uniqueCode(prefix.toUpperCase())
     const expiresAt = expiresInDays != null
         ? new Date(Date.now() + expiresInDays * 86_400_000)
@@ -96,9 +113,9 @@ export async function createChispa({
             code,
             tallerId,
             tallerNombre  || null,
-            usuarioEmail  || null,
+            emailOwner,
             usuarioNombre || null,
-            usuarioWa     || null,
+            waOwner,
             createdBy,
             expiresAt,
             Boolean(isDemo),
@@ -325,36 +342,46 @@ function estadoTaller({ fecha_inicio, fecha_fin, hora_inicio, hora_fin }) {
 }
 
 /**
- * Lista los talleres que el usuario tiene desbloqueados (chispas ya canjeadas),
- * con el estado calculado de taller, clase y material.
+ * Lista los talleres que el usuario tiene ASIGNADOS, con el estado calculado
+ * de taller, clase y material.
+ *
+ * Flujo nuevo (sin canje manual): la chispa la asigna el admin al confirmar el
+ * pago o al regalar un demo. Aparece automáticamente en el Home — NO se exige
+ * `used = TRUE`. Solo se excluyen las revocadas. `DISTINCT ON (t.id)` evita
+ * cards duplicadas si el usuario tuviera más de una chispa del mismo taller
+ * (p. ej. un demo y luego la compra): se queda con la más reciente.
  */
 export async function getTalleresDelUsuario(email) {
     const { rows } = await query(
-        `SELECT c.code, c.used_at, c.expires_at,
+        `SELECT DISTINCT ON (t.id)
+                c.code, c.used_at, c.created_at, c.expires_at, c.is_demo,
                 t.id   AS taller_id, t.nombre, t.descripcion, t.categoria,
                 t.horario, t.hora_inicio, t.hora_fin, t.fecha_inicio, t.fecha_fin, t.imagen_url
          FROM chispas c
          JOIN talleres t ON t.id = c.taller_id
          WHERE LOWER(c.usuario_email) = LOWER($1)
-           AND c.used = TRUE
            AND c.revoked = FALSE
-         ORDER BY t.fecha_inicio DESC NULLS LAST`,
+         ORDER BY t.id, c.created_at DESC`,
         [email.trim()]
     )
 
-    return rows.map((r) => ({
-        code:        r.code,
-        tallerId:    r.taller_id,
-        nombre:      r.nombre,
-        descripcion: r.descripcion,
-        categoria:   r.categoria,
-        horario:     r.horario,
-        horaInicio:  r.hora_inicio,
-        horaFin:     r.hora_fin,
-        fechaInicio: r.fecha_inicio,
-        fechaFin:    r.fecha_fin,
-        imagenUrl:   r.imagen_url,
-        canjeadaAt:  r.used_at,
-        ...estadoTaller(r),
-    }))
+    return rows
+        .map((r) => ({
+            code:        r.code,
+            tallerId:    r.taller_id,
+            nombre:      r.nombre,
+            descripcion: r.descripcion,
+            categoria:   r.categoria,
+            horario:     r.horario,
+            horaInicio:  r.hora_inicio,
+            horaFin:     r.hora_fin,
+            fechaInicio: r.fecha_inicio,
+            fechaFin:    r.fecha_fin,
+            imagenUrl:   r.imagen_url,
+            esDemo:      r.is_demo,
+            asignadaAt:  r.created_at,
+            canjeadaAt:  r.used_at,
+            ...estadoTaller(r),
+        }))
+        .sort((a, b) => String(b.fechaInicio ?? '').localeCompare(String(a.fechaInicio ?? '')))
 }
