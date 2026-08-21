@@ -343,7 +343,41 @@ Tabs: **Accesos** | **Talleres** | **Lista de espera**
 
 ## Lo que Falta (Próximas Sesiones)
 
+### 🔴 Prioridad — `usuarios.whatsapp` debe ser ÚNICO
+Detectado el 21 jul 2026. Hoy dos correos distintos pueden tener el mismo número.
+Como `phoneAuthController` busca la cuenta **por whatsapp** (`WHERE whatsapp = $1
+AND estado = 'activo'`), quien pida el OTP entra a la primera cuenta que aparezca
+— o sea puede acceder a la cuenta de otra persona.
+
+Para arreglarlo:
+1. Buscar duplicados antes de poner la constraint:
+   `SELECT whatsapp, COUNT(*) FROM usuarios WHERE whatsapp IS NOT NULL GROUP BY whatsapp HAVING COUNT(*) > 1;`
+2. `CREATE UNIQUE INDEX ... ON usuarios (whatsapp) WHERE whatsapp IS NOT NULL`
+   (índice parcial: permite varios NULL, un solo número repetido no)
+3. Manejar el error de duplicado en el bot y en `/admin` con un mensaje claro:
+   "ese número ya está ligado a otra cuenta".
+
+### 🟠 Deuda técnica — las tablas se relacionan por CORREO, no por id
+Detectado por Paola el 21 jul 2026. Hoy `chispas.usuario_email`, `resplandores.email`
+y `lista_espera.email` ligan por texto. Consecuencias: si alguien cambia de correo
+se rompe la cadena, y todas las queries hacen `LOWER(email) = LOWER($1)` para
+compensar mayúsculas.
+
+Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etapas
+(NO hacerlo de un tirón):
+1. Agregar `usuario_id` nullable a las tres tablas
+2. Rellenarlo desde el correo actual (`UPDATE ... FROM usuarios WHERE LOWER(email)...`)
+3. Migrar las consultas de los servicios una por una, dejando el email como respaldo
+4. Recién entonces poner NOT NULL y quitar `chispas_usuario_email_fkey`
+
+⚠️ Mientras esta migración no esté hecha, la regla #2 de abajo sigue vigente:
+**NO eliminar `chispas_usuario_email_fkey`.**
+
 ### 🟡 Pendiente
+- **Asignar demos a las cuentas** (requiere cuenta creada primero)
+- **Panel admin** — pulir Accesos y agregar pestaña de Reportes
+- **Reporte de pago por WhatsApp** — falta leer `imageMessage` en `apps/bot/index.js`
+  (hoy las fotos se ignoran por completo). Ver `docs/flujo-acceso-bot.md`.
 - **Dashboard Analytics** en panel admin — métricas de conversión, rentabilidad, reincidencia
 - **Error en consola frontend** — `Cannot read properties of undefined (reading 'payload')`. Nota: `useAuthStore.js` actual NO tiene referencia a `payload` (0 matches en `apps/web/src`); ya corregido o viene de una librería. Reproducir y leer stack trace para ubicarlo.
 - **Vigencia de Chispa en frontend** — bloquear rooms/contenido automáticamente al vencer
