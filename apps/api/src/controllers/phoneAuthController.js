@@ -15,6 +15,7 @@ import { AppError } from '../middleware/errorHandler.js'
 import { query }    from '../db/db.js'
 import * as otp     from '../services/otpService.js'
 import { sendWhatsapp, normalizarWhatsapp } from '../services/botService.js'
+import { asegurarWhatsappLibre } from '../services/usuarioService.js'
 
 function signToken(payload) {
     return jwt.sign(payload, process.env.JWT_SECRET, {
@@ -77,6 +78,11 @@ export async function verifyCode(req, res, next) {
         }
 
         if (authedUserId) {
+            // El número no puede pertenecer ya a OTRA cuenta: si se permitiera,
+            // el login por número de más abajo quedaría ambiguo y podría meter a
+            // esta persona a la cuenta de alguien más. Lanza WA_EN_USO (409).
+            await asegurarWhatsappLibre(whatsapp, authedUserId)
+
             const { rows } = await query(
                 `UPDATE usuarios SET whatsapp = $2
                  WHERE id = $1
@@ -89,25 +95,48 @@ export async function verifyCode(req, res, next) {
             return res.json({ status: 'ok', token, user: { ...u, role: 'alumno' } })
         }
 
-        // Login por número: buscar cuenta por whatsapp
-        const { rows } = await query(
+        // Login por número: buscar cuenta por whatsapp.
+        //
+        // SIN `LIMIT 1`: si el número estuviera en más de una cuenta, quedarnos
+        // con la primera metería a la persona a la cuenta equivocada. Preferimos
+        // negar el acceso y avisar. El índice único de la BD debería hacer que
+        // esto nunca ocurra; esto es el cinturón de seguridad.
+        const { rows: candidatos } = await query(
             `SELECT id, email, nombre, apellido, whatsapp, estado
              FROM usuarios
-             WHERE whatsapp = $1 AND estado = 'activo'
-             ORDER BY id
-             LIMIT 1`,
+             WHERE whatsapp = $1
+             ORDER BY id`,
             [whatsapp]
         )
 
-        if (!rows.length) {
+        if (candidatos.length > 1) {
+            console.error(
+                `[phoneAuth] WhatsApp duplicado ${whatsapp} en usuarios:`,
+                candidatos.map(c => `${c.id}:${c.email}`).join(', '),
+            )
             throw new AppError(
-                'No encontramos una cuenta activa con ese número. Inscríbete por WhatsApp o entra con Google.',
-                404,
-                'NO_ACCOUNT',
+                'Ese número está ligado a más de una cuenta, así que no podemos ' +
+                'saber cuál es la tuya. Escríbenos por WhatsApp para resolverlo.',
+                409,
+                'WA_DUPLICADO',
             )
         }
 
-        const u     = rows[0]
+        const activos = candidatos.filter(c => c.estado === 'activo')
+
+        if (!activos.length) {
+            // Distinguimos "no existe" de "existe pero aún no está activa":
+            // antes ambos casos daban el mismo mensaje y confundía a la gente.
+            throw new AppError(
+                candidatos.length
+                    ? 'Tu cuenta todavía no está activa. En cuanto confirmemos tu pago te avisamos por WhatsApp.'
+                    : 'No encontramos una cuenta con ese número. Inscríbete por WhatsApp o entra con Google.',
+                candidatos.length ? 403 : 404,
+                candidatos.length ? 'CUENTA_NO_ACTIVA' : 'NO_ACCOUNT',
+            )
+        }
+
+        const u     = activos[0]
         const token = signToken({ userId: u.id, role: 'alumno' })
         res.json({ status: 'ok', token, user: { ...u, role: 'alumno' } })
     } catch (err) { next(err) }

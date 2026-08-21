@@ -180,7 +180,11 @@ export default function ListaEsperaAdmin({ adminToken }) {
             const data = await res.json()
             if (res.ok) {
                 const canales = [data.waEnviado && 'WhatsApp', data.mailEnviado && 'correo'].filter(Boolean).join(' y ')
-                showToast(`${esReenvio ? 'Acceso reenviado' : 'Cuenta lista'}${canales ? ` · ${canales}` : ''} ✓`)
+                // `avisoWa` llega cuando el número ya pertenecía a otra cuenta: la
+                // cuenta se activa igual, pero el número NO se copia. Hay que
+                // enseñarlo, si no el número "desaparece" sin explicación.
+                if (data.avisoWa) showToast(`⚠️ ${data.avisoWa}`, false)
+                else showToast(`${esReenvio ? 'Acceso reenviado' : 'Cuenta lista'}${canales ? ` · ${canales}` : ''} ✓`)
                 setLista(prev => prev.map(x => x.id === r.id ? { ...x, estado: 'pagado' } : x))
             } else {
                 showToast(data.message || 'Error al procesar', false)

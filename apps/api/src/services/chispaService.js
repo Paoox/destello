@@ -14,6 +14,7 @@
 
 import crypto    from 'node:crypto'
 import { query } from '../db/db.js'
+import { normalizarWhatsapp, asegurarWhatsappLibre } from './usuarioService.js'
 
 // ── Mapper snake_case → camelCase ─────────────────────────────────────────────
 // Convierte una fila de PostgreSQL al formato que espera el frontend.
@@ -80,7 +81,18 @@ export async function createChispa({
     // Gracias a esto el admin puede asignar un taller/demo con solo correo + número
     // (si el usuario no existe, se crea; si existe, no se pisan sus datos).
     const emailOwner = usuarioEmail ? usuarioEmail.toLowerCase().trim() : null
-    const waOwner    = usuarioWa ? String(usuarioWa).replace(/\D/g, '').slice(-10) : null
+    let   waOwner    = normalizarWhatsapp(usuarioWa)
+
+    // El número no se puede robar de otra cuenta al asignar una chispa: si ya es
+    // de alguien más se lanza WA_EN_USO (409) para que el panel avise a Paola en
+    // vez de dejar dos cuentas con el mismo número (rompe el login por número).
+    if (waOwner) {
+        const propia = emailOwner
+            ? (await query('SELECT id FROM usuarios WHERE email = $1', [emailOwner])).rows[0]
+            : null
+        waOwner = await asegurarWhatsappLibre(waOwner, propia?.id ?? null)
+    }
+
     if (emailOwner) {
         await query(
             `INSERT INTO usuarios (email, nombre, whatsapp, estado)

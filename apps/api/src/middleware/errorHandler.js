@@ -25,6 +25,23 @@ export function errorHandler(err, _req, res, _next) {
     })
   }
 
+  // Violación de índice único de Postgres (23505).
+  // Red de seguridad: si algún camino nuevo intenta guardar un WhatsApp repetido
+  // sin pasar por asegurarWhatsappLibre(), la BD lo rechaza y aquí lo traducimos
+  // a un mensaje entendible en vez de un 500 genérico.
+  if (err.code === '23505') {
+    const detalle    = `${err.constraint ?? ''} ${err.detail ?? ''}`.toLowerCase()
+    const esWhatsapp = detalle.includes('whatsapp')
+    return res.status(409).json({
+      status:  'error',
+      code:    esWhatsapp ? 'WA_EN_USO' : 'REGISTRO_DUPLICADO',
+      message: esWhatsapp
+        ? 'Ese número ya está ligado a otra cuenta. Si es tuya, entra con ese correo; ' +
+          'si no, escríbenos por WhatsApp y lo resolvemos.'
+        : 'Ese registro ya existe.',
+    })
+  }
+
   // Errores inesperados (bugs)
   console.error('ERROR NO CONTROLADO:', err)
 

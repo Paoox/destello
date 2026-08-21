@@ -27,6 +27,7 @@ import { AppError }          from '../middleware/errorHandler.js'
 import { query }             from '../db/db.js'
 import { sendConfirmacionTaller, sendConfirmacionLugar, sendResplandor, sendBienvenida } from '../services/mailService.js'
 import { sendWhatsapp }      from '../services/botService.js'
+import { cuentaConWhatsapp, normalizarWhatsapp } from '../services/usuarioService.js'
 import crypto                from 'node:crypto'
 
 const router = Router()
@@ -128,8 +129,26 @@ router.patch('/lista-espera/:id', async (req, res, next) => {
 
         const registro = rows[0]
         let usuarioActivado = false
+        let avisoWa = null
 
         if (estado === 'pagado' && registro.email) {
+            // El número solo se copia a la cuenta si está libre. Si ya es de otra
+            // persona NO se pisa (rompería el login por número); se activa la
+            // cuenta igual y se devuelve un aviso para que el panel lo muestre.
+            const waReg = normalizarWhatsapp(registro.whatsapp)
+            let waUsable = waReg
+            if (waReg) {
+                const { rows: propia } = await query(
+                    `SELECT id FROM usuarios WHERE LOWER(email) = LOWER($1)`,
+                    [registro.email],
+                )
+                const dueño = await cuentaConWhatsapp(waReg, propia[0]?.id ?? null)
+                if (dueño) {
+                    waUsable = null
+                    avisoWa = `El número ${waReg} ya está ligado a la cuenta ${dueño.email}, así que no se copió a esta.`
+                }
+            }
+
             const { rows: u } = await query(
                 `UPDATE usuarios
                  SET estado   = 'activo',
@@ -137,12 +156,12 @@ router.patch('/lista-espera/:id', async (req, res, next) => {
                      nombre   = COALESCE(nombre,   $3)
                  WHERE LOWER(email) = LOWER($1)
                  RETURNING id`,
-                [registro.email, registro.whatsapp || null, registro.nombre || null]
+                [registro.email, waUsable, registro.nombre || null]
             )
             usuarioActivado = u.length > 0
         }
 
-        res.json({ status: 'ok', registro, usuarioActivado })
+        res.json({ status: 'ok', registro, usuarioActivado, ...(avisoWa && { avisoWa }) })
     } catch (err) { next(err) }
 })
 
@@ -298,7 +317,7 @@ router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
         const reg = rows[0]
 
         const emailNorm = reg.email ? reg.email.toLowerCase().trim() : null
-        const wa        = reg.whatsapp ? String(reg.whatsapp).replace(/\D/g, '').slice(-10) : null
+        const wa        = normalizarWhatsapp(reg.whatsapp)
 
         // Hoy el correo es la identidad del usuario (FK de chispas). Es obligatorio.
         if (!emailNorm) {
@@ -313,7 +332,17 @@ router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
             [emailNorm, wa]
         )
 
+        // El número solo se guarda si NO pertenece ya a otra cuenta. Si la cuenta
+        // encontrada es la dueña actual del número, no hay choque (se excluye por id).
         let usuario
+        let avisoWa = null
+        const dueñoWa = wa ? await cuentaConWhatsapp(wa, encontrados[0]?.id ?? null) : null
+        const waUsable = dueñoWa ? null : wa
+        if (dueñoWa) {
+            avisoWa = `El número ${wa} ya está ligado a la cuenta ${dueñoWa.email}, así que no se copió a ${emailNorm}.`
+            console.warn('[admin/confirmar-pago]', avisoWa)
+        }
+
         if (encontrados.length) {
             const { rows: upd } = await query(
                 `UPDATE usuarios
@@ -323,7 +352,7 @@ router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
                      email    = COALESCE(email, $1)
                  WHERE id = $4
                  RETURNING *`,
-                [emailNorm, reg.nombre, wa, encontrados[0].id]
+                [emailNorm, reg.nombre, waUsable, encontrados[0].id]
             )
             usuario = upd[0]
         } else {
@@ -331,7 +360,7 @@ router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
                 `INSERT INTO usuarios (email, nombre, whatsapp, estado)
                  VALUES ($1, $2, $3, 'activo')
                  RETURNING *`,
-                [emailNorm, reg.nombre, wa]
+                [emailNorm, reg.nombre, waUsable]
             )
             usuario = ins[0]
         }
@@ -392,6 +421,7 @@ router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
             chispa:      chispaCode,
             mailEnviado,
             waEnviado,
+            ...(avisoWa && { avisoWa }),
         })
     } catch (err) { next(err) }
 })

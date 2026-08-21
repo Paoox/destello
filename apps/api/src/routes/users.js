@@ -55,7 +55,12 @@ router.put('/me', async (req, res, next) => {
     let i = 1
     if (nombre   !== undefined) { sets.push(`nombre   = $${i++}`); vals.push(String(nombre).trim()) }
     if (apellido !== undefined) { sets.push(`apellido = $${i++}`); vals.push(String(apellido).trim()) }
-    if (whatsapp !== undefined) { sets.push(`whatsapp = $${i++}`); vals.push(String(whatsapp).replace(/\D/g, '').slice(-10)) }
+    if (whatsapp !== undefined) {
+      // No dejar que alguien se apropie del número de otra cuenta editando su
+      // perfil: sería la puerta trasera al mismo acceso cruzado del login.
+      const waNorm = await usuarioService.asegurarWhatsappLibre(whatsapp, req.user.userId)
+      sets.push(`whatsapp = $${i++}`); vals.push(waNorm)
+    }
 
     if (!sets.length) return res.json({ status: 'ok', message: 'Nada que actualizar' })
 
