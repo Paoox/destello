@@ -32,7 +32,10 @@ app.use(cors({
   ],
   credentials: true,
 }))
-app.use(express.json())
+// 12 MB: los comprobantes de pago viajan en base64 dentro del JSON que manda el
+// bot, y base64 infla ~33%. Con el default de 100 KB toda foto era rechazada con
+// un 413 silencioso. El tope real de la imagen lo pone storageService (8 MB).
+app.use(express.json({ limit: '12mb' }))
 app.use(requestLogger)
 
 // Rutas públicas

@@ -228,13 +228,19 @@ async function conectar() {
                     }
 
                     const caption = imagen.caption?.trim() || null
-                    const { texto: respuesta, avisoAdmin } = await registrarComprobante(jid, caption)
+
+                    // Se descarga UNA vez y sirve para las dos cosas: guardarla en
+                    // el panel y reenviártela por WhatsApp.
+                    const buffer = await downloadMediaMessage(msg, 'buffer', {})
+
+                    const { texto: respuesta, avisoAdmin } = await registrarComprobante(
+                        jid, caption, buffer, imagen.mimetype,
+                    )
 
                     // Se reenvía a la admin ANTES de confirmarle al alumno: si el
                     // reenvío falla, preferimos enterarnos en los logs y no haberle
                     // prometido a la persona que ya llegó.
                     if (ADMIN_JID) {
-                        const buffer = await downloadMediaMessage(msg, 'buffer', {})
                         await sock.sendMessage(ADMIN_JID, { image: buffer, caption: avisoAdmin })
                         console.log(`📤 Comprobante reenviado a la admin`)
                     } else {

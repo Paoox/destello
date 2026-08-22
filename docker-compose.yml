@@ -38,6 +38,12 @@ services:
       - BOT_HTTP_URL=${BOT_HTTP_URL}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
       - ADMIN_WA=${ADMIN_WA}
+      # Supabase Storage — comprobantes de pago visibles en el panel.
+      # ⚠️ Si una variable NO está listada aquí, el contenedor no la ve por más
+      # que exista en el .env. Ese fue el bug del login de Google en julio.
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - SUPABASE_BUCKET_COMPROBANTES=${SUPABASE_BUCKET_COMPROBANTES:-comprobantes}
     depends_on:
       redis:
         condition: service_healthy

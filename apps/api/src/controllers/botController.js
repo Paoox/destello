@@ -7,6 +7,7 @@ import { upsertUsuario, findByEmail } from '../services/usuarioService.js'
 import { registrarEnLista, getListasPorEmail, getPendientesPorEmail } from '../services/listaEsperaService.js'
 import { diagnosticar, completarWhatsapp } from '../services/diagnosticoService.js'
 import { crearReporte, MOTIVOS } from '../services/reporteService.js'
+import { subirComprobante, storageDisponible } from '../services/storageService.js'
 import { AppError } from '../middleware/errorHandler.js'
 
 /**
@@ -142,12 +143,35 @@ export async function reportarAcceso(req, res, next) {
  * asigna talleres: eso lo hace Paola desde el panel DESPUÉS de cotejar contra el
  * banco. Un mensaje de WhatsApp no es comprobante de nada.
  *
- * Body: { email, nombre, whatsapp, tipo: 'comprobante'|'datos', datos?, tallerNombre? }
+ * Body: { email, nombre, whatsapp, tipo: 'comprobante'|'datos', datos?,
+ *         tallerNombre?, comprobanteBase64?, comprobanteMime? }
  */
 export async function reportarPago(req, res, next) {
     try {
-        const { email, nombre, whatsapp, tipo, datos, tallerNombre } = req.body
+        const {
+            email, nombre, whatsapp, tipo, datos, tallerNombre,
+            comprobanteBase64, comprobanteMime,
+        } = req.body
         if (!email) throw new AppError('email es requerido', 400, 'BAD_REQUEST')
+
+        // La imagen se sube ANTES de crear el reporte para poder guardar su ruta.
+        // Si la subida falla, el reporte se crea igual sin imagen: perder la foto
+        // es molesto, perder el aviso de un pago es grave.
+        let comprobantePath = null
+        if (comprobanteBase64) {
+            if (!storageDisponible()) {
+                console.warn('[reporte-pago] Storage sin configurar — el comprobante no se guardó')
+            } else {
+                try {
+                    comprobantePath = await subirComprobante(
+                        Buffer.from(comprobanteBase64, 'base64'),
+                        comprobanteMime || 'image/jpeg',
+                    )
+                } catch (err) {
+                    console.error('[reporte-pago] No se pudo guardar el comprobante:', err.message)
+                }
+            }
+        }
 
         const lineas = []
         if (tallerNombre) lineas.push(`Taller: ${tallerNombre}`)
@@ -172,6 +196,7 @@ export async function reportarPago(req, res, next) {
             email, nombre, whatsapp,
             motivo:  MOTIVOS.REPORTE_PAGO,
             detalle: lineas.join(' · '),
+            comprobantePath,
             // Un segundo pago es legítimo: nunca lo silenciamos como duplicado.
             permitirDuplicado: true,
         })

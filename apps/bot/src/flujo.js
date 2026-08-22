@@ -190,12 +190,15 @@ async function completarWhatsapp(email, whatsapp) {
  * Reporta un pago para que la admin lo coteje contra el banco.
  * NO activa la cuenta ni asigna talleres: el bot nunca decide sobre dinero.
  */
-async function reportarPago({ email, nombre, whatsapp, tipo, datos }) {
+async function reportarPago({ email, nombre, whatsapp, tipo, datos, comprobanteBase64, comprobanteMime }) {
     try {
         const res = await fetch(`${API_URL}/bot/reporte-pago`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ email, nombre, whatsapp, tipo, datos }),
+            body:    JSON.stringify({
+                email, nombre, whatsapp, tipo, datos,
+                comprobanteBase64, comprobanteMime,
+            }),
         })
         return await res.json()
     } catch { return { status: 'error' } }
@@ -1003,8 +1006,10 @@ export function esperaComprobante(jid) {
  *
  * @param {string}  jid
  * @param {string?} caption texto que la persona escribió junto a la foto
+ * @param {Buffer?} imagen  bytes de la foto, para guardarla en el panel
+ * @param {string?} mimetype
  */
-export async function registrarComprobante(jid, caption = null) {
+export async function registrarComprobante(jid, caption = null, imagen = null, mimetype = null) {
     const conv = conversaciones.get(jid) || {}
 
     await reportarPago({
@@ -1013,6 +1018,10 @@ export async function registrarComprobante(jid, caption = null) {
         whatsapp: conv.whatsapp || extractWhatsapp(jid),
         tipo:     'comprobante',
         datos:    caption ? { folio: caption } : null,
+        // La imagen viaja en base64 para que la API la suba a Supabase Storage y
+        // quede visible en la bandeja del panel, no solo en el chat de WhatsApp.
+        comprobanteBase64: imagen ? imagen.toString('base64') : undefined,
+        comprobanteMime:   imagen ? (mimetype || 'image/jpeg') : undefined,
     })
 
     conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })

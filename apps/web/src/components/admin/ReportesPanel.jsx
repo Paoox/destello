@@ -280,6 +280,41 @@ export default function ReportesPanel({ adminToken }) {
                                         </div>
                                     )}
 
+                                    {/* Comprobante: se ve aquí mismo, sin ir a WhatsApp.
+                                        La URL viene firmada por la API y caduca en 1 h,
+                                        así que se abre en pestaña nueva para verla grande. */}
+                                    {r.comprobante_url && (
+                                        <a
+                                            href={r.comprobante_url}
+                                            target="_blank" rel="noreferrer"
+                                            title="Abrir el comprobante en grande"
+                                            style={{ display: 'inline-block', marginTop: 10 }}
+                                        >
+                                            <img
+                                                src={r.comprobante_url}
+                                                alt="Comprobante de pago"
+                                                loading="lazy"
+                                                style={{
+                                                    maxWidth: 260, maxHeight: 200,
+                                                    borderRadius: 'var(--radius-md)',
+                                                    border: '1px solid var(--border-default)',
+                                                    display: 'block', objectFit: 'cover',
+                                                }}
+                                            />
+                                        </a>
+                                    )}
+
+                                    {/* Mandó foto pero no se pudo guardar (storage sin
+                                        configurar, o la URL ya caducó y no se recargó). */}
+                                    {!r.comprobante_url && r.detalle?.includes('FOTO') && (
+                                        <p style={{
+                                            marginTop: 8, marginBottom: 0,
+                                            color: 'var(--text-muted)', fontSize: 'var(--text-xs)',
+                                        }}>
+                                            📸 La foto llegó a tu WhatsApp — no quedó guardada aquí.
+                                        </p>
+                                    )}
+
                                     {r.motivo === 'reporte_pago' && !resuelto && (
                                         <p style={{
                                             marginTop: 8, marginBottom: 0,

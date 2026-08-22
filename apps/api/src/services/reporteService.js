@@ -8,6 +8,7 @@
  */
 import { query } from '../db/db.js'
 import { sendWhatsapp } from './botService.js'
+import { urlFirmada } from './storageService.js'
 
 /** Número (10 dígitos MX) al que llegan los avisos. Configurable en .env */
 const ADMIN_WA = process.env.ADMIN_WA || null
@@ -28,7 +29,7 @@ const MOTIVO_TEXTO = {
  * Crea un reporte y avisa por WhatsApp a la admin.
  * El aviso es best-effort: si el bot no responde, el reporte igual queda guardado.
  */
-export async function crearReporte({ email, nombre, whatsapp, motivo, detalle = null, permitirDuplicado = false }) {
+export async function crearReporte({ email, nombre, whatsapp, motivo, detalle = null, comprobantePath = null, permitirDuplicado = false }) {
     const emailNorm = String(email).toLowerCase().trim()
 
     // Si ya hay un reporte abierto por el mismo motivo, no duplicar.
@@ -49,10 +50,10 @@ export async function crearReporte({ email, nombre, whatsapp, motivo, detalle = 
     }
 
     const { rows } = await query(
-        `INSERT INTO reportes_acceso (email, nombre, whatsapp, motivo, detalle, estado)
-         VALUES ($1, $2, $3, $4, $5, 'abierto')
+        `INSERT INTO reportes_acceso (email, nombre, whatsapp, motivo, detalle, comprobante_path, estado)
+         VALUES ($1, $2, $3, $4, $5, $6, 'abierto')
          RETURNING *`,
-        [emailNorm, nombre || null, whatsapp || null, motivo, detalle]
+        [emailNorm, nombre || null, whatsapp || null, motivo, detalle, comprobantePath]
     )
     const reporte = rows[0]
 
@@ -81,13 +82,25 @@ async function avisarAdmin(reporte) {
     await sendWhatsapp(ADMIN_WA, mensaje)
 }
 
+/**
+ * Reportes para el panel, con la URL del comprobante ya firmada.
+ *
+ * Las URLs se firman al vuelo y caducan en una hora: nunca se guarda una URL
+ * pública en la BD, porque un comprobante trae nombre, banco y monto.
+ */
 export async function listReportes({ soloAbiertos = false } = {}) {
     const { rows } = await query(
         `SELECT * FROM reportes_acceso
          ${soloAbiertos ? "WHERE estado = 'abierto'" : ''}
          ORDER BY created_at DESC`
     )
-    return rows
+
+    // Se firman en paralelo; si alguna falla devuelve null y la tarjeta
+    // simplemente se muestra sin imagen.
+    return Promise.all(rows.map(async (r) => ({
+        ...r,
+        comprobante_url: r.comprobante_path ? await urlFirmada(r.comprobante_path) : null,
+    })))
 }
 
 export async function resolverReporte(id, nota = null) {
