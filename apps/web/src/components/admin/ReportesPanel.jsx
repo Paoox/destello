@@ -1,0 +1,346 @@
+/**
+ * Destello Admin — ReportesPanel
+ *
+ * Bandeja de lo que la gente reporta por el bot Faro:
+ *   · Pagos que hay que cotejar contra el banco
+ *   · Problemas de acceso (no puede entrar, no ve su taller)
+ *
+ * POR QUÉ EXISTE: antes los reportes solo llegaban como mensaje de WhatsApp.
+ * Un mensaje perdido entre conversaciones era un pago perdido, y no había manera
+ * de saber cuáles ya se habían atendido. Aquí quedan listados y se pueden cerrar.
+ *
+ * El bot NUNCA activa a nadie por un reporte de pago: eso se hace desde la
+ * pestaña de Lista de espera, después de verificar que el dinero cayó.
+ */
+import { useState, useEffect, useCallback } from 'react'
+import {
+    ArrowClockwise, CheckCircle, CurrencyDollar,
+    WarningCircle, WhatsappLogo, Envelope,
+} from '@phosphor-icons/react'
+
+/** Los motivos vienen de reporteService.MOTIVOS en la API. */
+const MOTIVOS = {
+    reporte_pago: {
+        label: 'Reporta un pago',
+        ayuda: 'Cotéjalo con el banco antes de activar',
+        color: '#8b5cf6',
+        Icon:  CurrencyDollar,
+    },
+    sin_acceso_plataforma: {
+        label: 'No puede entrar',
+        ayuda: 'Tiene permiso pero no logra entrar a la plataforma',
+        color: '#f59e0b',
+        Icon:  WarningCircle,
+    },
+    sin_acceso_taller: {
+        label: 'No ve su taller',
+        ayuda: 'Está activa y no le aparece el taller',
+        color: '#f59e0b',
+        Icon:  WarningCircle,
+    },
+}
+
+const FILTROS = [
+    { id: 'abiertos', label: 'Por revisar' },
+    { id: 'pagos',    label: 'Solo pagos' },
+    { id: 'todos',    label: 'Todos' },
+]
+
+/** "hace 5 min" / "hace 3 h" / "hace 2 d" — más útil que una fecha exacta aquí. */
+function haceCuanto(iso) {
+    if (!iso) return ''
+    const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+    if (min < 1)    return 'ahorita'
+    if (min < 60)   return `hace ${min} min`
+    const h = Math.floor(min / 60)
+    if (h < 24)     return `hace ${h} h`
+    const d = Math.floor(h / 24)
+    return d === 1 ? 'ayer' : `hace ${d} días`
+}
+
+function fechaExacta(iso) {
+    if (!iso) return ''
+    return new Date(iso).toLocaleString('es-MX', {
+        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    })
+}
+
+export default function ReportesPanel({ adminToken }) {
+    const [reportes,  setReportes]  = useState([])
+    const [cargando,  setCargando]  = useState(true)
+    const [cerrando,  setCerrando]  = useState(null)
+    const [filtro,    setFiltro]    = useState('abiertos')
+    const [toast,     setToast]     = useState(null)
+
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` }
+
+    const showToast = (msg, ok = true) => {
+        setToast({ msg, ok })
+        setTimeout(() => setToast(null), 3500)
+    }
+
+    const fetchReportes = useCallback(async () => {
+        setCargando(true)
+        try {
+            // Siempre se piden todos y se filtra en el cliente: son pocos y así
+            // cambiar de filtro es instantáneo, sin ir al servidor otra vez.
+            const res  = await fetch('/api/admin/reportes', { headers })
+            const data = await res.json()
+            setReportes(res.ok ? (data.reportes || []) : [])
+            if (!res.ok) showToast(data.message || 'Error al cargar reportes', false)
+        } catch {
+            showToast('Error de conexión', false)
+        } finally {
+            setCargando(false)
+        }
+    }, [adminToken])
+
+    useEffect(() => { fetchReportes() }, [fetchReportes])
+
+    const marcarResuelto = async (r) => {
+        const quien = r.nombre || r.email
+        if (!confirm(`¿Marcar como revisado el reporte de ${quien}?\n\nDesaparece de "Por revisar". Si era un pago, acuérdate de activarla desde Lista de espera.`)) return
+
+        setCerrando(r.id)
+        try {
+            const res  = await fetch(`/api/admin/reportes/${r.id}/resolver`, {
+                method: 'PATCH', headers, body: JSON.stringify({}),
+            })
+            const data = await res.json()
+            if (res.ok) {
+                setReportes(prev => prev.map(x =>
+                    x.id === r.id ? { ...x, estado: 'resuelto', resuelto_at: new Date().toISOString() } : x
+                ))
+                showToast('Reporte cerrado ✓')
+            } else {
+                showToast(data.message || 'No se pudo cerrar', false)
+            }
+        } catch {
+            showToast('Error de conexión', false)
+        } finally {
+            setCerrando(null)
+        }
+    }
+
+    const visibles = reportes.filter(r => {
+        if (filtro === 'abiertos') return r.estado === 'abierto'
+        if (filtro === 'pagos')    return r.motivo === 'reporte_pago'
+        return true
+    })
+
+    const abiertos    = reportes.filter(r => r.estado === 'abierto').length
+    const pagosAbiert = reportes.filter(r => r.estado === 'abierto' && r.motivo === 'reporte_pago').length
+
+    return (
+        <div style={{ position: 'relative' }}>
+            {toast && (
+                <div style={{
+                    position: 'fixed', bottom: 'var(--space-6)', right: 'var(--space-6)',
+                    padding: 'var(--space-3) var(--space-4)', zIndex: 100,
+                    background: 'var(--bg-surface)',
+                    border: `1px solid ${toast.ok ? 'var(--color-jade-500)' : 'var(--color-error)'}`,
+                    borderRadius: 'var(--radius-lg)',
+                    color: toast.ok ? 'var(--color-jade-500)' : 'var(--color-error)',
+                    fontSize: 'var(--text-sm)', fontWeight: 600, maxWidth: 420,
+                }}>
+                    {toast.msg}
+                </div>
+            )}
+
+            {/* Resumen + filtros */}
+            <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: 'var(--space-3)', flexWrap: 'wrap', marginBottom: 'var(--space-5)',
+            }}>
+                <div>
+                    <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>
+                        Reportes del bot
+                    </h2>
+                    <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 4 }}>
+                        {abiertos === 0
+                            ? 'Nada pendiente por revisar ✓'
+                            : `${abiertos} por revisar${pagosAbiert ? ` · ${pagosAbiert} son pagos` : ''}`}
+                    </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                    {FILTROS.map(f => (
+                        <button
+                            key={f.id}
+                            onClick={() => setFiltro(f.id)}
+                            style={{
+                                padding: '6px 12px',
+                                background: filtro === f.id ? 'rgba(13,115,119,0.12)' : 'transparent',
+                                border: `1px solid ${filtro === f.id ? 'var(--color-jade-500)' : 'var(--border-default)'}`,
+                                borderRadius: 'var(--radius-full)',
+                                color: filtro === f.id ? 'var(--color-jade-500)' : 'var(--text-muted)',
+                                fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+                                fontWeight: filtro === f.id ? 700 : 500, cursor: 'pointer',
+                            }}
+                        >
+                            {f.label}
+                        </button>
+                    ))}
+                    <button onClick={fetchReportes} style={btnIcon} title="Actualizar">
+                        <ArrowClockwise size={16} />
+                    </button>
+                </div>
+            </div>
+
+            {cargando && (
+                <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Cargando…</p>
+            )}
+
+            {!cargando && visibles.length === 0 && (
+                <div style={{
+                    padding: 'var(--space-8)', textAlign: 'center',
+                    border: '1px dashed var(--border-default)', borderRadius: 'var(--radius-lg)',
+                    color: 'var(--text-muted)', fontSize: 'var(--text-sm)',
+                }}>
+                    {filtro === 'abiertos'
+                        ? '✓ No hay reportes pendientes.'
+                        : 'No hay reportes que mostrar con este filtro.'}
+                </div>
+            )}
+
+            {/* Tarjetas — se leen mejor que una tabla porque el detalle es texto largo */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                {visibles.map(r => {
+                    const m         = MOTIVOS[r.motivo] || { label: r.motivo, color: 'var(--text-muted)', Icon: WarningCircle }
+                    const Icon      = m.Icon
+                    const resuelto  = r.estado === 'resuelto'
+                    const waLimpio  = String(r.whatsapp || '').replace(/\D/g, '').slice(-10)
+
+                    return (
+                        <div
+                            key={r.id}
+                            style={{
+                                padding: 'var(--space-4)',
+                                background: 'var(--bg-surface)',
+                                border: `1px solid ${resuelto ? 'var(--border-subtle)' : m.color + '55'}`,
+                                borderLeft: `3px solid ${resuelto ? 'var(--border-subtle)' : m.color}`,
+                                borderRadius: 'var(--radius-lg)',
+                                opacity: resuelto ? 0.55 : 1,
+                            }}
+                        >
+                            <div style={{
+                                display: 'flex', justifyContent: 'space-between',
+                                gap: 'var(--space-3)', flexWrap: 'wrap',
+                            }}>
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                    {/* Motivo */}
+                                    <div style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                                        padding: '3px 10px', marginBottom: 8,
+                                        background: m.color + '22',
+                                        border: `1px solid ${m.color}`,
+                                        borderRadius: 'var(--radius-full)',
+                                        color: m.color, fontSize: 'var(--text-xs)', fontWeight: 700,
+                                    }}>
+                                        <Icon size={13} weight="fill" />
+                                        {m.label}
+                                    </div>
+
+                                    <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
+                                        {r.nombre || 'Sin nombre'}
+                                    </div>
+
+                                    <div style={{
+                                        display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap',
+                                        color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 4,
+                                    }}>
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                                            <Envelope size={13} /> {r.email}
+                                        </span>
+                                        {waLimpio && (
+                                            <a
+                                                href={`https://wa.me/52${waLimpio}`}
+                                                target="_blank" rel="noreferrer"
+                                                style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                                                    color: '#25D366', textDecoration: 'none',
+                                                }}
+                                            >
+                                                <WhatsappLogo size={13} weight="fill" /> {waLimpio}
+                                            </a>
+                                        )}
+                                    </div>
+
+                                    {/* Detalle: los datos del pago o la descripción del problema */}
+                                    {r.detalle && (
+                                        <div style={{
+                                            marginTop: 10, padding: 'var(--space-3)',
+                                            background: 'var(--bg-base)',
+                                            border: '1px solid var(--border-subtle)',
+                                            borderRadius: 'var(--radius-md)',
+                                            fontSize: 'var(--text-sm)', lineHeight: 1.6,
+                                            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                                        }}>
+                                            {r.detalle}
+                                        </div>
+                                    )}
+
+                                    {r.motivo === 'reporte_pago' && !resuelto && (
+                                        <p style={{
+                                            marginTop: 8, marginBottom: 0,
+                                            color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontStyle: 'italic',
+                                        }}>
+                                            Si el pago cayó, actívala desde <strong>Lista de espera</strong> → confirmar pago.
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Tiempo + acción */}
+                                <div style={{
+                                    display: 'flex', flexDirection: 'column',
+                                    alignItems: 'flex-end', gap: 'var(--space-2)', flexShrink: 0,
+                                }}>
+                                    <span
+                                        title={fechaExacta(r.created_at)}
+                                        style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}
+                                    >
+                                        {haceCuanto(r.created_at)}
+                                    </span>
+
+                                    {resuelto ? (
+                                        <span style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                                            color: 'var(--color-jade-500)', fontSize: 'var(--text-xs)', fontWeight: 600,
+                                        }}>
+                                            <CheckCircle size={14} weight="fill" /> Revisado
+                                        </span>
+                                    ) : (
+                                        <button
+                                            onClick={() => marcarResuelto(r)}
+                                            disabled={cerrando === r.id}
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 6,
+                                                padding: '6px 12px',
+                                                background: 'rgba(13,115,119,0.12)',
+                                                border: '1px solid var(--color-jade-500)',
+                                                borderRadius: 'var(--radius-full)',
+                                                color: 'var(--color-jade-500)',
+                                                fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', fontWeight: 700,
+                                                cursor: cerrando === r.id ? 'wait' : 'pointer',
+                                                whiteSpace: 'nowrap',
+                                            }}
+                                        >
+                                            <CheckCircle size={14} />
+                                            {cerrando === r.id ? 'Cerrando…' : 'Ya lo revisé'}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+        </div>
+    )
+}
+
+const btnIcon = {
+    display: 'flex', alignItems: 'center', padding: 'var(--space-2)',
+    background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
+    borderRadius: 'var(--radius-lg)', color: 'var(--text-muted)', cursor: 'pointer',
+}

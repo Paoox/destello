@@ -1,22 +1,24 @@
 /**
  * Destello Admin — PageAdmin
  * Dashboard de administración con tabs:
- *   ✦ Accesos | Talleres | Lista de espera
+ *   ✦ Accesos | Talleres | Lista de espera | Reportes
  * Protegida por AdminAuthOverlay hasta que el admin se autentique.
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate }                       from 'react-router-dom'
-import { ArrowClockwise, SignOut, Sparkle, BookOpen, ClockCounterClockwise } from '@phosphor-icons/react'
+import { ArrowClockwise, SignOut, Sparkle, BookOpen, ClockCounterClockwise, Tray } from '@phosphor-icons/react'
 import { useAdminSession }                   from '@hooks/useAdminSession.js'
 import AdminAuthOverlay                      from '@components/admin/AdminAuthOverlay.jsx'
 import AccesosPanel                          from '@components/admin/AccesosPanel.jsx'
 import TalleresAdmin                         from '@components/admin/TalleresPanel.jsx'
 import ListaEsperaAdmin                      from '@components/admin/ListaEsperaAdmin.jsx'
+import ReportesPanel                         from '@components/admin/ReportesPanel.jsx'
 
 const TABS = [
     { id: 'accesos',      label: 'Accesos',         Icon: Sparkle },
     { id: 'talleres',     label: 'Talleres',         Icon: BookOpen },
     { id: 'lista-espera', label: 'Lista de espera',  Icon: ClockCounterClockwise },
+    { id: 'reportes',     label: 'Reportes',        Icon: Tray },
 ]
 
 export default function PageAdmin() {
@@ -164,6 +166,11 @@ export default function PageAdmin() {
                 {/* Tab: Lista de espera */}
                 {activeTab === 'lista-espera' && (
                     <ListaEsperaAdmin adminToken={adminToken} />
+                )}
+
+                {/* Tab: Reportes del bot (pagos por cotejar y problemas de acceso) */}
+                {activeTab === 'reportes' && isAuthenticated && (
+                    <ReportesPanel adminToken={adminToken} />
                 )}
             </div>
         </>

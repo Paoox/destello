@@ -28,6 +28,7 @@ import { query }             from '../db/db.js'
 import { sendConfirmacionTaller, sendConfirmacionLugar, sendResplandor, sendBienvenida } from '../services/mailService.js'
 import { sendWhatsapp }      from '../services/botService.js'
 import { cuentaConWhatsapp, normalizarWhatsapp } from '../services/usuarioService.js'
+import { listReportes, resolverReporte } from '../services/reporteService.js'
 import crypto                from 'node:crypto'
 
 const router = Router()
@@ -643,6 +644,32 @@ router.post('/send-wa', async (req, res, next) => {
         }
 
         res.json({ status: 'ok', message: `Mensaje enviado a ${numeroLimpio}` })
+    } catch (err) { next(err) }
+})
+
+/**
+ * GET /admin/reportes?abiertos=1
+ * Bandeja de reportes: pagos que hay que cotejar y problemas de acceso.
+ *
+ * Sin esto los reportes solo llegaban por WhatsApp, así que un mensaje perdido
+ * entre conversaciones era un pago perdido. Aquí quedan revisables.
+ */
+router.get('/reportes', async (req, res, next) => {
+    try {
+        const reportes = await listReportes({ soloAbiertos: req.query.abiertos === '1' })
+        res.json({ status: 'ok', reportes })
+    } catch (err) { next(err) }
+})
+
+/**
+ * PATCH /admin/reportes/:id/resolver
+ * Marca un reporte como atendido. `nota` guarda qué se hizo (opcional).
+ */
+router.patch('/reportes/:id/resolver', async (req, res, next) => {
+    try {
+        const reporte = await resolverReporte(req.params.id, req.body?.nota || null)
+        if (!reporte) throw new AppError('Reporte no encontrado', 404, 'NOT_FOUND')
+        res.json({ status: 'ok', reporte })
     } catch (err) { next(err) }
 })
 
