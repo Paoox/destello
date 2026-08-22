@@ -2,7 +2,7 @@
  * Destello Admin — ListaEsperaAdmin
  */
 import { useState, useEffect, useCallback } from 'react'
-import { WhatsappLogo, Envelope, ArrowClockwise, CheckCircle, WarningCircle, SealCheck, PaperPlaneTilt } from '@phosphor-icons/react'
+import { WhatsappLogo, Envelope, ArrowClockwise, CheckCircle, WarningCircle, SealCheck, PaperPlaneTilt, BellRinging, LockKeyOpen } from '@phosphor-icons/react'
 import { fmtFechaCompleta } from '@utils/fecha.js'
 
 const ESTADOS_OPTS = [
@@ -14,6 +14,34 @@ const ESTADOS_OPTS = [
 
 const SPEI_CLABE = '036180500687558754'
 const CARD_NUM   = '4658 2850 1724 7424'
+
+/** Plazo para reportar el pago antes de que el lugar se libere. */
+const HORAS_PARA_PAGAR = 48
+
+/**
+ * Estado del reloj de pago de un registro.
+ *
+ * Solo aplica a quien tiene el lugar apartado (`cupo_confirmado`) pero aún no
+ * paga. `apartado_at` viene de la fecha de su chispa — ver GET /admin/lista-espera.
+ *
+ * @returns {{ clave: 'na'|'en_plazo'|'por_vencer'|'vencido', horas: number|null }}
+ */
+function relojPago(r) {
+    if (r.estado !== 'cupo_confirmado' || !r.apartado_at) return { clave: 'na', horas: null }
+
+    const transcurridas = (Date.now() - new Date(r.apartado_at).getTime()) / 3_600_000
+    const restantes     = HORAS_PARA_PAGAR - transcurridas
+
+    if (restantes <= 0) return { clave: 'vencido',    horas: Math.round(-restantes) }
+    if (restantes <= 12) return { clave: 'por_vencer', horas: Math.round(restantes) }
+    return { clave: 'en_plazo', horas: Math.round(restantes) }
+}
+
+const RELOJ_CFG = {
+    en_plazo:   { color: 'var(--text-muted)',        etiqueta: h => `${h} h para pagar` },
+    por_vencer: { color: 'var(--color-amber-500)',   etiqueta: h => `⏳ vence en ${h} h` },
+    vencido:    { color: 'var(--color-error)',       etiqueta: h => `⚠️ venció hace ${h} h` },
+}
 
 function EstadoSelect({ value, onChange, disabled }) {
     const opt = ESTADOS_OPTS.find(o => o.value === value)
@@ -72,8 +100,36 @@ function buildWaMensaje(r) {
         '',
         'Una vez realizado tu pago, envíanos tu *comprobante por WhatsApp* a este mismo número. ✦',
         '',
+        `⏳ Tienes *${HORAS_PARA_PAGAR} horas* para reportar tu pago. Pasado ese tiempo el lugar se libera para alguien más.`,
+        '',
         '¿Tienes dudas? Con gusto te atendemos. 😊',
     ].filter(l => l !== null).join('\n')
+}
+
+/**
+ * Recordatorio para quien ya se pasó de las 48 h sin reportar pago.
+ *
+ * Deliberadamente amable pero claro: la persona pudo haber pagado y olvidado
+ * avisarnos, así que primero se le da esa salida antes de hablar de liberar
+ * el lugar.
+ */
+function buildWaRecordatorio(r) {
+    const nombre = r.nombre?.split(' ')[0] || 'alumno/a'
+    const taller = r.taller_nombre || 'el taller'
+
+    return [
+        `¡Hola ${nombre}! ✦`,
+        '',
+        `Te escribo por tu lugar en *${taller}*.`,
+        '',
+        'Todavía no nos llega tu comprobante de pago y el plazo ya se cumplió. ' +
+        'Si ya pagaste, mándame la foto por aquí y lo confirmo enseguida. 📸',
+        '',
+        'Si algo se te complicó, dime y vemos cómo te ayudo. ' +
+        'Si no puedo confirmarlo pronto tendría que liberar tu lugar para alguien de la lista. 🙏',
+        '',
+        '¿Me confirmas?',
+    ].join('\n')
 }
 
 export default function ListaEsperaAdmin({ adminToken }) {
@@ -83,6 +139,7 @@ export default function ListaEsperaAdmin({ adminToken }) {
     const [enviandoMail, setEnviandoMail] = useState(null)
     const [enviandoWa,   setEnviandoWa]   = useState(null)
     const [confirmandoPago, setConfirmandoPago] = useState(null)
+    const [liberando,    setLiberando]    = useState(null)
     const [toast,        setToast]        = useState(null)
     const [filterEstado, setFilterEstado] = useState('all')
 
@@ -139,29 +196,69 @@ export default function ListaEsperaAdmin({ adminToken }) {
         finally { setEnviandoMail(null) }
     }
 
-    const enviarWa = async (r) => {
+    /**
+     * Envía un mensaje por el bot.
+     * @param {'invitacion'|'recordatorio'} tipo
+     */
+    const enviarWa = async (r, tipo = 'invitacion') => {
         const numero = String(r.whatsapp || '').replace(/\D/g, '').slice(-10)
         if (!numero || numero.length !== 10) {
             showToast('Número de WhatsApp inválido', false)
             return
         }
-        if (!confirm(`¿Enviar mensaje de confirmación por WhatsApp a ${r.nombre || r.email}?\n\nSe enviará desde el número del bot Faro.`)) return
+
+        const esRecordatorio = tipo === 'recordatorio'
+        const pregunta = esRecordatorio
+            ? `¿Mandar recordatorio de pago a ${r.nombre || r.email}?\n\nSe le avisa que el plazo ya venció y que su lugar podría liberarse.`
+            : `¿Enviar mensaje de confirmación por WhatsApp a ${r.nombre || r.email}?\n\nSe enviará desde el número del bot Faro.`
+        if (!confirm(pregunta)) return
 
         setEnviandoWa(r.id)
         try {
-            const mensaje = buildWaMensaje(r)
+            const mensaje = esRecordatorio ? buildWaRecordatorio(r) : buildWaMensaje(r)
             const res     = await fetch('/api/admin/send-wa', {
                 method: 'POST', headers,
                 body:   JSON.stringify({ numero, mensaje }),
             })
             const data = await res.json()
             if (res.ok) {
-                showToast(`Mensaje WA enviado a ${r.nombre || numero} ✓`)
+                showToast(`${esRecordatorio ? 'Recordatorio' : 'Mensaje'} WA enviado a ${r.nombre || numero} ✓`)
             } else {
                 showToast(data.message || 'Error al enviar WA', false)
             }
         } catch { showToast('Error de conexión', false) }
         finally { setEnviandoWa(null) }
+    }
+
+    /**
+     * Libera el lugar de quien no pagó.
+     *
+     * Además de marcar 'rechazado', el backend REVOCA su chispa: si no, la
+     * persona conservaría la llave del taller que nunca pagó.
+     */
+    const liberarLugar = async (r) => {
+        const quien = r.nombre || r.email
+        if (!confirm(
+            `¿Liberar el lugar de ${quien}?\n\n` +
+            `· Su registro pasa a "rechazado"\n` +
+            `· Se revoca su chispa (pierde el acceso al taller)\n` +
+            `· El cupo queda libre para alguien más\n\n` +
+            `Si después paga, tendrás que volver a apartarle el lugar.`
+        )) return
+
+        setLiberando(r.id)
+        try {
+            const res  = await fetch(`/api/admin/lista-espera/${r.id}/liberar`, { method: 'POST', headers })
+            const data = await res.json()
+            if (res.ok) {
+                const n = data.revocadas?.length ?? 0
+                showToast(`Lugar liberado${n ? ` · ${n} chispa${n > 1 ? 's' : ''} revocada${n > 1 ? 's' : ''}` : ''} ✓`)
+                setLista(prev => prev.map(x => x.id === r.id ? { ...x, estado: 'rechazado' } : x))
+            } else {
+                showToast(data.message || 'No se pudo liberar', false)
+            }
+        } catch { showToast('Error de conexión', false) }
+        finally { setLiberando(null) }
     }
 
     const confirmarPago = async (r) => {
@@ -194,7 +291,17 @@ export default function ListaEsperaAdmin({ adminToken }) {
         finally { setConfirmandoPago(null) }
     }
 
-    const filtered = lista.filter(r => filterEstado === 'all' || r.estado === filterEstado)
+    // `por_cobrar` no es un estado de la BD: es el reloj de 48 h ya vencido o
+    // por vencer. Es la vista de trabajo — a quién hay que recordarle hoy.
+    const filtered = lista.filter(r => {
+        if (filterEstado === 'all') return true
+        if (filterEstado === 'por_cobrar') {
+            return ['vencido', 'por_vencer'].includes(relojPago(r).clave)
+        }
+        return r.estado === filterEstado
+    })
+
+    const porCobrar = lista.filter(r => ['vencido', 'por_vencer'].includes(relojPago(r).clave)).length
 
     return (
         <div style={{ position: 'relative' }}>
@@ -231,18 +338,29 @@ export default function ListaEsperaAdmin({ adminToken }) {
                 }}>
                     <h3 style={{ fontWeight: 700, margin: 0 }}>⏳ Lista de espera ({filtered.length})</h3>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
-                        {['all', 'pendiente', 'cupo_confirmado', 'pagado', 'rechazado'].map(f => (
-                            <button key={f} onClick={() => setFilterEstado(f)} style={{
-                                padding: '4px 12px', borderRadius: 999, border: '1px solid',
-                                borderColor: filterEstado === f ? 'var(--color-jade-500)' : 'var(--border-default)',
-                                background: filterEstado === f ? 'var(--color-jade-500)22' : 'transparent',
-                                color: filterEstado === f ? 'var(--color-jade-500)' : 'var(--text-muted)',
-                                fontSize: 'var(--text-xs)', fontWeight: filterEstado === f ? 600 : 400,
-                                cursor: 'pointer', fontFamily: 'var(--font-sans)',
-                            }}>
-                                {{ all: 'Todos', pendiente: 'Pendientes', cupo_confirmado: 'Confirmados', pagado: 'Pagados', rechazado: 'Rechazados' }[f]}
-                            </button>
-                        ))}
+                        {['all', 'pendiente', 'cupo_confirmado', 'por_cobrar', 'pagado', 'rechazado'].map(f => {
+                            const activo   = filterEstado === f
+                            // "Por cobrar" se pinta en ámbar aunque no esté activo:
+                            // es la única pestaña que representa trabajo urgente.
+                            const urgente  = f === 'por_cobrar' && porCobrar > 0
+                            const acento   = urgente ? 'var(--color-amber-500)' : 'var(--color-jade-500)'
+                            return (
+                                <button key={f} onClick={() => setFilterEstado(f)} style={{
+                                    padding: '4px 12px', borderRadius: 999, border: '1px solid',
+                                    borderColor: activo ? acento : (urgente ? acento : 'var(--border-default)'),
+                                    background: activo ? `${acento}22` : 'transparent',
+                                    color: activo || urgente ? acento : 'var(--text-muted)',
+                                    fontSize: 'var(--text-xs)', fontWeight: activo || urgente ? 600 : 400,
+                                    cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                                }}>
+                                    {{
+                                        all: 'Todos', pendiente: 'Pendientes', cupo_confirmado: 'Confirmados',
+                                        por_cobrar: `Por cobrar${porCobrar ? ` (${porCobrar})` : ''}`,
+                                        pagado: 'Pagados', rechazado: 'Rechazados',
+                                    }[f]}
+                                </button>
+                            )
+                        })}
                         <button onClick={fetchLista} disabled={loading} style={{
                             display: 'flex', alignItems: 'center', padding: 'var(--space-2)',
                             background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
@@ -300,6 +418,23 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                         onChange={val => updateEstado(r.id, val)}
                                         disabled={updating === r.id}
                                     />
+                                    {/* Reloj de 48 h. Solo se ve mientras el pago está en juego:
+                                        una vez pagado deja de importar cuánto tardó. */}
+                                    {(() => {
+                                        const reloj = relojPago(r)
+                                        if (reloj.clave === 'na') return null
+                                        const cfg = RELOJ_CFG[reloj.clave]
+                                        return (
+                                            <div style={{
+                                                marginTop: 5, color: cfg.color,
+                                                fontSize: 'var(--text-xs)',
+                                                fontWeight: reloj.clave === 'en_plazo' ? 400 : 700,
+                                                whiteSpace: 'nowrap',
+                                            }}>
+                                                {cfg.etiqueta(reloj.horas)}
+                                            </div>
+                                        )
+                                    })()}
                                 </td>
                                 <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
                                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -348,6 +483,53 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                                     fontFamily: 'var(--font-sans)',
                                                 }}>
                                                 <WhatsappLogo size={14} weight="fill" />
+                                            </button>
+                                        )}
+                                        {/* Recordar pago — solo aparece cuando el reloj de 48 h
+                                            ya venció o está por vencer. No tiene sentido ofrecerlo
+                                            para alguien que apenas apartó su lugar hace una hora. */}
+                                        {r.whatsapp && ['vencido', 'por_vencer'].includes(relojPago(r).clave) && (
+                                            <button
+                                                onClick={() => enviarWa(r, 'recordatorio')}
+                                                disabled={enviandoWa === r.id}
+                                                title="Recordarle que su lugar está por liberarse"
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: 4,
+                                                    padding: '4px 8px', height: 28,
+                                                    background: 'rgba(217,119,6,0.12)',
+                                                    border: '1px solid var(--color-amber-500)',
+                                                    borderRadius: 'var(--radius-md)',
+                                                    color: 'var(--color-amber-500)',
+                                                    cursor: enviandoWa === r.id ? 'wait' : 'pointer',
+                                                    fontFamily: 'var(--font-sans)',
+                                                    fontSize: 'var(--text-xs)', fontWeight: 600,
+                                                    whiteSpace: 'nowrap',
+                                                }}>
+                                                <BellRinging size={13} weight="fill" /> Recordar
+                                            </button>
+                                        )}
+                                        {/* Liberar lugar — solo cuando el plazo YA venció, nunca
+                                            en "por vencer": mientras quede tiempo, la persona
+                                            todavía está en su derecho de pagar. */}
+                                        {relojPago(r).clave === 'vencido' && (
+                                            <button
+                                                onClick={() => liberarLugar(r)}
+                                                disabled={liberando === r.id}
+                                                title="Liberar el cupo y revocar su chispa"
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: 4,
+                                                    padding: '4px 8px', height: 28,
+                                                    background: 'rgba(239,68,68,0.10)',
+                                                    border: '1px solid var(--color-error)',
+                                                    borderRadius: 'var(--radius-md)',
+                                                    color: 'var(--color-error)',
+                                                    cursor: liberando === r.id ? 'wait' : 'pointer',
+                                                    fontFamily: 'var(--font-sans)',
+                                                    fontSize: 'var(--text-xs)', fontWeight: 600,
+                                                    whiteSpace: 'nowrap',
+                                                }}>
+                                                <LockKeyOpen size={13} weight="fill" />
+                                                {liberando === r.id ? 'Liberando…' : 'Liberar'}
                                             </button>
                                         )}
                                         {/* Correo — envía via Resend con template completo */}

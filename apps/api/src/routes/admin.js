@@ -99,9 +99,22 @@ router.get('/lista-espera', async (_req, res, next) => {
                         SELECT 1 FROM resplandores r
                         WHERE LOWER(r.email) = LOWER(le.email)
                           AND r.used = FALSE AND r.revoked = FALSE
-                    ) AS tiene_resplandor
+                    ) AS tiene_resplandor,
+                    -- Cuándo se le apartó el lugar. La tabla no lo guarda, pero
+                    -- la chispa ES la reserva: su fecha de creación es el momento
+                    -- exacto en que se apartó. De aquí sale el reloj de 48 h.
+                    ch.created_at AS apartado_at
              FROM lista_espera le
                       LEFT JOIN talleres t ON t.id = le.taller_id
+                      LEFT JOIN LATERAL (
+                          SELECT c.created_at
+                          FROM chispas c
+                          WHERE LOWER(c.usuario_email) = LOWER(le.email)
+                            AND c.taller_id = le.taller_id
+                            AND c.revoked = FALSE
+                          ORDER BY c.created_at DESC
+                          LIMIT 1
+                      ) ch ON TRUE
              ORDER BY le.created_at DESC`
         )
         res.json({ status: 'ok', lista: rows })
@@ -405,10 +418,14 @@ router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
         if (wa) {
             try {
                 const primerNombre = (usuario.nombre ?? reg.nombre ?? '').split(' ')[0]
+                // NO se habla de "crear cuenta": eso va por correo y es un flujo
+                // aparte. Aquí solo se le dice que su lugar quedó confirmado y
+                // por dónde entra. Mezclar las dos cosas confunde a quien ya
+                // tiene cuenta desde un taller anterior.
                 const msg =
                     `✦ *Destello*\n\n` +
-                    `¡Hola ${primerNombre}! Tu pago quedó *confirmado*. 🎉\n\n` +
-                    `Ya puedes crear tu cuenta y entrar aquí:\n` +
+                    `¡Hola ${primerNombre}! Tu pago quedó *confirmado* y tu lugar está apartado. 🎉\n\n` +
+                    `Ya puedes entrar aquí:\n` +
                     `https://destello.courses/login\n\n` +
                     `Entra con Google o con tu número. ¡Nos vemos dentro! 🌟`
                 await sendWhatsapp(wa, msg)
@@ -644,6 +661,48 @@ router.post('/send-wa', async (req, res, next) => {
         }
 
         res.json({ status: 'ok', message: `Mensaje enviado a ${numeroLimpio}` })
+    } catch (err) { next(err) }
+})
+
+/**
+ * POST /admin/lista-espera/:id/liberar
+ *
+ * Libera el lugar de quien no pagó dentro del plazo.
+ *
+ * ⚠️ Hace DOS cosas, y la segunda es la que importa: además de marcar el
+ * registro como 'rechazado', REVOCA la chispa. Si solo se cambiara el estado, la
+ * persona conservaría su llave y podría seguir entrando al taller que nunca pagó
+ * — el lugar quedaría "liberado" solo en la tabla, no en la realidad.
+ *
+ * Es manual a propósito: alguien puede pagar el domingo y avisar el lunes, y no
+ * queremos que un cron le quite el lugar de madrugada.
+ */
+router.post('/lista-espera/:id/liberar', async (req, res, next) => {
+    try {
+        const { rows } = await query(
+            `UPDATE lista_espera SET estado = 'rechazado' WHERE id = $1 RETURNING *`,
+            [req.params.id]
+        )
+        if (!rows.length) throw new AppError('Registro no encontrado', 404, 'NOT_FOUND')
+        const reg = rows[0]
+
+        const { rows: revocadas } = await query(
+            `UPDATE chispas
+             SET revoked = TRUE
+             WHERE LOWER(usuario_email) = LOWER($1)
+               AND taller_id = $2
+               AND revoked = FALSE
+             RETURNING code`,
+            [reg.email, reg.taller_id]
+        )
+
+        console.log(`[liberar] ${reg.email} · ${reg.taller_id} · ${revocadas.length} chispa(s) revocada(s)`)
+
+        res.json({
+            status:    'ok',
+            registro:  reg,
+            revocadas: revocadas.map(c => c.code),
+        })
     } catch (err) { next(err) }
 })
 
