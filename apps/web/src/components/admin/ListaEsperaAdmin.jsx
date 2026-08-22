@@ -43,6 +43,46 @@ const RELOJ_CFG = {
     vencido:    { color: 'var(--color-error)',       etiqueta: h => `⚠️ venció hace ${h} h` },
 }
 
+/**
+ * Estado de la VIGENCIA del acceso — el reloj de las cortesías.
+ *
+ * Una demo no tiene reloj de pago: no hay nada que cobrar. Mostrarle "31 h para
+ * pagar" sería mentir. Pero sí tiene un reloj que importa: cuándo se le acaba
+ * el acceso. Misma fila, misma lista, pero el reloj cuenta lo que esa fila de
+ * verdad está esperando.
+ *
+ * @returns {{ clave: 'na'|'vigente'|'por_expirar'|'expirada', dias: number|null }}
+ */
+function relojVigencia(r) {
+    if (!r.chispa_expira_at) return { clave: 'na', dias: null }
+    const dias = (new Date(r.chispa_expira_at).getTime() - Date.now()) / 86_400_000
+    if (dias <= 0) return { clave: 'expirada',    dias: Math.round(-dias) }
+    if (dias <= 5) return { clave: 'por_expirar', dias: Math.ceil(dias) }
+    return { clave: 'vigente', dias: Math.ceil(dias) }
+}
+
+const VIGENCIA_CFG = {
+    vigente:     { color: 'var(--text-muted)',      etiqueta: d => `${d} días de acceso` },
+    por_expirar: { color: 'var(--color-amber-500)', etiqueta: d => `⏳ expira en ${d} d` },
+    expirada:    { color: 'var(--color-error)',     etiqueta: d => `⚠️ expiró hace ${d} d` },
+}
+
+/** Etiqueta 🎁 demo — igual que en AccesosPanel, para que se lea como lo mismo. */
+function DemoTag() {
+    return (
+        <span
+            title="Cortesía — ocupa un lugar del cupo igual que un pago"
+            style={{
+                display: 'inline-block', padding: '1px 7px', borderRadius: 999,
+                background: '#D9770622', color: '#D97706', border: '1px solid #D97706',
+                fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', marginLeft: 6,
+            }}
+        >
+            🎁 demo
+        </span>
+    )
+}
+
 function EstadoSelect({ value, onChange, disabled }) {
     const opt = ESTADOS_OPTS.find(o => o.value === value)
     return (
@@ -293,15 +333,21 @@ export default function ListaEsperaAdmin({ adminToken }) {
 
     // `por_cobrar` no es un estado de la BD: es el reloj de 48 h ya vencido o
     // por vencer. Es la vista de trabajo — a quién hay que recordarle hoy.
+    // `demo` tampoco es un estado de la BD. Las cortesías viven en esta misma
+    // lista a propósito — ocupan un lugar igual que un pago, así que tienen que
+    // estar donde se cuentan los lugares. El filtro solo sirve para verlas
+    // aisladas cuando hace falta, sin partir el proceso en dos.
     const filtered = lista.filter(r => {
         if (filterEstado === 'all') return true
         if (filterEstado === 'por_cobrar') {
             return ['vencido', 'por_vencer'].includes(relojPago(r).clave)
         }
+        if (filterEstado === 'demo') return !!r.is_demo
         return r.estado === filterEstado
     })
 
     const porCobrar = lista.filter(r => ['vencido', 'por_vencer'].includes(relojPago(r).clave)).length
+    const demos     = lista.filter(r => r.is_demo).length
 
     return (
         <div style={{ position: 'relative' }}>
@@ -338,12 +384,14 @@ export default function ListaEsperaAdmin({ adminToken }) {
                 }}>
                     <h3 style={{ fontWeight: 700, margin: 0 }}>⏳ Lista de espera ({filtered.length})</h3>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
-                        {['all', 'pendiente', 'cupo_confirmado', 'por_cobrar', 'pagado', 'rechazado'].map(f => {
+                        {['all', 'pendiente', 'cupo_confirmado', 'por_cobrar', 'pagado', 'demo', 'rechazado'].map(f => {
                             const activo   = filterEstado === f
                             // "Por cobrar" se pinta en ámbar aunque no esté activo:
                             // es la única pestaña que representa trabajo urgente.
                             const urgente  = f === 'por_cobrar' && porCobrar > 0
-                            const acento   = urgente ? 'var(--color-amber-500)' : 'var(--color-jade-500)'
+                            const acento   = f === 'demo'
+                                ? '#D97706'                       // mismo naranja que la etiqueta 🎁 demo
+                                : urgente ? 'var(--color-amber-500)' : 'var(--color-jade-500)'
                             return (
                                 <button key={f} onClick={() => setFilterEstado(f)} style={{
                                     padding: '4px 12px', borderRadius: 999, border: '1px solid',
@@ -356,7 +404,9 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                     {{
                                         all: 'Todos', pendiente: 'Pendientes', cupo_confirmado: 'Confirmados',
                                         por_cobrar: `Por cobrar${porCobrar ? ` (${porCobrar})` : ''}`,
-                                        pagado: 'Pagados', rechazado: 'Rechazados',
+                                        pagado: 'Pagados',
+                                        demo: `🎁 Demo${demos ? ` (${demos})` : ''}`,
+                                        rechazado: 'Rechazados',
                                     }[f]}
                                 </button>
                             )
@@ -400,6 +450,7 @@ export default function ListaEsperaAdmin({ adminToken }) {
                             <tr key={r.id} style={{ borderTop: '1px solid var(--border-subtle)' }}>
                                 <td style={{ padding: 'var(--space-3) var(--space-4)', fontWeight: 500 }}>
                                     {r.nombre || <span style={{ color: 'var(--text-disabled)', fontStyle: 'italic' }}>—</span>}
+                                    {r.is_demo && <DemoTag />}
                                 </td>
                                 <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
                                     {r.email}
@@ -418,20 +469,38 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                         onChange={val => updateEstado(r.id, val)}
                                         disabled={updating === r.id}
                                     />
-                                    {/* Reloj de 48 h. Solo se ve mientras el pago está en juego:
-                                        una vez pagado deja de importar cuánto tardó. */}
+                                    {/* El reloj muestra lo que ESA fila está esperando:
+                                          · pendiente de pago → las 48 h para pagar
+                                          · cortesía o ya pagado → cuánto le queda de acceso
+                                        Un "31 h para pagar" en una demo sería mentira: no hay
+                                        nada que cobrar. Pero cuándo se le acaba sí importa. */}
                                     {(() => {
                                         const reloj = relojPago(r)
-                                        if (reloj.clave === 'na') return null
-                                        const cfg = RELOJ_CFG[reloj.clave]
+                                        if (reloj.clave !== 'na') {
+                                            const cfg = RELOJ_CFG[reloj.clave]
+                                            return (
+                                                <div style={{
+                                                    marginTop: 5, color: cfg.color,
+                                                    fontSize: 'var(--text-xs)',
+                                                    fontWeight: reloj.clave === 'en_plazo' ? 400 : 700,
+                                                    whiteSpace: 'nowrap',
+                                                }}>
+                                                    {cfg.etiqueta(reloj.horas)}
+                                                </div>
+                                            )
+                                        }
+
+                                        const vig = relojVigencia(r)
+                                        if (vig.clave === 'na') return null
+                                        const vcfg = VIGENCIA_CFG[vig.clave]
                                         return (
                                             <div style={{
-                                                marginTop: 5, color: cfg.color,
+                                                marginTop: 5, color: vcfg.color,
                                                 fontSize: 'var(--text-xs)',
-                                                fontWeight: reloj.clave === 'en_plazo' ? 400 : 700,
+                                                fontWeight: vig.clave === 'vigente' ? 400 : 700,
                                                 whiteSpace: 'nowrap',
                                             }}>
-                                                {cfg.etiqueta(reloj.horas)}
+                                                {vcfg.etiqueta(vig.dias)}
                                             </div>
                                         )
                                     })()}

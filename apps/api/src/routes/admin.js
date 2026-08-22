@@ -29,6 +29,7 @@ import { sendConfirmacionTaller, sendConfirmacionLugar, sendResplandor, sendBien
 import { sendWhatsapp }      from '../services/botService.js'
 import { cuentaConWhatsapp, normalizarWhatsapp } from '../services/usuarioService.js'
 import { listReportes, resolverReporte } from '../services/reporteService.js'
+import { activarAlumno }    from '../services/inscripcionService.js'
 import crypto                from 'node:crypto'
 
 const router = Router()
@@ -103,11 +104,17 @@ router.get('/lista-espera', async (_req, res, next) => {
                     -- Cuándo se le apartó el lugar. La tabla no lo guarda, pero
                     -- la chispa ES la reserva: su fecha de creación es el momento
                     -- exacto en que se apartó. De aquí sale el reloj de 48 h.
-                    ch.created_at AS apartado_at
+                    ch.created_at AS apartado_at,
+                    -- Una cortesía ocupa lugar igual que un pago, así que vive
+                    -- en esta misma lista. El panel la distingue con la etiqueta
+                    -- 🎁 demo y le muestra el reloj de VIGENCIA en vez del de pago
+                    -- (no hay nada que cobrar, pero sí cuándo se le acaba).
+                    COALESCE(ch.is_demo, FALSE) AS is_demo,
+                    ch.expires_at AS chispa_expira_at
              FROM lista_espera le
                       LEFT JOIN talleres t ON t.id = le.taller_id
                       LEFT JOIN LATERAL (
-                          SELECT c.created_at
+                          SELECT c.created_at, c.is_demo, c.expires_at
                           FROM chispas c
                           WHERE LOWER(c.usuario_email) = LOWER(le.email)
                             AND c.taller_id = le.taller_id
@@ -130,52 +137,45 @@ router.get('/lista-espera', async (_req, res, next) => {
  * 'espera'`, y el login por número la rechazaría (phoneAuthController exige
  * 'activo'). Este era un desfase real: el selector y el botón "confirmar pago"
  * hacían cosas distintas.
+ *
+ * ── Cómo se resolvió (22 ago 2026) ──────────────────────────────────────────
+ * Ya no se parcha aquí: cuando el estado nuevo es 'pagado' se delega en
+ * `activarAlumno()`, EL MISMO servicio que usa el botón "Confirmar pago". Un
+ * solo lugar decide qué significa que un alumno esté adentro, y todo pasa en
+ * una transacción.
+ *
+ * Diferencia deliberada con el botón: aquí NO se manda correo ni WhatsApp.
+ * Mover un selector no debería dispararle mensajes a nadie. Los datos quedan
+ * idénticos; avisar es una acción aparte y explícita. Por eso la respuesta
+ * incluye `notificado: false`, para que el panel lo diga en pantalla.
  */
 router.patch('/lista-espera/:id', async (req, res, next) => {
     try {
         const { estado } = req.body
         if (!estado) throw new AppError('estado es requerido', 400, 'BAD_REQUEST')
+
+        if (estado === 'pagado') {
+            const r = await activarAlumno(req.params.id, {
+                actor: 'admin:selector',
+                pago:  { nota: 'Marcado como pagado desde el selector del panel' },
+            })
+            return res.json({
+                status:          'ok',
+                registro:        r.registro,
+                usuarioActivado: true,
+                chispa:          r.chispaCode,
+                notificado:      false,
+                ...(r.avisoWa && { avisoWa: r.avisoWa }),
+            })
+        }
+
         const { rows } = await query(
             `UPDATE lista_espera SET estado = $2 WHERE id = $1 RETURNING *`,
             [req.params.id, estado]
         )
         if (!rows.length) throw new AppError('Registro no encontrado', 404, 'NOT_FOUND')
 
-        const registro = rows[0]
-        let usuarioActivado = false
-        let avisoWa = null
-
-        if (estado === 'pagado' && registro.email) {
-            // El número solo se copia a la cuenta si está libre. Si ya es de otra
-            // persona NO se pisa (rompería el login por número); se activa la
-            // cuenta igual y se devuelve un aviso para que el panel lo muestre.
-            const waReg = normalizarWhatsapp(registro.whatsapp)
-            let waUsable = waReg
-            if (waReg) {
-                const { rows: propia } = await query(
-                    `SELECT id FROM usuarios WHERE LOWER(email) = LOWER($1)`,
-                    [registro.email],
-                )
-                const dueño = await cuentaConWhatsapp(waReg, propia[0]?.id ?? null)
-                if (dueño) {
-                    waUsable = null
-                    avisoWa = `El número ${waReg} ya está ligado a la cuenta ${dueño.email}, así que no se copió a esta.`
-                }
-            }
-
-            const { rows: u } = await query(
-                `UPDATE usuarios
-                 SET estado   = 'activo',
-                     whatsapp = COALESCE(whatsapp, $2),
-                     nombre   = COALESCE(nombre,   $3)
-                 WHERE LOWER(email) = LOWER($1)
-                 RETURNING id`,
-                [registro.email, waUsable, registro.nombre || null]
-            )
-            usuarioActivado = u.length > 0
-        }
-
-        res.json({ status: 'ok', registro, usuarioActivado, ...(avisoWa && { avisoWa }) })
+        res.json({ status: 'ok', registro: rows[0], usuarioActivado: false })
     } catch (err) { next(err) }
 })
 
@@ -311,124 +311,56 @@ router.post('/lista-espera/:id/confirmar', async (req, res, next) => {
 
 /**
  * POST /admin/lista-espera/:id/confirmar-pago
- * Flujo nuevo (pago confirmado). En una sola acción:
- *   1. Crea/activa la cuenta en `usuarios` (dedup por correo O whatsapp).
- *   2. Genera la Chispa del taller (tras bambalinas) ligada al usuario.
- *   3. Cambia lista_espera a 'pagado'.
- *   4. Envía bienvenida por correo (botón + QR a /login) y por WhatsApp (URL).
- * El usuario no captura códigos: al entrar por Google/número el taller ya aparece.
+ *
+ * Confirma el pago de un alumno. Delega TODO el trabajo de datos en
+ * `activarAlumno()` — el mismo servicio que usa el selector del panel — y aquí
+ * solo se encarga de avisarle a la persona.
+ *
+ * Antes esta ruta hacía las seis operaciones a mano y sin transacción; si
+ * fallaba a la mitad quedaba el desfase "pagado sin activar" que el bot detecta.
+ *
+ * Body (todo opcional): { monto, metodo, banco, titular, folio, nota }
+ *   · monto ausente  → se toma el precio del taller
+ *   · metodo ausente → 'transferencia'
+ * Sirve para dejar registrado en la tabla `pagos` cuánto entró y por qué se
+ * aceptó, no solo que se aceptó.
+ *
+ * El alumno nunca captura códigos: al entrar con Google o su número, el taller
+ * ya está en su dashboard.
  */
 router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
     try {
-        const { rows } = await query(
-            `SELECT le.*, t.nombre AS taller_nombre
-             FROM lista_espera le
-                      LEFT JOIN talleres t ON t.id = le.taller_id
-             WHERE le.id = $1`,
-            [req.params.id]
-        )
-        if (!rows.length) throw new AppError('Registro no encontrado', 404, 'NOT_FOUND')
-        const reg = rows[0]
+        const { monto, metodo, banco, titular, folio, nota } = req.body ?? {}
 
-        const emailNorm = reg.email ? reg.email.toLowerCase().trim() : null
-        const wa        = normalizarWhatsapp(reg.whatsapp)
+        const r = await activarAlumno(req.params.id, {
+            actor: 'admin',
+            pago:  { monto, metodo, banco, titular, folio, nota },
+        })
 
-        // Hoy el correo es la identidad del usuario (FK de chispas). Es obligatorio.
-        if (!emailNorm) {
-            throw new AppError('Este registro no tiene correo; no se puede crear la cuenta.', 400, 'NO_EMAIL')
-        }
+        const { usuario, registro, chispaCode, avisoWa, waDestino } = r
 
-        // 1. Crear o reutilizar la cuenta (dedup por correo O whatsapp)
-        const { rows: encontrados } = await query(
-            `SELECT * FROM usuarios
-             WHERE email = $1 OR ($2::text IS NOT NULL AND whatsapp = $2)
-             LIMIT 1`,
-            [emailNorm, wa]
-        )
-
-        // El número solo se guarda si NO pertenece ya a otra cuenta. Si la cuenta
-        // encontrada es la dueña actual del número, no hay choque (se excluye por id).
-        let usuario
-        let avisoWa = null
-        const dueñoWa = wa ? await cuentaConWhatsapp(wa, encontrados[0]?.id ?? null) : null
-        const waUsable = dueñoWa ? null : wa
-        if (dueñoWa) {
-            avisoWa = `El número ${wa} ya está ligado a la cuenta ${dueñoWa.email}, así que no se copió a ${emailNorm}.`
-            console.warn('[admin/confirmar-pago]', avisoWa)
-        }
-
-        if (encontrados.length) {
-            const { rows: upd } = await query(
-                `UPDATE usuarios
-                 SET estado   = 'activo',
-                     nombre   = COALESCE(nombre, $2),
-                     whatsapp = COALESCE(whatsapp, $3),
-                     email    = COALESCE(email, $1)
-                 WHERE id = $4
-                 RETURNING *`,
-                [emailNorm, reg.nombre, waUsable, encontrados[0].id]
-            )
-            usuario = upd[0]
-        } else {
-            const { rows: ins } = await query(
-                `INSERT INTO usuarios (email, nombre, whatsapp, estado)
-                 VALUES ($1, $2, $3, 'activo')
-                 RETURNING *`,
-                [emailNorm, reg.nombre, waUsable]
-            )
-            usuario = ins[0]
-        }
-
-        // 2. Chispa automática del taller (si aún no tiene una activa de ese taller)
-        let chispaCode = null
-        if (reg.taller_id) {
-            const { rows: existentes } = await query(
-                `SELECT code FROM chispas
-                 WHERE usuario_email = $1 AND taller_id = $2 AND used = FALSE AND revoked = FALSE
-                 LIMIT 1`,
-                [usuario.email, reg.taller_id]
-            )
-            if (existentes.length) {
-                chispaCode = existentes[0].code
-            } else {
-                const seg       = () => crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 4)
-                chispaCode      = `DEST-${seg()}-${seg()}`
-                const expiresAt = new Date(Date.now() + 30 * 86400000)   // 30 días
-                await query(
-                    `INSERT INTO chispas
-                        (code, taller_id, taller_nombre, expires_at, usuario_nombre, usuario_email, usuario_wa)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                    [chispaCode, reg.taller_id, reg.taller_nombre, expiresAt, usuario.nombre, usuario.email, usuario.whatsapp]
-                )
-            }
-        }
-
-        // 3. lista_espera → pagado
-        await query(`UPDATE lista_espera SET estado = 'pagado' WHERE id = $1`, [req.params.id])
-
-        // 4. Bienvenida por correo + WhatsApp (no bloquean la respuesta si fallan)
+        // Los avisos van FUERA de la transacción a propósito: que el correo o el
+        // bot estén caídos no debe deshacer una activación que ya quedó bien.
         let mailEnviado = false
         let waEnviado   = false
 
         try {
-            await sendBienvenida({ to: usuario.email, nombre: usuario.nombre ?? reg.nombre ?? '' })
+            await sendBienvenida({ to: usuario.email, nombre: usuario.nombre ?? registro.nombre ?? '' })
             mailEnviado = true
         } catch (e) { console.error('[bienvenida mail]', e.message) }
 
-        if (wa) {
+        if (waDestino) {
             try {
-                const primerNombre = (usuario.nombre ?? reg.nombre ?? '').split(' ')[0]
-                // NO se habla de "crear cuenta": eso va por correo y es un flujo
-                // aparte. Aquí solo se le dice que su lugar quedó confirmado y
-                // por dónde entra. Mezclar las dos cosas confunde a quien ya
-                // tiene cuenta desde un taller anterior.
+                const primerNombre = (usuario.nombre ?? registro.nombre ?? '').split(' ')[0]
+                // NO se habla de "crear cuenta": la cuenta ya existe desde que el
+                // bot tomó sus datos. Aquí solo se le dice que ya puede entrar.
                 const msg =
                     `✦ *Destello*\n\n` +
                     `¡Hola ${primerNombre}! Tu pago quedó *confirmado* y tu lugar está apartado. 🎉\n\n` +
                     `Ya puedes entrar aquí:\n` +
                     `https://destello.courses/login\n\n` +
                     `Entra con Google o con tu número. ¡Nos vemos dentro! 🌟`
-                await sendWhatsapp(wa, msg)
+                await sendWhatsapp(waDestino, msg)
                 waEnviado = true
             } catch (e) { console.error('[bienvenida wa]', e.message) }
         }
@@ -437,8 +369,10 @@ router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
             status:      'ok',
             usuario:     { id: usuario.id, email: usuario.email, whatsapp: usuario.whatsapp },
             chispa:      chispaCode,
+            pagoId:      r.pagoId,
             mailEnviado,
             waEnviado,
+            notificado:  mailEnviado || waEnviado,
             ...(avisoWa && { avisoWa }),
         })
     } catch (err) { next(err) }

@@ -32,3 +32,39 @@ export const pool = new Pool({
 export async function query(text, params) {
     return pool.query(text, params)
 }
+
+/**
+ * Corre varias consultas dentro de UNA transacción.
+ *
+ * Por qué existe: activar a un alumno toca tres tablas (usuarios, chispas,
+ * lista_espera) más el registro del pago. Si falla a la mitad sin transacción,
+ * la persona queda en un estado imposible — por ejemplo activa pero sin chispa,
+ * que desde la plataforma se ve como "pagué y no aparece mi taller".
+ *
+ * Uso:
+ *   const r = await withTransaction(async (q) => {
+ *       await q('UPDATE ...', [x])
+ *       return await q('INSERT ... RETURNING *', [y])
+ *   })
+ *
+ * Todo se confirma junto o no se hace nada. ⚠️ El `q` que recibe la función usa
+ * la MISMA conexión: si adentro se llama al `query` normal de este módulo, esa
+ * consulta sale por otra conexión y queda FUERA de la transacción.
+ */
+export async function withTransaction(fn) {
+    const client = await pool.connect()
+    try {
+        await client.query('BEGIN')
+        const q = (text, params) => client.query(text, params)
+        const resultado = await fn(q, client)
+        await client.query('COMMIT')
+        return resultado
+    } catch (err) {
+        try { await client.query('ROLLBACK') } catch (rbErr) {
+            console.error('[db] Falló el ROLLBACK:', rbErr.message)
+        }
+        throw err
+    } finally {
+        client.release()
+    }
+}

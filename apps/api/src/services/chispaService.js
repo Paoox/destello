@@ -93,13 +93,23 @@ export async function createChispa({
         waOwner = await asegurarWhatsappLibre(waOwner, propia?.id ?? null)
     }
 
+    // Asignar una chispa ES darle permiso de entrar: no tiene sentido darle la
+    // llave del taller a alguien que no puede abrir la puerta.
+    //
+    // Antes el INSERT ponía 'activo' pero el ON CONFLICT no tocaba el estado, así
+    // que a quien ya estaba en 'espera' (todos los que llegan por el bot) se le
+    // creaba la chispa y aun así no podía entrar — `phoneAuthController` exige
+    // 'activo'. Se veía como "le di su acceso y dice que no tiene cuenta".
     if (emailOwner) {
         await query(
-            `INSERT INTO usuarios (email, nombre, whatsapp, estado)
-             VALUES ($1, $2, $3, 'activo')
+            `INSERT INTO usuarios (email, nombre, whatsapp, estado, activado_por, origen)
+             VALUES ($1, $2, $3, 'activo', 'admin:chispa', 'admin')
              ON CONFLICT (email) DO UPDATE
-               SET nombre   = COALESCE(usuarios.nombre,   EXCLUDED.nombre),
-                   whatsapp = COALESCE(usuarios.whatsapp, EXCLUDED.whatsapp)`,
+               SET nombre       = COALESCE(usuarios.nombre,   EXCLUDED.nombre),
+                   whatsapp     = COALESCE(usuarios.whatsapp, EXCLUDED.whatsapp),
+                   estado       = 'activo',
+                   activado_por = COALESCE(usuarios.activado_por, 'admin:chispa'),
+                   updated_at   = NOW()`,
             [emailOwner, usuarioNombre || null, waOwner]
         )
     }
@@ -111,13 +121,31 @@ export async function createChispa({
     // que su taller nunca aparecía en el Home (ver getTalleresDelUsuario).
     //
     // Por eso al asignar una chispa se asegura su registro en la lista:
-    //   · no existe        → se crea en 'cupo_confirmado' (lugar apartado, falta pagar)
-    //   · está 'pendiente' → sube a 'cupo_confirmado', que es lo que acaba de pasar
+    //   · no existe        → se crea (ver estado abajo)
+    //   · está 'pendiente' → sube de estado, que es lo que acaba de pasar
     //   · ya está 'pagado' → NO se toca; sería degradarlo
     //
-    // Las DEMOS se saltan esto: no hay pago que esperar y no deben ensuciar la
-    // lista de espera con gente que en realidad no está formada.
-    if (emailOwner && tallerId && !isDemo) {
+    // ── Las DEMOS también entran (cambio del 22 ago 2026) ──────────────────
+    //
+    // Antes las demos se saltaban este bloque, con este razonamiento: "no hay
+    // pago que esperar y no deben ensuciar la lista con gente que no está
+    // formada". Bajo la regla vieja era correcto — una demo era un regalo que
+    // no quitaba lugar.
+    //
+    // La regla cambió: **una cortesía ocupa una silla igual que un pago.** Si
+    // no está en la lista, no se cuenta en el cupo, y el taller se sobrevende.
+    //
+    // La diferencia es el estado con el que entra:
+    //   · normal → 'cupo_confirmado'  (lugar apartado, arranca el reloj de pago)
+    //   · demo   → 'pagado'           (no hay nada que cobrar; sin reloj de pago)
+    //
+    // Una demo NO es otro tipo de cosa: es lo mismo con otro método de pago.
+    // Por eso queda registrada en `pagos` con metodo='cortesia' y monto=0 — así
+    // ocupa su lugar sin inflar los ingresos, y queda constancia de POR QUÉ fue
+    // gratis, no solo de que lo fue.
+    if (emailOwner && tallerId) {
+        const estadoInicial = isDemo ? 'pagado' : 'cupo_confirmado'
+
         const { rows: yaEnLista } = await query(
             `SELECT id, estado FROM lista_espera
              WHERE LOWER(email) = LOWER($1) AND taller_id = $2
@@ -125,20 +153,42 @@ export async function createChispa({
             [emailOwner, tallerId]
         )
 
+        let listaEsperaId = yaEnLista[0]?.id ?? null
+
         if (!yaEnLista.length) {
-            await query(
-                `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado)
-                 VALUES ($1, $2, $3, $4, 'cupo_confirmado')`,
-                [emailOwner, tallerId, usuarioNombre || null, waOwner]
+            const { rows: ins } = await query(
+                `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado, origen)
+                 VALUES ($1, $2, $3, $4, $5, 'admin')
+                 RETURNING id`,
+                [emailOwner, tallerId, usuarioNombre || null, waOwner, estadoInicial]
             )
-        } else if (yaEnLista[0].estado === 'pendiente') {
+            listaEsperaId = ins[0].id
+        } else if (yaEnLista[0].estado === 'pendiente' ||
+                  (isDemo && yaEnLista[0].estado === 'cupo_confirmado')) {
             await query(
                 `UPDATE lista_espera
-                 SET estado   = 'cupo_confirmado',
+                 SET estado   = $4,
                      nombre   = COALESCE(nombre, $2),
                      whatsapp = COALESCE(whatsapp, $3)
                  WHERE id = $1`,
-                [yaEnLista[0].id, usuarioNombre || null, waOwner]
+                [yaEnLista[0].id, usuarioNombre || null, waOwner, estadoInicial]
+            )
+        }
+
+        // Cortesía: se deja el renglón en `pagos` para que el cupo y el historial
+        // cuadren. Se evita duplicarlo si ya existía uno para esta inscripción.
+        if (isDemo && listaEsperaId) {
+            await query(
+                `INSERT INTO pagos
+                    (usuario_email, lista_espera_id, taller_id, monto, metodo,
+                     estado, verificado_por, nota, origen)
+                 SELECT $1, $2, $3, 0, 'cortesia', 'verificado', 'admin',
+                        'Chispa de cortesía otorgada desde el panel', 'admin'
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM pagos
+                      WHERE lista_espera_id = $2 AND metodo = 'cortesia'
+                 )`,
+                [emailOwner, listaEsperaId, tallerId]
             )
         }
     }
