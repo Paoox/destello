@@ -38,6 +38,44 @@ const ADMIN_JID = ADMIN_WA
     ? `521${String(ADMIN_WA).replace(/\D/g, '').slice(-10)}@s.whatsapp.net`
     : null
 
+// ── Anti-duplicados ───────────────────────────────────────────
+//
+// Baileys puede entregar el MISMO mensaje en dos eventos `messages.upsert`
+// (reconexiones, sincronización con el celular). Sin esto el bot contesta dos
+// veces al mismo mensaje — y en el flujo de pago llegaría a registrar el
+// comprobante dos veces y reenviártelo duplicado.
+const mensajesVistos = new Map()   // id del mensaje → cuándo se atendió
+const VENTANA_MS     = 10 * 60 * 1000
+const TOPE           = 1000
+
+function yaAtendido(id) {
+    if (!id) return false
+
+    const ahora = Date.now()
+
+    if (mensajesVistos.size >= TOPE) {
+        // Primero se tiran los que ya salieron de la ventana...
+        for (const [visto, cuando] of mensajesVistos) {
+            if (ahora - cuando > VENTANA_MS) mensajesVistos.delete(visto)
+        }
+        // ...y si aun así sigue lleno (mucho tráfico en pocos minutos), se tira
+        // la mitad más antigua. Map conserva el orden de inserción, así que los
+        // primeros son los más viejos. Sin este tope la memoria crecería sin fin
+        // en un día de mucho movimiento.
+        if (mensajesVistos.size >= TOPE) {
+            let porTirar = Math.floor(mensajesVistos.size / 2)
+            for (const visto of mensajesVistos.keys()) {
+                if (porTirar-- <= 0) break
+                mensajesVistos.delete(visto)
+            }
+        }
+    }
+
+    if (mensajesVistos.has(id)) return true
+    mensajesVistos.set(id, ahora)
+    return false
+}
+
 // ── Socket global — disponible para el servidor HTTP ─────────
 let sockGlobal = null
 
@@ -154,6 +192,7 @@ async function conectar() {
         for (const msg of messages) {
             if (msg.key.fromMe)                        continue  // ignorar mis propios mensajes
             if (msg.key.remoteJid?.endsWith('@g.us'))  continue  // ignorar grupos
+            if (yaAtendido(msg.key.id))                continue  // no contestar dos veces lo mismo
 
             const jid   = msg.key.remoteJid?.replace(/:\d+@/, '@')
             const texto = msg.message?.conversation
