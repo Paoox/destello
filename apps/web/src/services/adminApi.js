@@ -11,9 +11,40 @@ function authHeaders(adminToken) {
     }
 }
 
+/**
+ * Convierte la respuesta en datos, o lanza un error ENTENDIBLE.
+ *
+ * POR QUÉ NO ES UN SIMPLE `res.json()`: cuando la API está reiniciándose o el
+ * túnel de Cloudflare no la alcanza, lo que vuelve es una página HTML de error.
+ * `res.json()` truena entonces con "Unexpected token '<', "<!DOCTYPE "... is not
+ * valid JSON", que se mostraba tal cual en el panel. Eso no es un mensaje: es un
+ * error de programador filtrándose a la interfaz.
+ *
+ * TODAS las llamadas del panel pasan por aquí, así que esto las cubre a todas.
+ */
 async function handleResponse(res) {
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.message ?? `Error ${res.status}`)
+    const crudo = await res.text()
+
+    let data = null
+    try {
+        data = crudo ? JSON.parse(crudo) : null
+    } catch {
+        // No era JSON: casi siempre la página de error del túnel o de Vercel.
+        console.error('[adminApi] Respuesta no-JSON:', res.status, crudo.slice(0, 300))
+
+        if ([502, 503, 504].includes(res.status) || crudo.includes('Cloudflare')) {
+            throw new Error(
+                'El servidor no responde ahorita. Si acabas de reiniciar la API, ' +
+                'espera unos segundos e intenta de nuevo.'
+            )
+        }
+        if (res.status === 404) {
+            throw new Error('Esa función no existe en el servidor. Puede que la API esté en una versión anterior.')
+        }
+        throw new Error(`El servidor respondió algo inesperado (${res.status}). Revisa los logs de la API.`)
+    }
+
+    if (!res.ok) throw new Error(data?.message ?? `Error ${res.status}`)
     return data
 }
 

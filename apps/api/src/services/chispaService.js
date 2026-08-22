@@ -104,6 +104,45 @@ export async function createChispa({
         )
     }
 
+    // ── La chispa APARTA el lugar; el pago lo confirma ──────────────────────
+    //
+    // Asignar una chispa sin dejar rastro en `lista_espera` dejaba a la persona
+    // en tierra de nadie: tenía llave pero no había dónde marcarle el pago, así
+    // que su taller nunca aparecía en el Home (ver getTalleresDelUsuario).
+    //
+    // Por eso al asignar una chispa se asegura su registro en la lista:
+    //   · no existe        → se crea en 'cupo_confirmado' (lugar apartado, falta pagar)
+    //   · está 'pendiente' → sube a 'cupo_confirmado', que es lo que acaba de pasar
+    //   · ya está 'pagado' → NO se toca; sería degradarlo
+    //
+    // Las DEMOS se saltan esto: no hay pago que esperar y no deben ensuciar la
+    // lista de espera con gente que en realidad no está formada.
+    if (emailOwner && tallerId && !isDemo) {
+        const { rows: yaEnLista } = await query(
+            `SELECT id, estado FROM lista_espera
+             WHERE LOWER(email) = LOWER($1) AND taller_id = $2
+             LIMIT 1`,
+            [emailOwner, tallerId]
+        )
+
+        if (!yaEnLista.length) {
+            await query(
+                `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado)
+                 VALUES ($1, $2, $3, $4, 'cupo_confirmado')`,
+                [emailOwner, tallerId, usuarioNombre || null, waOwner]
+            )
+        } else if (yaEnLista[0].estado === 'pendiente') {
+            await query(
+                `UPDATE lista_espera
+                 SET estado   = 'cupo_confirmado',
+                     nombre   = COALESCE(nombre, $2),
+                     whatsapp = COALESCE(whatsapp, $3)
+                 WHERE id = $1`,
+                [yaEnLista[0].id, usuarioNombre || null, waOwner]
+            )
+        }
+    }
+
     const code      = await uniqueCode(prefix.toUpperCase())
     const expiresAt = expiresInDays != null
         ? new Date(Date.now() + expiresInDays * 86_400_000)

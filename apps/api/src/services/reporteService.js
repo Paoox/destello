@@ -90,9 +90,14 @@ async function avisarAdmin(reporte) {
  */
 export async function listReportes({ soloAbiertos = false } = {}) {
     const { rows } = await query(
-        `SELECT * FROM reportes_acceso
-         ${soloAbiertos ? "WHERE estado = 'abierto'" : ''}
-         ORDER BY created_at DESC`
+        `SELECT r.*,
+                u.id      IS NOT NULL          AS tiene_cuenta,
+                u.estado  = 'activo'           AS cuenta_activa,
+                u.estado                       AS cuenta_estado
+         FROM reportes_acceso r
+                  LEFT JOIN usuarios u ON LOWER(u.email) = LOWER(r.email)
+         ${soloAbiertos ? "WHERE r.estado = 'abierto'" : ''}
+         ORDER BY r.created_at DESC`
     )
 
     // Se firman en paralelo; si alguna falla devuelve null y la tarjeta

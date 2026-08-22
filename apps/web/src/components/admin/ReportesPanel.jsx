@@ -15,7 +15,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
     ArrowClockwise, CheckCircle, CurrencyDollar,
-    WarningCircle, WhatsappLogo, Envelope,
+    WarningCircle, WhatsappLogo, Envelope, UserCheck, UserPlus,
 } from '@phosphor-icons/react'
 
 /** Los motivos vienen de reporteService.MOTIVOS en la API. */
@@ -41,9 +41,24 @@ const MOTIVOS = {
 }
 
 const FILTROS = [
-    { id: 'abiertos', label: 'Por revisar' },
-    { id: 'pagos',    label: 'Solo pagos' },
-    { id: 'todos',    label: 'Todos' },
+    { id: 'abiertos',  label: 'Por revisar' },
+    { id: 'pagos',     label: 'Solo pagos' },
+    { id: 'revisados', label: 'Revisados' },
+    { id: 'todos',     label: 'Todos' },
+]
+
+/**
+ * Filtros por fecha. `dias: null` = sin límite.
+ *
+ * Con 9 reportes no hacen falta, pero después de unos meses la bandeja se
+ * vuelve inservible sin ellos: lo de esta semana quedaría enterrado bajo
+ * cientos de reportes viejos.
+ */
+const RANGOS = [
+    { id: '15d',  label: 'Últimos 15 días', dias: 15 },
+    { id: '30d',  label: 'Último mes',      dias: 30 },
+    { id: '90d',  label: 'Últimos 3 meses', dias: 90 },
+    { id: 'todo', label: 'Desde siempre',   dias: null },
 ]
 
 /** "hace 5 min" / "hace 3 h" / "hace 2 d" — más útil que una fecha exacta aquí. */
@@ -70,6 +85,7 @@ export default function ReportesPanel({ adminToken }) {
     const [cargando,  setCargando]  = useState(true)
     const [cerrando,  setCerrando]  = useState(null)
     const [filtro,    setFiltro]    = useState('abiertos')
+    const [rango,     setRango]     = useState('30d')
     const [toast,     setToast]     = useState(null)
 
     const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` }
@@ -122,14 +138,26 @@ export default function ReportesPanel({ adminToken }) {
         }
     }
 
+    // El rango se aplica SIEMPRE, también a "Por revisar": un reporte de hace
+    // cuatro meses que sigue abierto ya no es trabajo del día, es arqueología.
+    const diasRango = RANGOS.find(r => r.id === rango)?.dias ?? null
+    const desde     = diasRango ? Date.now() - diasRango * 86_400_000 : null
+
+    const enRango = r => !desde || new Date(r.created_at).getTime() >= desde
+
     const visibles = reportes.filter(r => {
-        if (filtro === 'abiertos') return r.estado === 'abierto'
-        if (filtro === 'pagos')    return r.motivo === 'reporte_pago'
+        if (!enRango(r)) return false
+        if (filtro === 'abiertos')  return r.estado === 'abierto'
+        if (filtro === 'pagos')     return r.motivo === 'reporte_pago'
+        if (filtro === 'revisados') return r.estado === 'resuelto'
         return true
     })
 
+    // Los contadores del encabezado ignoran el rango a propósito: si tienes algo
+    // pendiente de hace meses, tienes que enterarte aunque el filtro lo esconda.
     const abiertos    = reportes.filter(r => r.estado === 'abierto').length
     const pagosAbiert = reportes.filter(r => r.estado === 'abierto' && r.motivo === 'reporte_pago').length
+    const ocultosPorRango = reportes.filter(r => r.estado === 'abierto' && !enRango(r)).length
 
     return (
         <div style={{ position: 'relative' }}>
@@ -160,10 +188,31 @@ export default function ReportesPanel({ adminToken }) {
                         {abiertos === 0
                             ? 'Nada pendiente por revisar ✓'
                             : `${abiertos} por revisar${pagosAbiert ? ` · ${pagosAbiert} son pagos` : ''}`}
+                        {ocultosPorRango > 0 && (
+                            <span style={{ color: 'var(--color-amber-500)' }}>
+                                {' '}· {ocultosPorRango} más antiguo{ocultosPorRango > 1 ? 's' : ''} fuera de este rango
+                            </span>
+                        )}
                     </p>
                 </div>
 
-                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <select
+                        value={rango}
+                        onChange={e => setRango(e.target.value)}
+                        style={{
+                            padding: '6px 10px',
+                            background: 'var(--bg-surface)',
+                            border: '1px solid var(--border-default)',
+                            borderRadius: 'var(--radius-full)',
+                            color: 'var(--text-muted)',
+                            fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+                            cursor: 'pointer', outline: 'none',
+                        }}
+                    >
+                        {RANGOS.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                    </select>
+
                     {FILTROS.map(f => (
                         <button
                             key={f.id}
@@ -240,6 +289,27 @@ export default function ReportesPanel({ adminToken }) {
                                         <Icon size={13} weight="fill" />
                                         {m.label}
                                     </div>
+
+                                    {/* Estado de su cuenta.
+                                        Importa porque cambia lo que tienes que hacer: a alguien
+                                        SIN cuenta, además de confirmarle el pago, hay que dejarla
+                                        entrar por primera vez. Si ya tiene cuenta activa, con
+                                        confirmar el pago basta. */}
+                                    <span style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                                        padding: '3px 10px', marginLeft: 8, marginBottom: 8,
+                                        background: r.cuenta_activa ? 'rgba(13,115,119,0.12)' : 'rgba(217,119,6,0.12)',
+                                        border: `1px solid ${r.cuenta_activa ? 'var(--color-jade-500)' : 'var(--color-amber-500)'}`,
+                                        borderRadius: 'var(--radius-full)',
+                                        color: r.cuenta_activa ? 'var(--color-jade-500)' : 'var(--color-amber-500)',
+                                        fontSize: 'var(--text-xs)', fontWeight: 700,
+                                    }}>
+                                        {r.cuenta_activa
+                                            ? <><UserCheck size={13} weight="fill" /> Ya tiene cuenta</>
+                                            : r.tiene_cuenta
+                                                ? <><UserPlus size={13} weight="fill" /> Cuenta sin activar</>
+                                                : <><UserPlus size={13} weight="fill" /> Alumna nueva</>}
+                                    </span>
 
                                     <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
                                         {r.nombre || 'Sin nombre'}

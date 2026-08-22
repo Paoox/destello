@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { BookOpen, PencilSimple, Plus, X, TrendUp } from '@phosphor-icons/react'
 import { apiListTalleres, apiCreateTaller, apiUpdateTaller, apiGetTalleresStats } from '@services/adminApi.js'
+import { fmtFechaLarga } from '@utils/fecha.js'
 
 // ── Opciones ──────────────────────────────────────────────────────────────────
 
@@ -61,13 +62,13 @@ function parseHorario(horario) {
     return { inicio: horario.trim(), fin: '12:00 PM' }
 }
 
-/** Formatea fecha ISO a "15 may 2026" */
-function fmtFecha(iso) {
-    if (!iso) return null
-    const d = new Date(iso)
-    if (isNaN(d)) return null
-    return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
-}
+/**
+ * Formatea fecha de la BD a "15 may 2026".
+ *
+ * Antes usaba `new Date(iso)` directo, que interpreta 'YYYY-MM-DD' como
+ * medianoche UTC: un taller del 28 se listaba como 27 en CDMX. Ver `@utils/fecha.js`.
+ */
+const fmtFecha = fmtFechaLarga
 
 /** Extrae solo "YYYY-MM-DD" de un ISO o DATE string */
 function toDateInput(val) {

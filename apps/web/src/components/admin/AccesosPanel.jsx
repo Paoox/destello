@@ -301,13 +301,25 @@ export default function AccesosPanel({ adminToken }) {
     // ── Mensajes WA predefinidos
     const primerNombre = (nombre) => (nombre ?? '').split(' ')[0]
 
+    /**
+     * Aviso de lugar apartado.
+     *
+     * ⚠️ NO lleva el código de la chispa. El código es un identificador INTERNO
+     * de la BD; la alumna nunca lo necesita y mandárselo solo la confunde
+     * ("¿dónde lo pongo?"). Entra con Google o con su número.
+     *
+     * El mensaje tiene un solo trabajo: que entienda que su lugar está apartado
+     * pero NO confirmado, y que el siguiente paso es suyo — reportar el pago.
+     */
     const waMsgChispa = (code, tallerNombre, vigLabel, nombre) =>
-        `¡Hola ${primerNombre(nombre)}! ⚡\n\n` +
-        `Aquí está tu *Chispa* de acceso:\n\n` +
-        `*${code}*\n\n` +
-        `📚 Taller: ${tallerNombre}\n` +
-        `⏳ Vigencia: ${vigLabel}\n\n` +
-        `Úsala en: https://destello.courses/acceso`
+        `¡Hola ${primerNombre(nombre)}! ✦\n\n` +
+        `Ya tienes *apartado tu lugar* en:\n` +
+        `📚 *${tallerNombre}*\n\n` +
+        `Para confirmarlo solo falta tu pago. Tienes *48 horas* para reportarlo; ` +
+        `después de ese tiempo el lugar se libera para alguien más.\n\n` +
+        `Cuando lo hagas, escríbeme por aquí y elige la opción *5* ` +
+        `(_Ya pagué, quiero reportarlo_). Puedes mandarme la foto de tu comprobante. 📸\n\n` +
+        `¡Nos vemos dentro! 🌟`
 
     const waMsgResplandor = (code, nombre) =>
         `¡Hola ${primerNombre(nombre)}! ☀\n\n` +

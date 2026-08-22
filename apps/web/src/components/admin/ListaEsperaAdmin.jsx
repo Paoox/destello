@@ -3,6 +3,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import { WhatsappLogo, Envelope, ArrowClockwise, CheckCircle, WarningCircle, SealCheck, PaperPlaneTilt } from '@phosphor-icons/react'
+import { fmtFechaCompleta } from '@utils/fecha.js'
 
 const ESTADOS_OPTS = [
     { value: 'pendiente',        label: '⏳ Pendiente',         color: '#f59e0b' },
@@ -42,10 +43,10 @@ function buildWaMensaje(r) {
     const taller  = r.taller_nombre || 'el taller'
     const precio  = r.taller_precio && Number(r.taller_precio) > 0
         ? `$${Number(r.taller_precio).toLocaleString('es-MX')} MXN` : 'Gratuito'
-    const fecha   = r.taller_fecha
-        ? new Date(r.taller_fecha).toLocaleDateString('es-MX',
-            { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-        : null
+    // OJO: esta fecha se le manda a la alumna por WhatsApp. Con `new Date()`
+    // directo se corría un día (medianoche UTC → día anterior en CDMX), o sea
+    // le estábamos dando la fecha equivocada de su taller. Ver `@utils/fecha.js`.
+    const fecha   = fmtFechaCompleta(r.taller_fecha)
     const horario = r.taller_horario || null
 
     return [
