@@ -7,7 +7,8 @@
  *   2. Ver talleres disponibles
  *   3. No me llegó mi acceso  (diagnostica por correo y resuelve lo que puede)
  *   4. Medios de pago
- *   5. Tengo una duda
+ *   5. Ya pague, quiero reportarlo
+ *   6. Tengo una duda
  *
  * FLUJO REGISTRO — opción 1 del menú:
  *   → REG_CORREO   (pedir email)
@@ -61,6 +62,15 @@ const PASO = {
     // Sin acceso (opción 3)
     SIN_CODIGO:   'SIN_CODIGO',   // pedir correo
     SIN_ACCESO:   'SIN_ACCESO',   // escalamiento cuando lo resuelto no le sirvió
+    // Reportar pago (opción 6)
+    PAGO_CORREO:  'PAGO_CORREO',  // pedir correo si no lo tenemos en la conversación
+    PAGO_COMO:    'PAGO_COMO',    // ¿foto o datos escritos?
+    PAGO_FOTO:    'PAGO_FOTO',    // esperando el imageMessage — lo atiende index.js
+    PAGO_BANCO:   'PAGO_BANCO',
+    PAGO_MONTO:   'PAGO_MONTO',
+    PAGO_TITULAR: 'PAGO_TITULAR',
+    PAGO_FECHA:   'PAGO_FECHA',
+    PAGO_FOLIO:   'PAGO_FOLIO',
     // Después de completar cualquier flujo
     POST_ACCION:  'POST_ACCION',
 }
@@ -176,6 +186,21 @@ async function completarWhatsapp(email, whatsapp) {
     } catch { return { actualizado: false } }
 }
 
+/**
+ * Reporta un pago para que la admin lo coteje contra el banco.
+ * NO activa la cuenta ni asigna talleres: el bot nunca decide sobre dinero.
+ */
+async function reportarPago({ email, nombre, whatsapp, tipo, datos }) {
+    try {
+        const res = await fetch(`${API_URL}/bot/reporte-pago`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ email, nombre, whatsapp, tipo, datos }),
+        })
+        return await res.json()
+    } catch { return { status: 'error' } }
+}
+
 /** Levanta un reporte para que la admin lo revise. NO libera nada. */
 async function reportarAcceso({ email, nombre, whatsapp, motivo, detalle }) {
     try {
@@ -197,7 +222,8 @@ const MENU_TEXTO = (nombre = '') =>
     '2️⃣  Ver talleres disponibles\n' +
     '3️⃣  No me llegó mi acceso\n' +
     '4️⃣  Medios de pago\n' +
-    '5️⃣  Tengo una duda'
+    '5️⃣  Ya pagué, quiero reportarlo\n' +
+    '6️⃣  Tengo una duda'
 
 const POST_ACCION_TEXTO =
     '¿Puedo ayudarte con algo más?\n\n' +
@@ -222,7 +248,8 @@ const SALUDO_INICIAL =
     '2️⃣  Ver talleres disponibles\n' +
     '3️⃣  No me llegó mi acceso\n' +
     '4️⃣  Medios de pago\n' +
-    '5️⃣  Tengo una duda'
+    '5️⃣  Ya pagué, quiero reportarlo\n' +
+    '6️⃣  Tengo una duda'
 
 const MOTIVOS = {
     SIN_PLATAFORMA: 'sin_acceso_plataforma',
@@ -246,6 +273,39 @@ const REPORTE_ENVIADO_TEXTO =
     'En cuanto esté te escribimos por aquí. 🙌\n\n' +
     '💡 _Recuerda que el material del taller se abre *después* de haber tomado la clase, ' +
     'así que si tu taller aún no empieza es normal que todavía no veas contenido._\n\n' +
+    POST_ACCION_TEXTO
+
+// ── Textos del reporte de pago (opción 5) ─────────────────────
+
+const PAGO_PEDIR_CORREO_TEXTO =
+    '💰 *Reportar mi pago*\n\n' +
+    'Para ligarlo con tu registro, ¿cuál es tu *correo*?\n\n' +
+    '_El mismo con el que te inscribiste._'
+
+const PAGO_COMO_TEXTO =
+    '💰 *Reportar mi pago*\n\n' +
+    '¿Cómo prefieres mandármelo?\n\n' +
+    '1️⃣  Enviar foto de mi comprobante\n' +
+    '2️⃣  Escribir los datos de mi pago\n\n' +
+    '_O escribe *menu* para volver._'
+
+const PAGO_ESPERA_FOTO_TEXTO =
+    '📸 Va, mándame la *foto de tu comprobante* aquí mismo.\n\n' +
+    'Puede ser la captura de la transferencia o la foto del ticket del depósito.\n\n' +
+    '_Si prefieres escribir los datos, escribe *2*._'
+
+/**
+ * Cierre único para los dos caminos (foto y datos escritos).
+ *
+ * Es deliberadamente claro en que NO se activa nada todavía: la persona debe
+ * quedarse esperando la confirmación, no creyendo que ya tiene acceso. Prometer
+ * acceso inmediato aquí generaría un segundo reporte cuando no lo vea.
+ */
+const PAGO_RECIBIDO_TEXTO =
+    '✅ *Ya lo recibimos.*\n\n' +
+    'Lo revisamos contra el banco y te notificamos por aquí en cuanto quede ' +
+    'reflejado tu pago. 🙌\n\n' +
+    '_Todavía no se activa tu acceso: primero confirmamos que el pago haya caído._\n\n' +
     POST_ACCION_TEXTO
 
 const PEDIR_WHATSAPP_TEXTO =
@@ -563,6 +623,16 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
                 return PAGO_TEXTO + '\n\n' + POST_ACCION_TEXTO
 
             case '5':
+                // Reportar un pago. Si ya sabemos su correo en esta conversación
+                // no se lo volvemos a pedir.
+                if (conv.correo) {
+                    conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.PAGO_COMO })
+                    return PAGO_COMO_TEXTO
+                }
+                conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.PAGO_CORREO })
+                return PAGO_PEDIR_CORREO_TEXTO
+
+            case '6':
                 conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
                 return (
                     '💬 *¿Tienes una duda?*\n\n' +
@@ -787,6 +857,112 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
         }
     }
 
+    // ── REPORTAR PAGO (opción 5) ──────────────────────────────
+    //
+    // Dos caminos: foto de comprobante (la atiende index.js, porque necesita el
+    // socket de WhatsApp para descargar y reenviar la imagen) o datos escritos.
+    // Los datos se piden UNO POR MENSAJE a propósito: pedir cinco cosas juntas
+    // hace que la gente conteste tres y se pierda el resto.
+
+    if (conv.paso === PASO.PAGO_CORREO) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(msg)) {
+            return '⚠️ Ese correo no parece válido. Escríbelo completo, ej: _tunombre@gmail.com_'
+        }
+
+        // Si ya tiene perfil aprovechamos su nombre para el aviso a la admin.
+        const { existe, usuario } = await buscarUsuario(msg)
+        conversaciones.set(jid, {
+            ...conv,
+            correo:   msg,
+            nombre:   conv.nombre   || (existe ? usuario.nombre   : null),
+            apellido: conv.apellido || (existe ? usuario.apellido : null),
+            whatsapp: conv.whatsapp || (existe ? usuario.whatsapp : null) || waDelJid,
+            paso:     PASO.PAGO_COMO,
+        })
+        return PAGO_COMO_TEXTO
+    }
+
+    if (conv.paso === PASO.PAGO_COMO) {
+        const resp = msg.trim()
+
+        if (resp === '1') {
+            conversaciones.set(jid, { ...conv, paso: PASO.PAGO_FOTO })
+            return PAGO_ESPERA_FOTO_TEXTO
+        }
+
+        if (resp === '2') {
+            conversaciones.set(jid, { ...conv, pago: {}, paso: PASO.PAGO_BANCO })
+            return '🏦 ¿De qué *banco* saliste o en qué tienda depositaste?'
+        }
+
+        return PAGO_COMO_TEXTO
+    }
+
+    // Mientras espera la foto, la persona puede cambiar de opinión y escribirla.
+    if (conv.paso === PASO.PAGO_FOTO) {
+        if (msg.trim() === '2') {
+            conversaciones.set(jid, { ...conv, pago: {}, paso: PASO.PAGO_BANCO })
+            return '🏦 ¿De qué *banco* saliste o en qué tienda depositaste?'
+        }
+        return PAGO_ESPERA_FOTO_TEXTO
+    }
+
+    if (conv.paso === PASO.PAGO_BANCO) {
+        conversaciones.set(jid, {
+            ...conv,
+            pago: { ...conv.pago, banco: msg.trim() },
+            paso: PASO.PAGO_MONTO,
+        })
+        return '💵 ¿De cuánto fue el *monto*?'
+    }
+
+    if (conv.paso === PASO.PAGO_MONTO) {
+        conversaciones.set(jid, {
+            ...conv,
+            pago: { ...conv.pago, monto: msg.trim() },
+            paso: PASO.PAGO_TITULAR,
+        })
+        return '👤 ¿A nombre de quién salió el pago? (*titular* de la cuenta o tarjeta)'
+    }
+
+    if (conv.paso === PASO.PAGO_TITULAR) {
+        conversaciones.set(jid, {
+            ...conv,
+            pago: { ...conv.pago, titular: msg.trim() },
+            paso: PASO.PAGO_FECHA,
+        })
+        return '📅 ¿Qué *día y a qué hora* lo hiciste? (aproximado está bien)'
+    }
+
+    if (conv.paso === PASO.PAGO_FECHA) {
+        conversaciones.set(jid, {
+            ...conv,
+            pago: { ...conv.pago, fecha: msg.trim() },
+            paso: PASO.PAGO_FOLIO,
+        })
+        return (
+            '🔢 Por último, ¿tienes el *folio* o número de referencia?\n\n' +
+            '_Si no lo tienes a la mano, escribe *no*._'
+        )
+    }
+
+    if (conv.paso === PASO.PAGO_FOLIO) {
+        const sinFolio = ['no', 'ninguno', 'nel', 'no tengo', '-'].includes(msg.toLowerCase().trim())
+        const pago = { ...conv.pago, folio: sinFolio ? null : msg.trim() }
+
+        await reportarPago({
+            email:    conv.correo,
+            nombre:   nombreCompleto(conv),
+            whatsapp: conv.whatsapp || waDelJid,
+            tipo:     'datos',
+            datos:    pago,
+        })
+
+        conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
+        return PAGO_RECIBIDO_TEXTO
+    }
+
     // ── POST ACCIÓN ───────────────────────────────────────────
     if (conv.paso === PASO.POST_ACCION) {
         const resp = msg.toLowerCase().trim()
@@ -807,4 +983,64 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
     // Fallback
     conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
     return MENU_TEXTO()
+}
+
+// ── Comprobantes (imágenes) ───────────────────────────────────
+//
+// La foto NO se procesa aquí: descargarla y reenviarla necesita el socket de
+// Baileys, que vive en index.js. Este módulo solo aporta el estado de la
+// conversación — quién está esperando mandar comprobante y con qué datos.
+
+/** ¿Este chat está justo en el paso de mandar su comprobante? */
+export function esperaComprobante(jid) {
+    return conversaciones.get(jid)?.paso === PASO.PAGO_FOTO
+}
+
+/**
+ * Registra el comprobante recibido y avanza la conversación.
+ * Devuelve el texto para el alumno y el resumen para reenviarle a la admin
+ * junto con la imagen.
+ *
+ * @param {string}  jid
+ * @param {string?} caption texto que la persona escribió junto a la foto
+ */
+export async function registrarComprobante(jid, caption = null) {
+    const conv = conversaciones.get(jid) || {}
+
+    await reportarPago({
+        email:    conv.correo,
+        nombre:   nombreCompleto(conv),
+        whatsapp: conv.whatsapp || extractWhatsapp(jid),
+        tipo:     'comprobante',
+        datos:    caption ? { folio: caption } : null,
+    })
+
+    conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
+
+    const avisoAdmin =
+        '💰 *Comprobante de pago recibido*\n\n' +
+        `👤 ${nombreCompleto(conv) || 'Sin nombre'}\n` +
+        `✉️ ${conv.correo || 'sin correo'}\n` +
+        `📱 ${conv.whatsapp || extractWhatsapp(jid) || 'sin número'}\n` +
+        (caption ? `📝 "${caption}"\n` : '') +
+        '\n_Cotéjalo con el banco antes de activar el acceso._'
+
+    return { texto: PAGO_RECIBIDO_TEXTO, avisoAdmin }
+}
+
+/**
+ * Respuesta cuando llega una imagen SIN que la estuviéramos esperando.
+ * Mucha gente manda el comprobante directo, sin pasar por el menú — es lo más
+ * natural. En vez de ignorarla (que es lo que pasaba antes), la encauzamos.
+ */
+export function imagenInesperada(jid) {
+    const conv = conversaciones.get(jid) || {}
+    conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.MENU, esNuevo: false })
+
+    return (
+        '📸 Recibí tu imagen.\n\n' +
+        '¿Es tu *comprobante de pago*? Escribe *5* y lo registro correctamente ' +
+        'para que quede ligado a tu cuenta.\n\n' +
+        MENU_TEXTO()
+    )
 }

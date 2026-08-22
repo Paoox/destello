@@ -17,11 +17,26 @@ import makeWASocket, {
     DisconnectReason,
     fetchLatestBaileysVersion,
 } from 'baileys'
+import { downloadMediaMessage } from 'baileys'
 import qrcode              from 'qrcode-terminal'
 import pino                from 'pino'
-import { procesarMensaje } from './src/flujo.js'
+import {
+    procesarMensaje,
+    esperaComprobante,
+    registrarComprobante,
+    imagenInesperada,
+} from './src/flujo.js'
 
 const logger = pino({ level: 'silent' })
+
+/**
+ * Número de la admin (10 dígitos MX) al que se reenvían los comprobantes.
+ * Es el mismo ADMIN_WA que ya usa la API para los avisos de reportes.
+ */
+const ADMIN_WA  = process.env.ADMIN_WA || null
+const ADMIN_JID = ADMIN_WA
+    ? `521${String(ADMIN_WA).replace(/\D/g, '').slice(-10)}@s.whatsapp.net`
+    : null
 
 // ── Socket global — disponible para el servidor HTTP ─────────
 let sockGlobal = null
@@ -145,13 +160,60 @@ async function conectar() {
                 || msg.message?.extendedTextMessage?.text
                 || ''
 
-            if (!texto) continue
-
             // Cuando el chat es @lid (ID interno de WA), Baileys puede adjuntar
             // el número real en senderPn / participantPn. Lo pasamos al flujo
             // para no tener que pedirle el número al usuario.
             const senderPn = (msg.key.senderPn || msg.key.participantPn || null)
                 ?.replace(/:\d+@/, '@') || null
+
+            // ── Imágenes (comprobantes de pago) ───────────────
+            //
+            // Antes esto se descartaba junto con todo lo que no fuera texto, así
+            // que un comprobante llegaba y se perdía en silencio: la persona creía
+            // haberlo mandado y nadie se enteraba. Ahora se atiende primero.
+            // Cuenta como comprobante tanto una foto normal como un documento
+            // que sea imagen: mucha gente manda la captura "como archivo".
+            const doc       = msg.message?.documentMessage
+            const docEsFoto = doc?.mimetype?.startsWith('image/') ? doc : null
+            const imagen    = msg.message?.imageMessage || docEsFoto || null
+
+            if (imagen) {
+                console.log(`🖼  ${jid}: imagen recibida`)
+                try {
+                    await sock.sendPresenceUpdate('composing', jid)
+
+                    if (!esperaComprobante(jid)) {
+                        await sock.sendMessage(jid, { text: imagenInesperada(jid) })
+                        await sock.sendPresenceUpdate('paused', jid)
+                        continue
+                    }
+
+                    const caption = imagen.caption?.trim() || null
+                    const { texto: respuesta, avisoAdmin } = await registrarComprobante(jid, caption)
+
+                    // Se reenvía a la admin ANTES de confirmarle al alumno: si el
+                    // reenvío falla, preferimos enterarnos en los logs y no haberle
+                    // prometido a la persona que ya llegó.
+                    if (ADMIN_JID) {
+                        const buffer = await downloadMediaMessage(msg, 'buffer', {})
+                        await sock.sendMessage(ADMIN_JID, { image: buffer, caption: avisoAdmin })
+                        console.log(`📤 Comprobante reenviado a la admin`)
+                    } else {
+                        console.warn('[bot] ADMIN_WA no configurado — el comprobante NO se reenvió')
+                    }
+
+                    await sock.sendMessage(jid, { text: respuesta })
+                    await sock.sendPresenceUpdate('paused', jid)
+                } catch (err) {
+                    console.error('[bot] Error con el comprobante:', err.message)
+                    await sock.sendMessage(jid, {
+                        text: '😅 Algo falló al recibir tu comprobante. ¿Puedes mandarlo otra vez?',
+                    }).catch(() => {})
+                }
+                continue
+            }
+
+            if (!texto) continue
 
             console.log(`📨 ${jid}${senderPn ? ` (pn: ${senderPn})` : ''}: "${texto}"`)
 

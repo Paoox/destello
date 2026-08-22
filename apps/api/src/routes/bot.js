@@ -13,6 +13,7 @@ import {
     diagnosticoDeAcceso,
     completarWhatsappDeUsuario,
     reportarAcceso,
+    reportarPago,
 } from '../controllers/botController.js'
 
 const router = Router()
@@ -25,5 +26,6 @@ router.get('/pendientes/:email',     pendientesDeUsuario)
 router.get('/diagnostico/:email',    diagnosticoDeAcceso)
 router.post('/completar-whatsapp',   completarWhatsappDeUsuario)
 router.post('/reporte-acceso',       reportarAcceso)
+router.post('/reporte-pago',         reportarPago)
 
 export default router

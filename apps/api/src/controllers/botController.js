@@ -133,3 +133,51 @@ export async function reportarAcceso(req, res, next) {
         next(err)
     }
 }
+
+/**
+ * POST /bot/reporte-pago
+ * El alumno avisa que ya pagó — con foto de comprobante o escribiendo los datos.
+ *
+ * Guarda el reporte y avisa a la admin por WhatsApp. NO activa la cuenta ni
+ * asigna talleres: eso lo hace Paola desde el panel DESPUÉS de cotejar contra el
+ * banco. Un mensaje de WhatsApp no es comprobante de nada.
+ *
+ * Body: { email, nombre, whatsapp, tipo: 'comprobante'|'datos', datos?, tallerNombre? }
+ */
+export async function reportarPago(req, res, next) {
+    try {
+        const { email, nombre, whatsapp, tipo, datos, tallerNombre } = req.body
+        if (!email) throw new AppError('email es requerido', 400, 'BAD_REQUEST')
+
+        const lineas = []
+        if (tallerNombre) lineas.push(`Taller: ${tallerNombre}`)
+        lineas.push(tipo === 'comprobante'
+            ? 'Mandó FOTO de comprobante por WhatsApp'
+            : 'Escribió los datos de su pago')
+
+        // `datos` viene del flujo por pasos del bot (banco, monto, titular…).
+        // Se guarda como texto legible para que el reporte se entienda de un
+        // vistazo, tanto en el panel como en el WhatsApp de aviso.
+        if (datos && typeof datos === 'object') {
+            const ETIQUETAS = {
+                banco: 'Banco', monto: 'Monto', titular: 'Titular',
+                fecha: 'Fecha y hora', folio: 'Folio/referencia',
+            }
+            for (const [clave, etiqueta] of Object.entries(ETIQUETAS)) {
+                if (datos[clave]) lineas.push(`${etiqueta}: ${datos[clave]}`)
+            }
+        }
+
+        const resultado = await crearReporte({
+            email, nombre, whatsapp,
+            motivo:  MOTIVOS.REPORTE_PAGO,
+            detalle: lineas.join(' · '),
+            // Un segundo pago es legítimo: nunca lo silenciamos como duplicado.
+            permitirDuplicado: true,
+        })
+
+        res.status(201).json({ status: 'ok', ...resultado })
+    } catch (err) {
+        next(err)
+    }
+}

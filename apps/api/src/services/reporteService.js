@@ -28,17 +28,24 @@ const MOTIVO_TEXTO = {
  * Crea un reporte y avisa por WhatsApp a la admin.
  * El aviso es best-effort: si el bot no responde, el reporte igual queda guardado.
  */
-export async function crearReporte({ email, nombre, whatsapp, motivo, detalle = null }) {
+export async function crearReporte({ email, nombre, whatsapp, motivo, detalle = null, permitirDuplicado = false }) {
     const emailNorm = String(email).toLowerCase().trim()
 
-    // Si ya hay un reporte abierto por el mismo motivo, no duplicar
-    const { rows: abiertos } = await query(
-        `SELECT * FROM reportes_acceso
-         WHERE LOWER(email) = $1 AND motivo = $2 AND estado = 'abierto'`,
-        [emailNorm, motivo]
-    )
-    if (abiertos.length > 0) {
-        return { nuevo: false, reporte: abiertos[0] }
+    // Si ya hay un reporte abierto por el mismo motivo, no duplicar.
+    //
+    // EXCEPCIÓN (permitirDuplicado): los reportes de PAGO sí se repiten a
+    // propósito. Una persona puede pagar dos talleres, o mandar el comprobante
+    // de una transferencia y luego el de otra. Silenciar el segundo haría que un
+    // pago real se perdiera sin que nadie se entere.
+    if (!permitirDuplicado) {
+        const { rows: abiertos } = await query(
+            `SELECT * FROM reportes_acceso
+             WHERE LOWER(email) = $1 AND motivo = $2 AND estado = 'abierto'`,
+            [emailNorm, motivo]
+        )
+        if (abiertos.length > 0) {
+            return { nuevo: false, reporte: abiertos[0] }
+        }
     }
 
     const { rows } = await query(
