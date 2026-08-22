@@ -357,11 +357,25 @@ function estadoTaller({ fecha_inicio, fecha_fin, hora_inicio, hora_fin }) {
  * Lista los talleres que el usuario tiene ASIGNADOS, con el estado calculado
  * de taller, clase y material.
  *
- * Flujo nuevo (sin canje manual): la chispa la asigna el admin al confirmar el
- * pago o al regalar un demo. Aparece automáticamente en el Home — NO se exige
- * `used = TRUE`. Solo se excluyen las revocadas. `DISTINCT ON (t.id)` evita
- * cards duplicadas si el usuario tuviera más de una chispa del mismo taller
- * (p. ej. un demo y luego la compra): se queda con la más reciente.
+ * ── Qué hace que un taller se vea (reglas de negocio, 21 ago 2026) ──────────
+ *
+ * Se exigen TRES cosas. Antes bastaba con que la chispa no estuviera revocada,
+ * y eso dejaba ver talleres que ya habían caducado o que nunca se pagaron.
+ *
+ * 1. La chispa NO está revocada.
+ * 2. La chispa NO ha caducado. `expires_at` se guardaba pero nadie la miraba:
+ *    había chispas vencidas hacía un mes que seguían dando acceso. `NULL` =
+ *    sin vigencia, se queda para siempre.
+ * 3. Hay una confirmación de que le toca:
+ *      · un registro en `lista_espera` con estado 'pagado' para ese taller, O
+ *      · que la chispa sea DEMO. En un regalo no hay pago que confirmar, así
+ *        que el acto de Paola de crearla marcada como demo ES la confirmación.
+ *        Sin esta excepción, toda demo que regalara quedaría invisible.
+ *
+ * NO se exige `used = TRUE`: ya no hay canje manual, la chispa se asigna y listo.
+ *
+ * `DISTINCT ON (t.id)` evita tarjetas duplicadas si tuviera más de una chispa
+ * del mismo taller (p. ej. una demo y luego la compra): gana la más reciente.
  */
 export async function getTalleresDelUsuario(email) {
     const { rows } = await query(
@@ -373,6 +387,16 @@ export async function getTalleresDelUsuario(email) {
          JOIN talleres t ON t.id = c.taller_id
          WHERE LOWER(c.usuario_email) = LOWER($1)
            AND c.revoked = FALSE
+           AND (c.expires_at IS NULL OR c.expires_at > NOW())
+           AND (
+                 c.is_demo = TRUE
+                 OR EXISTS (
+                     SELECT 1 FROM lista_espera le
+                     WHERE LOWER(le.email) = LOWER(c.usuario_email)
+                       AND le.taller_id = c.taller_id
+                       AND le.estado = 'pagado'
+                 )
+               )
          ORDER BY t.id, c.created_at DESC`,
         [email.trim()]
     )
