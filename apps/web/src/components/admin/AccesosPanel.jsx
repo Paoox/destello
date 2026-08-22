@@ -90,6 +90,29 @@ function Pill({ estado }) {
     )
 }
 
+/**
+ * Etiqueta para distinguir las chispas de cortesía en las listas.
+ * Mismo naranja (#D97706) que el botón "Demo" del formulario y que la
+ * tarjeta DEMO de las estadísticas, para que se lea como lo mismo.
+ * Ojo: una demo SÍ ocupa un lugar del cupo del taller.
+ */
+function DemoTag() {
+    return (
+        <span
+            title="Chispa de cortesía — ocupa un lugar del cupo"
+            style={{
+                display: 'inline-block', padding: '1px 7px', borderRadius: 999,
+                background: '#D9770622', color: '#D97706',
+                border: '1px solid #D97706',
+                fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
+                letterSpacing: '.02em',
+            }}
+        >
+            🎁 demo
+        </span>
+    )
+}
+
 function CopyBtn({ text }) {
     const [copied, setCopied] = useState(false)
     return (
@@ -800,6 +823,7 @@ export default function AccesosPanel({ adminToken }) {
                                 return (
                                     <div key={c.code} style={sHistRow}>
                                         <code style={{ fontWeight: 700, color: 'var(--color-jade-500)', fontSize: 12 }}>{c.code}</code>
+                                        {c.isDemo && <DemoTag />}
                                         <span style={{ fontSize: 12, color: 'var(--text-muted)', flex: 1 }}>
                                             {c.tallerNombre ?? c.tallerId ?? '—'}
                                         </span>
@@ -884,9 +908,10 @@ export default function AccesosPanel({ adminToken }) {
                                 return (
                                     <tr key={c.code} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                                         <td style={sTd}>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                                                 <code style={{ fontWeight: 700, color: 'var(--color-jade-500)', fontSize: 12 }}>{c.code}</code>
                                                 <CopyBtn text={c.code} />
+                                                {c.isDemo && <DemoTag />}
                                             </span>
                                         </td>
                                         <td style={sTd}>
