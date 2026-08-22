@@ -33,6 +33,45 @@ const EXT_POR_MIME = {
     'application/pdf': 'pdf',
 }
 
+/**
+ * Revisa que la llave sea usable ANTES de armar la petición.
+ *
+ * Sin esto, una llave mal copiada (por ejemplo el texto de ejemplo con una
+ * flecha "→") truena dentro de `fetch` con "Cannot convert argument to a
+ * ByteString because the character at index 44...", que no le dice nada a nadie.
+ * Las cabeceras HTTP solo admiten caracteres ASCII.
+ *
+ * @returns {string|null} el problema encontrado, o null si se ve bien
+ */
+function problemaConLaLlave() {
+    if (!SERVICE_KEY) return 'falta SUPABASE_SERVICE_KEY'
+
+    if (/[^\x20-\x7E]/.test(SERVICE_KEY)) {
+        return 'SUPABASE_SERVICE_KEY trae caracteres raros (¿copiaste el texto de ejemplo ' +
+               'en vez de la llave?). Debe ser un texto largo que empieza con "eyJ", sin espacios.'
+    }
+    if (/[<>]/.test(SERVICE_KEY) || /\s/.test(SERVICE_KEY)) {
+        return 'SUPABASE_SERVICE_KEY trae < > o espacios. Copia solo la llave, sin los signos del ejemplo.'
+    }
+    // Supabase tiene DOS formatos de llave secreta según cuándo se creó el proyecto:
+    //   · nuevo   → `sb_secret_...`  (Settings → API Keys → Secret keys)
+    //   · anterior→ `eyJ...`         (la service_role, un JWT)
+    // Las dos sirven igual para Storage. Lo que NO sirve es la pública.
+    const esNueva    = SERVICE_KEY.startsWith('sb_secret_')
+    const esJWTVieja = SERVICE_KEY.startsWith('eyJ')
+
+    if (SERVICE_KEY.startsWith('sb_publishable_')) {
+        return 'Esa es la llave PUBLICABLE, no sirve para subir comprobantes. ' +
+               'Usa la de "Secret keys" (empieza con sb_secret_).'
+    }
+    if (!esNueva && !esJWTVieja) {
+        return 'SUPABASE_SERVICE_KEY no parece una llave secreta de Supabase. ' +
+               'Debe empezar con "sb_secret_" (Settings → API Keys → Secret keys) ' +
+               'o con "eyJ" si tu proyecto usa el formato anterior.'
+    }
+    return null
+}
+
 /** ¿Está configurado? Si no, el reporte igual se guarda, solo sin imagen. */
 export function storageDisponible() {
     return Boolean(SUPABASE_URL && SERVICE_KEY)
@@ -49,9 +88,11 @@ export function storageDisponible() {
  * @returns {Promise<string>} ruta guardable en la BD
  */
 export async function subirComprobante(buffer, mimetype = 'image/jpeg') {
-    if (!storageDisponible()) {
-        throw new Error('Supabase Storage no está configurado (falta SUPABASE_URL o SUPABASE_SERVICE_KEY)')
+    if (!SUPABASE_URL) {
+        throw new Error('Supabase Storage no está configurado (falta SUPABASE_URL)')
     }
+    const problema = problemaConLaLlave()
+    if (problema) throw new Error(problema)
     if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
         throw new Error('Comprobante vacío')
     }
@@ -69,6 +110,9 @@ export async function subirComprobante(buffer, mimetype = 'image/jpeg') {
     const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${ruta}`, {
         method:  'POST',
         headers: {
+            // Storage pide la llave en las dos cabeceras. Con el formato nuevo
+            // (`sb_secret_...`) mandar solo Authorization devuelve 401.
+            apikey:         SERVICE_KEY,
             Authorization:  `Bearer ${SERVICE_KEY}`,
             'Content-Type': mimetype,
             'cache-control': '3600',
@@ -89,12 +133,19 @@ export async function subirComprobante(buffer, mimetype = 'image/jpeg') {
  * tumbar la carga de la bandeja de reportes por una imagen que no se pudo firmar.
  */
 export async function urlFirmada(ruta, segundos = VIGENCIA_URL_SEG) {
-    if (!ruta || !storageDisponible()) return null
+    if (!ruta || !SUPABASE_URL) return null
+
+    const problema = problemaConLaLlave()
+    if (problema) {
+        console.error('[storage]', problema)
+        return null
+    }
 
     try {
         const res = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/${BUCKET}/${ruta}`, {
             method:  'POST',
             headers: {
+                apikey:         SERVICE_KEY,
                 Authorization:  `Bearer ${SERVICE_KEY}`,
                 'Content-Type': 'application/json',
             },
