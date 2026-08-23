@@ -460,12 +460,16 @@ export default function MetricasPanel({ adminToken }) {
                                                 {data.talleres.map(t => (
                                                     <BarraH key={t.id} label={t.nombre}
                                                             valor={`${t.cupo_ocupado}/${t.cupo_maximo}`}
+                                                            num={Number(t.cupo_ocupado)}
                                                             max={Number(t.cupo_maximo) || 1}
                                                             color={t.agotado ? ESTADO.urgente : SERIE.tres}
                                                             nota={[
                                                                 t.agotado ? 'AGOTADO' : `${t.lugares_libres} libres`,
                                                                 t.cortesias > 0 ? `${t.cortesias} de cortesía` : null,
-                                                                t.horas_en_llenarse ? `tardó ${fmtHoras(t.horas_en_llenarse)}` : null,
+                                                                // Solo si el dato es creíble: los pagos rellenados a mano
+                                                                // tienen fecha anterior al alta y daban "tardó −911 h".
+                                                                Number(t.horas_en_llenarse) > 0
+                                                                    ? `tardó ${fmtHoras(t.horas_en_llenarse)}` : null,
                                                             ].filter(Boolean).join(' · ')} />
                                                 ))}
                                             </div>

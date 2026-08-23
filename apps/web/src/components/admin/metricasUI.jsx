@@ -105,9 +105,20 @@ export function Tile({ icon: Icon, label, valor, sub, color = 'var(--text-primar
  * Horizontal y no vertical porque las etiquetas son nombres largos de taller:
  * en vertical habría que girarlas y dejarían de leerse.
  */
-export function BarraH({ label, valor, max, color = SERIE.uno, nota }) {
-    const num = typeof valor === 'number' ? valor : Number(String(valor).replace(/[^\d.-]/g, '')) || 0
-    const pct = max > 0 ? Math.max((num / max) * 100, num > 0 ? 1.5 : 0) : 0
+export function BarraH({ label, valor, num, max, color = SERIE.uno, nota }) {
+    // `num` es el número que dibuja la barra. Pásalo SIEMPRE que `valor` no sea
+    // un número limpio — sobre todo en razones tipo "3/20": leerlo del texto
+    // daría 320 y la barra saldría llena. El texto es para el ojo, `num` es el
+    // dato. (Pasó el 23 ago 2026: todas las barras de cupo salían al 100 %.)
+    const n = num != null
+        ? Number(num)
+        : (typeof valor === 'number'
+            ? valor
+            // Solo el primer número del texto: "$1,200.50" → 1200.50
+            : Number((String(valor).replace(/,/g, '').match(/\d+(\.\d+)?/) ?? [0])[0]))
+    const seguro = Number.isFinite(n) ? Math.max(n, 0) : 0
+    // Nunca pasar de 100 %: una barra que se desborda no comunica nada.
+    const pct = max > 0 ? Math.min(Math.max((seguro / max) * 100, seguro > 0 ? 1.5 : 0), 100) : 0
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>

@@ -379,7 +379,13 @@ router.get('/', async (req, res, next) => {
                  JOIN talleres t ON t.id = m.id
                  LEFT JOIN LATERAL (
                      SELECT
-                        ROUND(EXTRACT(EPOCH FROM (MAX(le.pagado_at) - MIN(le.created_at))) / 3600) AS horas_en_llenarse,
+                        -- Solo cuando el último pago es POSTERIOR al primer
+                        -- registro. Las filas rellenadas por la migración 006
+                        -- traen pagado_at anterior al alta y daban tiempos
+                        -- negativos ("tardó −911 h"). Mejor NULL que mentira.
+                        CASE WHEN MAX(le.pagado_at) > MIN(le.created_at)
+                             THEN ROUND(EXTRACT(EPOCH FROM (MAX(le.pagado_at) - MIN(le.created_at))) / 3600)
+                        END                                                      AS horas_en_llenarse,
                         (SELECT COUNT(*)::int FROM pagos p
                           WHERE p.taller_id = m.id AND p.metodo = 'cortesia')     AS cortesias
                      FROM lista_espera le
