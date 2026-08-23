@@ -202,7 +202,8 @@ export default function AsistenciaPanel({ adminToken }) {
                         titulo="Quién estuvo en la clase"
                         icon={UserCheck}
                         nota={`Califica para certificado quien estuvo ${min} minutos o más con el aula abierta. `
-                            + 'Si alguien sí asistió y el registro no lo alcanzó, emítelo a mano en su renglón.'}
+                            + 'Si alguien sí asistió y el registro no lo alcanzó, emítelo a mano en su renglón. '
+                            + 'Emitir NO le manda ningún correo: el certificado le aparece en su Inicio la próxima vez que entre.'}
                         accion={
                             <button onClick={emitirTodos}
                                     disabled={ocupado === '__todos' || r.califican <= r.certificados}
@@ -255,12 +256,22 @@ export default function AsistenciaPanel({ adminToken }) {
                                                     </div>
                                                 )}
                                             </>,
-                                            p.tiene_certificado
-                                                ? <span style={{
-                                                      fontFamily: 'ui-monospace, monospace',
-                                                      fontSize: 11, color: SERIE.uno,
-                                                  }}>{p.certificado_folio}</span>
-                                                : <span style={{ color: 'var(--text-disabled)' }}>—</span>,
+                                            ocupado === p.usuario_email
+                                                ? <span style={{ color: ESTADO.atencion }}>emitiendo…</span>
+                                                : p.tiene_certificado
+                                                    ? <>
+                                                          <div style={{
+                                                              display: 'inline-flex', alignItems: 'center', gap: 5,
+                                                              color: SERIE.uno, fontWeight: 700, fontSize: 11,
+                                                          }}>
+                                                              <Check size={12} weight="bold" /> EMITIDO
+                                                          </div>
+                                                          <div style={{
+                                                              fontFamily: 'ui-monospace, monospace',
+                                                              fontSize: 11, color: 'var(--text-muted)',
+                                                          }}>{p.certificado_folio}</div>
+                                                      </>
+                                                    : <span style={{ color: 'var(--text-disabled)' }}>sin emitir</span>,
                                             p.tiene_certificado
                                                 ? <button onClick={() => anular(p.certificado_folio, p.usuario_email)}
                                                           disabled={ocupado === p.usuario_email}
@@ -269,7 +280,7 @@ export default function AsistenciaPanel({ adminToken }) {
                                                           disabled={ocupado === p.usuario_email}
                                                           style={{ ...sBtnMini, color: SERIE.uno,
                                                                    borderColor: SERIE.uno }}>
-                                                      {ocupado === p.usuario_email ? '…' : 'emitir'}
+                                                      {ocupado === p.usuario_email ? 'emitiendo…' : 'emitir'}
                                                   </button>,
                                         ]
                                     }}
