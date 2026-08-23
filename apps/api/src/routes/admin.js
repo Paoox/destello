@@ -599,6 +599,32 @@ router.post('/send-wa', async (req, res, next) => {
 })
 
 /**
+ * POST /admin/lista-espera/:id/recordatorio
+ *
+ * Deja constancia de que ya se le mandó un recordatorio de pago. Se llama
+ * DESPUÉS de que el mensaje salió bien — si el envío falla, no se estampa.
+ *
+ * Es lo que arranca las 24 h de gracia. Sin este dato el panel no puede
+ * distinguir a quien nunca supo que tenía que pagar de quien ya no contestó,
+ * y ofrecería liberar el lugar de los dos por igual.
+ */
+router.post('/lista-espera/:id/recordatorio', async (req, res, next) => {
+    try {
+        const { rows } = await query(
+            `UPDATE lista_espera
+                SET recordatorio_at = NOW(),
+                    recordatorios   = COALESCE(recordatorios, 0) + 1
+              WHERE id = $1
+            RETURNING id, email, taller_id, recordatorio_at, recordatorios`,
+            [req.params.id]
+        )
+        if (!rows.length) throw new AppError('Registro no encontrado', 404, 'NOT_FOUND')
+
+        res.json({ status: 'ok', registro: rows[0] })
+    } catch (err) { next(err) }
+})
+
+/**
  * POST /admin/lista-espera/:id/liberar
  *
  * Libera el lugar de quien no pagó dentro del plazo.

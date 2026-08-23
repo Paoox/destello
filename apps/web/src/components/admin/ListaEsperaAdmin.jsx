@@ -17,6 +17,9 @@ const CARD_NUM   = '4658 2850 1724 7424'
 
 /** Plazo para reportar el pago antes de que el lugar se libere. */
 const HORAS_PARA_PAGAR = 48
+// 24 h extra después de mandarle el recordatorio. Es el margen que Paola da
+// antes de liberarle el lugar a alguien más.
+const HORAS_DE_GRACIA = 24
 
 /**
  * Estado del reloj de pago de un registro.
@@ -24,24 +27,55 @@ const HORAS_PARA_PAGAR = 48
  * Solo aplica a quien tiene el lugar apartado (`cupo_confirmado`) pero aún no
  * paga. `apartado_at` viene de la fecha de su chispa — ver GET /admin/lista-espera.
  *
- * @returns {{ clave: 'na'|'en_plazo'|'por_vencer'|'vencido', horas: number|null }}
+ * El plazo tiene TRES etapas, no una:
+ *
+ *   1. 48 h desde que se le confirma el lugar → `en_plazo` / `por_vencer`
+ *   2. Se vencieron y NO se le ha avisado     → `falta_recordatorio`
+ *   3. Ya se le mandó recordatorio            → `en_gracia` (24 h más)
+ *   4. Pasó la gracia sin respuesta           → `gracia_vencida` → se libera
+ *
+ * La diferencia entre 2 y 4 es la que importa: **liberar el lugar de alguien a
+ * quien nunca le avisaste es muy distinto de liberarlo después de que no
+ * contestó.** Por eso el botón de liberar solo aparece en la etapa 4.
+ *
+ * @returns {{ clave: 'na'|'en_plazo'|'por_vencer'|'falta_recordatorio'|'en_gracia'|'gracia_vencida',
+ *             horas: number|null }}
  */
 function relojPago(r) {
-    if (r.estado !== 'cupo_confirmado' || !r.apartado_at) return { clave: 'na', horas: null }
+    if (!['cupo_confirmado', 'confirmado'].includes(r.estado)) return { clave: 'na', horas: null }
 
-    const transcurridas = (Date.now() - new Date(r.apartado_at).getTime()) / 3_600_000
+    // `confirmado_at` es el dato real desde la migración 003. `apartado_at`
+    // (derivado de la fecha de la chispa) queda como respaldo para los
+    // registros viejos que nunca pasaron por el trigger.
+    const base = r.confirmado_at || r.apartado_at
+    if (!base) return { clave: 'na', horas: null }
+
+    // Etapa 3 y 4: si ya se le recordó, lo que corre es la gracia.
+    if (r.recordatorio_at) {
+        const desdeAviso = (Date.now() - new Date(r.recordatorio_at).getTime()) / 3_600_000
+        const gracia     = HORAS_DE_GRACIA - desdeAviso
+        if (gracia <= 0) return { clave: 'gracia_vencida', horas: Math.round(-gracia) }
+        return { clave: 'en_gracia', horas: Math.max(1, Math.round(gracia)) }
+    }
+
+    const transcurridas = (Date.now() - new Date(base).getTime()) / 3_600_000
     const restantes     = HORAS_PARA_PAGAR - transcurridas
 
-    if (restantes <= 0) return { clave: 'vencido',    horas: Math.round(-restantes) }
-    if (restantes <= 12) return { clave: 'por_vencer', horas: Math.round(restantes) }
+    if (restantes <= 0)  return { clave: 'falta_recordatorio', horas: Math.round(-restantes) }
+    if (restantes <= 12) return { clave: 'por_vencer',         horas: Math.round(restantes) }
     return { clave: 'en_plazo', horas: Math.round(restantes) }
 }
 
 const RELOJ_CFG = {
-    en_plazo:   { color: 'var(--text-muted)',        etiqueta: h => `${h} h para pagar` },
-    por_vencer: { color: 'var(--color-amber-500)',   etiqueta: h => `⏳ vence en ${h} h` },
-    vencido:    { color: 'var(--color-error)',       etiqueta: h => `⚠️ venció hace ${h} h` },
+    en_plazo:           { color: 'var(--text-muted)',      etiqueta: h => `${h} h para pagar` },
+    por_vencer:         { color: 'var(--color-amber-500)', etiqueta: h => `⏳ vence en ${h} h` },
+    falta_recordatorio: { color: 'var(--color-amber-500)', etiqueta: h => `⚠️ venció hace ${h} h · mándale recordatorio` },
+    en_gracia:          { color: 'var(--color-amber-500)', etiqueta: h => `🔔 ya se le recordó · ${h} h de gracia` },
+    gracia_vencida:     { color: 'var(--color-error)',     etiqueta: h => `⛔ sin responder hace ${h} h · puedes liberar` },
 }
+
+/** Etapas que significan "esta persona necesita algo de ti hoy". */
+const ETAPAS_TRABAJO = ['por_vencer', 'falta_recordatorio', 'en_gracia', 'gracia_vencida']
 
 /**
  * Estado de la VIGENCIA del acceso — el reloj de las cortesías.
@@ -263,6 +297,29 @@ export default function ListaEsperaAdmin({ adminToken }) {
             const data = await res.json()
             if (res.ok) {
                 showToast(`${esRecordatorio ? 'Recordatorio' : 'Mensaje'} WA enviado a ${r.nombre || numero} ✓`)
+
+                // Solo cuando el mensaje SÍ salió se estampa la fecha: es lo que
+                // arranca sus 24 h de gracia. Si el envío falla, la persona no se
+                // enteró de nada y no sería justo empezarle a correr el reloj.
+                if (esRecordatorio) {
+                    try {
+                        const rec = await fetch(`/api/admin/lista-espera/${r.id}/recordatorio`, {
+                            method: 'POST', headers,
+                        })
+                        if (rec.ok) {
+                            const { registro } = await rec.json()
+                            setLista(prev => prev.map(x => x.id === r.id
+                                ? { ...x,
+                                    recordatorio_at: registro.recordatorio_at,
+                                    recordatorios:   registro.recordatorios }
+                                : x))
+                        }
+                    } catch {
+                        // El mensaje ya se envió; que falle la anotación no es
+                        // motivo para alarmar. Se corrige al recargar la lista.
+                        console.warn('[recordatorio] no se pudo registrar la fecha')
+                    }
+                }
             } else {
                 showToast(data.message || 'Error al enviar WA', false)
             }
@@ -340,13 +397,13 @@ export default function ListaEsperaAdmin({ adminToken }) {
     const filtered = lista.filter(r => {
         if (filterEstado === 'all') return true
         if (filterEstado === 'por_cobrar') {
-            return ['vencido', 'por_vencer'].includes(relojPago(r).clave)
+            return ETAPAS_TRABAJO.includes(relojPago(r).clave)
         }
         if (filterEstado === 'demo') return !!r.is_demo
         return r.estado === filterEstado
     })
 
-    const porCobrar = lista.filter(r => ['vencido', 'por_vencer'].includes(relojPago(r).clave)).length
+    const porCobrar = lista.filter(r => ETAPAS_TRABAJO.includes(relojPago(r).clave)).length
     const demos     = lista.filter(r => r.is_demo).length
 
     return (
@@ -557,7 +614,7 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                         {/* Recordar pago — solo aparece cuando el reloj de 48 h
                                             ya venció o está por vencer. No tiene sentido ofrecerlo
                                             para alguien que apenas apartó su lugar hace una hora. */}
-                                        {r.whatsapp && ['vencido', 'por_vencer'].includes(relojPago(r).clave) && (
+                                        {r.whatsapp && ETAPAS_TRABAJO.includes(relojPago(r).clave) && (
                                             <button
                                                 onClick={() => enviarWa(r, 'recordatorio')}
                                                 disabled={enviandoWa === r.id}
@@ -580,7 +637,7 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                         {/* Liberar lugar — solo cuando el plazo YA venció, nunca
                                             en "por vencer": mientras quede tiempo, la persona
                                             todavía está en su derecho de pagar. */}
-                                        {relojPago(r).clave === 'vencido' && (
+                                        {relojPago(r).clave === 'gracia_vencida' && (
                                             <button
                                                 onClick={() => liberarLugar(r)}
                                                 disabled={liberando === r.id}

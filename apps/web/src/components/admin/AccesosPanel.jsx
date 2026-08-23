@@ -45,6 +45,10 @@ const API = (path, token, opts = {}) =>
     })
 
 const VIGENCIA_OPTS = [
+    // 3 días es la ventana corta para cortesías: tiempo suficiente para que
+    // entre y se registre, pero no tanto como para que el lugar se quede
+    // apartado sin usarse. Una demo ocupa una silla igual que un pago.
+    { label: '3 días',       value: 3    },
     { label: '7 días',       value: 7    },
     { label: '15 días',      value: 15   },
     { label: '1 mes',        value: 30   },

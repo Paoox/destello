@@ -8,6 +8,8 @@ import { Sparkle, Copy, CheckFat, WhatsappLogo } from '@phosphor-icons/react'
 
 // Opciones de vigencia predefinidas
 const VIGENCIA_OPTS = [
+    // 3 días: ventana corta para cortesías (ver AccesosPanel)
+    { label: '3 días',       value: 3    },
     { label: '7 días',       value: 7    },
     { label: '15 días',      value: 15   },
     { label: '1 mes',        value: 30   },
