@@ -30,6 +30,7 @@ import { sendWhatsapp }      from '../services/botService.js'
 import { cuentaConWhatsapp, normalizarWhatsapp } from '../services/usuarioService.js'
 import { listReportes, resolverReporte } from '../services/reporteService.js'
 import { activarAlumno }    from '../services/inscripcionService.js'
+import metricasRouter     from './metricas.js'
 import crypto                from 'node:crypto'
 
 const router = Router()
@@ -39,6 +40,9 @@ router.post('/login', adminLogin)
 
 // ── Protegidas con adminToken ─────────────────────────────
 router.use(authenticateAdmin)
+
+// Métricas del dashboard (va después de authenticateAdmin: son datos del negocio)
+router.use('/metricas', metricasRouter)
 
 // Chispas
 router.post('/chispas',         chispaCtrl.generateChispa)

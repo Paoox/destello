@@ -604,8 +604,8 @@ function ModalConfirmarAsistencia({ pendiente, token, onResuelto }) {
                     ¿Nos confirmas tu asistencia?
                 </h2>
                 <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', margin: '0 0 20px', lineHeight: 1.6 }}>
-                    Tienes un lugar apartado. Los talleres son <strong>en vivo y con cupo
-                    limitado</strong>, así que saber si vas nos ayuda a no dejar sillas vacías.
+                    Ya te guardamos un lugar ✨ Como el taller es <strong>en vivo</strong>,
+                    nos ayuda muchísimo saber si vas a acompañarnos.
                 </p>
 
                 <div style={{
@@ -634,6 +634,9 @@ function ModalConfirmarAsistencia({ pendiente, token, onResuelto }) {
                 )}
 
                 <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                    {/* El hover sube un poquito el botón y le da sombra: el gesto
+                        clásico de "esto se puede tocar". Se desactiva mientras
+                        guarda, para no invitar a un segundo clic. */}
                     <button
                         onClick={() => responder(true)}
                         disabled={!!enviando}
@@ -643,6 +646,19 @@ function ModalConfirmarAsistencia({ pendiente, token, onResuelto }) {
                             borderRadius: 'var(--radius-lg)', color: '#0a0a0a',
                             fontFamily: 'var(--font-sans)', fontWeight: 700,
                             cursor: enviando ? 'wait' : 'pointer',
+                            transition: 'transform .16s ease, box-shadow .16s ease, filter .16s ease',
+                            opacity: enviando && enviando !== 'si' ? 0.55 : 1,
+                        }}
+                        onMouseEnter={e => {
+                            if (enviando) return
+                            e.currentTarget.style.transform = 'translateY(-1px)'
+                            e.currentTarget.style.boxShadow = '0 6px 18px rgba(16,185,129,0.32)'
+                            e.currentTarget.style.filter    = 'brightness(1.06)'
+                        }}
+                        onMouseLeave={e => {
+                            e.currentTarget.style.transform = 'none'
+                            e.currentTarget.style.boxShadow = 'none'
+                            e.currentTarget.style.filter    = 'none'
                         }}
                     >
                         {enviando === 'si' ? 'Guardando…' : '✓ Sí, ahí estaré'}
@@ -657,6 +673,19 @@ function ModalConfirmarAsistencia({ pendiente, token, onResuelto }) {
                             borderRadius: 'var(--radius-lg)', color: 'var(--text-muted)',
                             fontFamily: 'var(--font-sans)', fontWeight: 600,
                             cursor: enviando ? 'wait' : 'pointer',
+                            transition: 'background .16s ease, border-color .16s ease, color .16s ease',
+                            opacity: enviando && enviando !== 'no' ? 0.55 : 1,
+                        }}
+                        onMouseEnter={e => {
+                            if (enviando) return
+                            e.currentTarget.style.background   = 'rgba(255,255,255,0.06)'
+                            e.currentTarget.style.borderColor  = 'var(--text-muted)'
+                            e.currentTarget.style.color        = 'var(--text-primary)'
+                        }}
+                        onMouseLeave={e => {
+                            e.currentTarget.style.background  = 'transparent'
+                            e.currentTarget.style.borderColor = 'var(--border-default)'
+                            e.currentTarget.style.color       = 'var(--text-muted)'
                         }}
                     >
                         {enviando === 'no' ? 'Guardando…' : 'No podré ir'}
@@ -667,7 +696,8 @@ function ModalConfirmarAsistencia({ pendiente, token, onResuelto }) {
                     margin: '14px 0 0', fontSize: 'var(--text-xs)',
                     color: 'var(--text-disabled)', textAlign: 'center', lineHeight: 1.5,
                 }}>
-                    Si no puedes ir, avisarnos libera tu lugar para alguien de la lista de espera. 🙏
+                    ¿No puedes esta vez? No pasa nada — con avisarnos, tu lugar puede ser
+                    para alguien que lo está esperando. 💛
                 </p>
             </div>
         </div>

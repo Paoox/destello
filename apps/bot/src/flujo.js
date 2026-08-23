@@ -457,7 +457,11 @@ async function inscribirEnTaller(jid, conv, taller) {
     // `completada: true` marca que esta conversación llegó hasta el final. Es
     // el numerador del embudo del bot: de todos los que empiezan, cuántos
     // terminan realmente inscritos en un taller.
-    conversaciones.set(jid, { paso: PASO.POST_ACCION, completada: true })
+    //
+    // ⚠️ Se conserva `datosUsuario(conv)`. Antes se perdía todo aquí, así que
+    // después de inscribirse el bot olvidaba quién era y le volvía a pedir el
+    // correo en el siguiente flujo — a alguien que se lo acababa de dar.
+    conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION, completada: true })
 
     if (resultado.status === 'error') {
         return (
@@ -766,7 +770,12 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
 
         switch (msg) {
             case '1':
-                // Directo al correo — sin preguntar si ya tiene perfil
+                // Si ya dio su correo en esta conversación, no se le vuelve a
+                // pedir: se va directo a elegir taller. Volver a preguntar algo
+                // que la persona acaba de contestar se siente a desatención.
+                if (conv.correo) {
+                    return await continuarTrasDatos(jid, datosUsuario(conv), '¡Perfecto! 😊')
+                }
                 conversaciones.set(jid, { paso: PASO.REG_CORREO })
                 return (
                     '¡Perfecto! 😊\n\n' +
@@ -783,7 +792,7 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
                         POST_ACCION_TEXTO
                     )
                 }
-                conversaciones.set(jid, { paso: PASO.VER_TALLERES, talleres })
+                conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.VER_TALLERES, talleres })
                 return menuTalleres(talleres) + '\n\n' + VER_TALLERES_PIE
             }
 
@@ -969,7 +978,7 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
         const { talleres = [] } = conv
 
         if (!talleres.length) {
-            conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+            conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.MENU, esNuevo: false })
             return '😔 No hay talleres disponibles en este momento.\n\n' + MENU_TEXTO()
         }
 
@@ -1171,7 +1180,7 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
     }
 
     // Fallback
-    conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+    conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.MENU, esNuevo: false })
     return MENU_TEXTO()
 }
 
