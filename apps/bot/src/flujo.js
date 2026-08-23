@@ -170,6 +170,22 @@ function datosUsuario(conv = {}) {
     return { correo, nombre, apellido, whatsapp, tienePerfil }
 }
 
+/**
+ * Horas que le quedan para pagar sin perder el lugar.
+ *
+ * Son 48 h desde que se le confirmó el cupo — el mismo plazo que muestra el
+ * panel de admin. Se calcula aquí y no se guarda: la fecha de confirmación es
+ * el dato real, el reloj es solo una lectura de esa fecha.
+ *
+ * @returns {number|null} horas restantes (negativo si ya venció), o null si no
+ *                        hay fecha de confirmación con la cual contar.
+ */
+function horasParaPagar(confirmadoAt) {
+    if (!confirmadoAt) return null
+    const transcurridas = (Date.now() - new Date(confirmadoAt).getTime()) / 3_600_000
+    return Math.round(48 - transcurridas)
+}
+
 /** Nombre completo para tablas que tienen una sola columna (lista_espera). */
 function nombreCompleto(conv = {}) {
     return [conv.nombre, conv.apellido].filter(Boolean).join(' ').trim() || null
@@ -443,9 +459,69 @@ async function inscribirEnTaller(jid, conv, taller) {
         )
     }
 
-    if (!resultado.nuevo) {
+    const primerNombre = nombre?.split(' ')[0] || 'Hola'
+
+    // Ya tiene acceso a ese taller: no está esperando nada, ya está adentro.
+    // Decirle "te avisamos cuando haya lugar" sería confundirla — y volver a
+    // formarla ocuparía DOS lugares del mismo taller, cuando la regla es una
+    // cuenta = un lugar (cada quien necesita la suya para tomar la clase,
+    // aunque sean de la misma familia).
+    if (resultado.yaTieneAcceso) {
         return (
-            `ℹ️ *${nombre?.split(' ')[0] || 'Hola'}*, ya estás en la lista de espera de *${taller.nombre}*.\n\n` +
+            `✨ *${primerNombre}*, ya tienes acceso a *${taller.nombre}*.\n\n` +
+            'No necesitas volver a inscribirte: entra a la plataforma y ahí lo ' +
+            'encuentras listo.\n\n' +
+            '👉 https://destello.courses/login\n\n' +
+            '_Entra con Google o con tu número._\n\n' +
+            POST_ACCION_TEXTO
+        )
+    }
+
+    // Ya tenía renglón en la lista. Antes aquí se le decía a TODOS lo mismo:
+    // "te avisaremos cuando haya lugar". Eso está mal para quien ya tiene su
+    // lugar apartado y lo único que falta es que pague — a esa persona no hay
+    // que decirle que espere, hay que decirle cómo pagar y cuánto tiempo tiene.
+    if (!resultado.nuevo) {
+        const estado = resultado.registro?.estado
+
+        if (estado === 'pagado') {
+            return (
+                `✅ *${primerNombre}*, tu pago de *${taller.nombre}* ya está confirmado.\n\n` +
+                'No tienes que hacer nada más: entra a la plataforma y ahí lo encuentras.\n\n' +
+                '👉 https://destello.courses/login\n\n' +
+                '_Entra con Google o con tu número._\n\n' +
+                POST_ACCION_TEXTO
+            )
+        }
+
+        if (estado === 'cupo_confirmado' || estado === 'confirmado') {
+            const restante = horasParaPagar(resultado.registro?.confirmado_at)
+            const reloj = restante == null
+                ? ''
+                : restante > 0
+                    ? `⏳ Te quedan *${restante} h* para completarlo sin perder tu lugar.\n\n`
+                    : '⚠️ El plazo para apartarlo ya venció, pero escríbenos y lo revisamos. 🙌\n\n'
+
+            return (
+                `🎟️ *${primerNombre}*, ¡ya tienes tu lugar apartado en *${taller.nombre}*!\n\n` +
+                'Lo único que falta es tu pago.\n\n' +
+                reloj +
+                PAGO_TEXTO + '\n\n' +
+                POST_ACCION_TEXTO
+            )
+        }
+
+        if (estado === 'rechazado') {
+            return (
+                `😕 *${primerNombre}*, tu lugar en *${taller.nombre}* se liberó.\n\n` +
+                'Si todavía quieres tomarlo, escríbenos y vemos si hay cupo disponible. 🙌\n\n' +
+                POST_ACCION_TEXTO
+            )
+        }
+
+        // 'pendiente': está formada, todavía sin lugar confirmado.
+        return (
+            `ℹ️ *${primerNombre}*, ya estás en la lista de espera de *${taller.nombre}*.\n\n` +
             'Te avisaremos en cuanto haya un lugar disponible. 🙌\n\n' +
             POST_ACCION_TEXTO
         )

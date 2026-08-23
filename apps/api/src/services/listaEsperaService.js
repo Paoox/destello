@@ -39,16 +39,52 @@ export async function listPorTaller(tallerId) {
  * cuanto se empieza a pagar publicidad.
  */
 export async function registrarEnLista({ email, tallerId, nombre, whatsapp, origen = null }) {
+    const emailNorm = email.toLowerCase().trim()
+
+    // ── Un lugar por persona y por taller ───────────────────────────────────
+    //
+    // La regla de negocio: cada quien necesita su propia cuenta para tomar la
+    // clase, aunque sean familiares. Así que nadie puede ocupar dos lugares del
+    // mismo taller.
+    //
+    // Se revisan DOS cosas, no una:
+    //
+    //   1. ¿Ya está en la lista? (comparando en minúsculas — antes se comparaba
+    //      con `email = $1` contra la columna cruda, así que "Ana@x.com" y
+    //      "ana@x.com" pasaban como personas distintas.)
+    //
+    //   2. ¿Ya tiene una chispa viva de ese taller? Esto es lo que faltaba.
+    //      Las cortesías viejas no dejaban renglón en `lista_espera`, así que
+    //      alguien con acceso por demo podía volver a inscribirse por el bot y
+    //      terminar ocupando DOS lugares del mismo taller.
     const { rows: existe } = await query(
-        `SELECT * FROM lista_espera WHERE email = $1 AND taller_id = $2`,
-        [email.toLowerCase().trim(), tallerId]
+        `SELECT * FROM lista_espera WHERE LOWER(email) = $1 AND taller_id = $2`,
+        [emailNorm, tallerId]
     )
     if (existe.length > 0) return { nuevo: false, registro: existe[0] }
+
+    const { rows: conAcceso } = await query(
+        `SELECT code, is_demo FROM chispas
+          WHERE LOWER(usuario_email) = $1
+            AND taller_id = $2
+            AND revoked = FALSE
+            AND (expires_at IS NULL OR expires_at > NOW())
+          LIMIT 1`,
+        [emailNorm, tallerId]
+    )
+    if (conAcceso.length > 0) {
+        return {
+            nuevo:         false,
+            yaTieneAcceso: true,
+            esCortesia:    !!conAcceso[0].is_demo,
+            registro:      null,
+        }
+    }
 
     const { rows } = await query(
         `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado, origen)
          VALUES ($1, $2, $3, $4, 'pendiente', $5) RETURNING *`,
-        [email.toLowerCase().trim(), tallerId, nombre || null, whatsapp || null, origen]
+        [emailNorm, tallerId, nombre || null, whatsapp || null, origen]
     )
     return { nuevo: true, registro: rows[0] }
 }
