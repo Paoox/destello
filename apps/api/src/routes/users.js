@@ -11,6 +11,8 @@ import * as referralService from '../services/referralService.js'
 import * as usuarioService from '../services/usuarioService.js'
 import { sincronizarEstadoCupo } from '../services/cupoService.js'
 import { registrarEvento } from '../services/eventoService.js'
+import * as asistenciaService from '../services/asistenciaService.js'
+import * as certificadoService from '../services/certificadoService.js'
 
 const router = Router()
 
@@ -46,17 +48,32 @@ router.get('/me', async (req, res, next) => {
 })
 
 // Actualiza el perfil del usuario autenticado.
-// Body admite: { nombre, apellido, whatsapp }. Solo actualiza lo que llega.
-// El nombre completo (nombre + apellido) es el que se usará en el certificado.
+// Body admite: { nombre, apellido, whatsapp, nombreCertificado }.
+// Solo actualiza lo que llega.
 router.put('/me', async (req, res, next) => {
   try {
-    const { nombre, apellido, whatsapp } = req.body
+    const { nombre, apellido, whatsapp, nombreCertificado } = req.body
 
     const sets = []
     const vals = []
     let i = 1
     if (nombre   !== undefined) { sets.push(`nombre   = $${i++}`); vals.push(String(nombre).trim()) }
     if (apellido !== undefined) { sets.push(`apellido = $${i++}`); vals.push(String(apellido).trim()) }
+    // El nombre del certificado se guarda aparte del de la cuenta a propósito:
+    // hay quien se registra como "Ana" y quiere el papel a nombre de "Ana Ruiz
+    // Méndez". La fecha la estampa la misma sentencia, para que no exista un
+    // camino que guarde el nombre sin dejar constancia de cuándo lo dijo.
+    if (nombreCertificado !== undefined) {
+      const limpio = String(nombreCertificado).trim().replace(/\s+/g, ' ')
+      if (limpio.length < 3) {
+        return res.status(400).json({
+          status:  'error',
+          message: 'Escribe tu nombre como quieres que aparezca en el certificado',
+        })
+      }
+      sets.push(`nombre_certificado = $${i++}`); vals.push(limpio)
+      sets.push('nombre_certificado_at = NOW()')
+    }
     if (whatsapp !== undefined) {
       // No dejar que alguien se apropie del número de otra cuenta editando su
       // perfil: sería la puerta trasera al mismo acceso cruzado del login.
@@ -69,7 +86,7 @@ router.put('/me', async (req, res, next) => {
     vals.push(req.user.userId)
     const { rows } = await query(
       `UPDATE usuarios SET ${sets.join(', ')} WHERE id = $${i}
-       RETURNING id, email, nombre, apellido, whatsapp, estado`,
+       RETURNING id, email, nombre, apellido, whatsapp, estado, nombre_certificado`,
       vals
     )
     if (!rows.length) return res.status(404).json({ status: 'error', message: 'Usuario no encontrado' })
@@ -234,6 +251,62 @@ router.post('/me/confirmar-asistencia', async (req, res, next) => {
     })
 
     res.json({ status: 'ok', registro: rows[0] })
+  } catch (err) { next(err) }
+})
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Aula: asistencia real
+// ══════════════════════════════════════════════════════════════════════════
+//
+// De aquí sale el certificado, así que el acceso se comprueba en el servidor
+// en CADA llamada. El front ya lo comprueba, pero el front se puede saltar.
+
+/**
+ * POST /users/me/aula/:tallerId/presencia
+ * Body: { entrada: true }  ← solo al abrir el aula; los latidos van sin body.
+ *
+ * El aula llama esto al abrirse y cada pocos minutos mientras siga abierta.
+ * Devuelve `cadaMinutos` para que el front no tenga que codificar el ritmo:
+ * si mañana cambia, cambia aquí y ya.
+ */
+router.post('/me/aula/:tallerId/presencia', async (req, res, next) => {
+  try {
+    const email = await emailDelUsuario(req.user.userId)
+    if (!email) return res.status(404).json({ status: 'error', message: 'Usuario no encontrado' })
+
+    const estado = await asistenciaService.registrarPresencia(
+      email, req.params.tallerId, { entrada: req.body?.entrada === true })
+
+    if (!estado) {
+      return res.status(403).json({ status: 'error', message: 'No tienes acceso a este taller' })
+    }
+    res.json({ status: 'ok', asistencia: estado,
+               cadaMinutos: asistenciaService.LATIDO_MINUTOS })
+  } catch (err) { next(err) }
+})
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Certificados del alumno
+// ══════════════════════════════════════════════════════════════════════════
+
+/** GET /users/me/certificados → los suyos, del más reciente al más viejo. */
+router.get('/me/certificados', async (req, res, next) => {
+  try {
+    const email = await emailDelUsuario(req.user.userId)
+    if (!email) return res.json({ status: 'ok', certificados: [] })
+
+    const { rows } = await query(
+      'SELECT nombre_certificado FROM usuarios WHERE id = $1', [req.user.userId])
+
+    res.json({
+      status:        'ok',
+      certificados:  await certificadoService.deUsuario(email),
+      // El front usa esto para decidir si muestra el pop-up del nombre. Se
+      // manda aquí para no obligarlo a una segunda llamada.
+      nombreCertificado: rows[0]?.nombre_certificado ?? null,
+    })
   } catch (err) { next(err) }
 })
 

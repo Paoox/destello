@@ -31,6 +31,8 @@ import { cuentaConWhatsapp, normalizarWhatsapp } from '../services/usuarioServic
 import { listReportes, resolverReporte } from '../services/reporteService.js'
 import { activarAlumno }    from '../services/inscripcionService.js'
 import metricasRouter     from './metricas.js'
+import * as asistenciaService  from '../services/asistenciaService.js'
+import * as certificadoService from '../services/certificadoService.js'
 import crypto                from 'node:crypto'
 
 const router = Router()
@@ -693,6 +695,98 @@ router.patch('/reportes/:id/resolver', async (req, res, next) => {
         const reporte = await resolverReporte(req.params.id, req.body?.nota || null)
         if (!reporte) throw new AppError('Reporte no encontrado', 404, 'NOT_FOUND')
         res.json({ status: 'ok', reporte })
+    } catch (err) { next(err) }
+})
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Asistencia y certificados
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Regla de Paola: certifica quien asistió, no quien pagó. La emisión es
+// automática por asistencia, pero SIEMPRE corregible a mano — a alguien se le
+// va el internet y eso no puede costarle el certificado.
+
+/**
+ * GET /admin/talleres/:id/asistencia
+ * Quién entró al aula, cuánto tiempo estuvo, y si ya tiene certificado.
+ */
+router.get('/talleres/:id/asistencia', async (req, res, next) => {
+    try {
+        const lista = await asistenciaService.asistenciaDeTaller(req.params.id)
+        const min   = certificadoService.MINUTOS_PARA_CERTIFICAR
+        res.json({
+            status: 'ok',
+            asistencia: lista,
+            // El umbral viaja con la lista para que el panel pueda marcar quién
+            // califica sin repetir el número por su cuenta.
+            minMinutos: min,
+            resumen: {
+                inscritos:    lista.length,
+                entraron:     lista.filter(p => p.entro).length,
+                califican:    lista.filter(p => Number(p.minutos) >= min).length,
+                certificados: lista.filter(p => p.tiene_certificado).length,
+            },
+        })
+    } catch (err) { next(err) }
+})
+
+/**
+ * POST /admin/talleres/:id/certificados
+ * Body: { minMinutos? }
+ * Emite en bloque para todos los que asistieron lo suficiente.
+ *
+ * Devuelve también a quién NO se le emitió y por qué: una emisión que deja
+ * gente fuera en silencio se lee como "ya está todo" cuando no lo está.
+ */
+router.post('/talleres/:id/certificados', async (req, res, next) => {
+    try {
+        const resultado = await certificadoService.emitirTaller(req.params.id, {
+            minMinutos: req.body?.minMinutos != null ? Number(req.body.minMinutos) : undefined,
+            actor:      req.admin?.email ?? 'admin',
+        })
+        res.json({ status: 'ok', ...resultado })
+    } catch (err) { next(err) }
+})
+
+/**
+ * POST /admin/certificados
+ * Body: { email, tallerId, motivo? }
+ * Emisión individual: el caso de "sí estuvo, pero el registro no lo alcanzó".
+ */
+router.post('/certificados', async (req, res, next) => {
+    try {
+        const { email, tallerId, motivo } = req.body ?? {}
+        if (!email || !tallerId) {
+            throw new AppError('email y tallerId son requeridos', 400, 'BAD_REQUEST')
+        }
+        // Se registra también la asistencia: si no, la lista diría "no entró"
+        // junto a un certificado emitido, y eso no se entiende en tres meses.
+        await asistenciaService.agregarManual(email, tallerId, {
+            actor: req.admin?.email ?? 'admin',
+            nota:  motivo || 'certificado emitido a mano',
+        })
+        const { certificado, nuevo } = await certificadoService.emitir(email, tallerId, {
+            actor: req.admin?.email ?? 'admin',
+        })
+        res.json({ status: 'ok', certificado, nuevo })
+    } catch (err) { next(err) }
+})
+
+/**
+ * DELETE /admin/certificados/:folio
+ * Body: { motivo }
+ * No borra: anula. El folio ya pudo haber circulado, y uno sin respaldo es
+ * peor que uno anulado con su explicación.
+ */
+router.delete('/certificados/:folio', async (req, res, next) => {
+    try {
+        const cert = await certificadoService.anular(req.params.folio, {
+            motivo: req.body?.motivo,
+            actor:  req.admin?.email ?? 'admin',
+        })
+        if (!cert) throw new AppError('Certificado no encontrado o ya anulado', 404, 'NOT_FOUND')
+        res.json({ status: 'ok', certificado: cert })
     } catch (err) { next(err) }
 })
 

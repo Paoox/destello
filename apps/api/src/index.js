@@ -15,6 +15,7 @@ import chispasRouter from './routes/chispas.js'
 import adminRouter   from './routes/admin.js'
 import botRouter     from './routes/bot.js'
 import supernovasRouter from './routes/supernovas.js'
+import certificadosRouter from './routes/certificados.js'
 
 import { errorHandler }  from './middleware/errorHandler.js'
 import { requestLogger } from './middleware/requestLogger.js'
@@ -45,6 +46,8 @@ app.use('/tallers', tallersRouter)
 app.use('/chispas', chispasRouter)
 app.use('/bot',     botRouter)
 app.use('/supernovas', supernovasRouter)
+// Pública a propósito: verificar un certificado no debe exigir cuenta.
+app.use('/certificados', certificadosRouter)
 
 // Rutas protegidas
 app.use('/users',  authenticate, usersRouter)

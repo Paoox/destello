@@ -198,6 +198,45 @@ export default function PageAula() {
       .catch(() => setAcceso('denied'))
   }, [token, id])
 
+  // ── Asistencia real ────────────────────────────────────────────────────
+  // De esto sale el certificado: certifica quien asistió, no quien pagó.
+  //
+  // Se manda una entrada al abrir el aula y un latido cada pocos minutos
+  // mientras siga abierta. NO se manda un evento de "salir": nadie cierra
+  // sesión — cierran la pestaña, se les acaba la pila, se les cae el internet.
+  // Con latidos, lo que ya se contó ya se contó, y si la persona desaparece
+  // simplemente deja de sumar.
+  //
+  // El servidor decide cada cuánto latir (`cadaMinutos`) y vuelve a comprobar
+  // el acceso en cada llamada: el gate de arriba es comodidad, no seguridad.
+  useEffect(() => {
+    if (acceso !== 'allowed' || !token || !id) return
+    let vivo  = true
+    let timer = null
+
+    const latir = async (entrada = false) => {
+      try {
+        const res  = await fetch(`/api/users/me/aula/${encodeURIComponent(id)}/presencia`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body:    JSON.stringify({ entrada }),
+        })
+        if (!vivo) return
+        const json = await res.json().catch(() => ({}))
+        const cada = Number(json?.cadaMinutos) || 2
+        timer = setTimeout(() => latir(false), cada * 60_000)
+      } catch {
+        // Un fallo aquí no debe estorbarle la clase a nadie: se reintenta en
+        // silencio, y si aun así no queda, Paola puede agregar la asistencia
+        // a mano desde el panel.
+        if (vivo) timer = setTimeout(() => latir(false), 120_000)
+      }
+    }
+
+    latir(true)
+    return () => { vivo = false; if (timer) clearTimeout(timer) }
+  }, [acceso, token, id])
+
   if (acceso !== 'allowed') {
     return <AccesoGate estado={acceso} navigate={navigate} />
   }

@@ -21,6 +21,7 @@
  */
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import Certificados from '../components/Certificados.jsx'
 import { useAuthStore } from '@store/useAuthStore.js'
 import {
   Sparkle,
@@ -410,6 +411,7 @@ export default function PageHome() {
   // ── Datos reales del usuario (BD: estrellas + código de referido) ──
   const token = useAuthStore((s) => s.token)
   const [nombre, setNombre]               = useState(null) // nombre real (BD)
+  const [apellido, setApellido]           = useState(null)
   const [estrellas, setEstrellas]         = useState(null) // null = cargando
   const [racha, setRacha]                 = useState(null)
   const [logros, setLogros]               = useState(null)
@@ -424,6 +426,7 @@ export default function PageHome() {
       .then((res) => {
         if (res?.user) {
           if (res.user.nombre) setNombre(res.user.nombre)
+          if (res.user.apellido) setApellido(res.user.apellido)
           if (typeof res.user.estrellas === 'number') setEstrellas(res.user.estrellas)
           if (typeof res.user.racha === 'number')     setRacha(res.user.racha)
           if (typeof res.user.logros === 'number')    setLogros(res.user.logros)
@@ -899,6 +902,13 @@ function ModalConfirmarAsistencia({ pendiente, token, onResuelto }) {
             </span>
           )}
         </div>
+
+        {/* ── Certificados ──
+            Va al final a propósito: es el cierre del recorrido. Arriba está lo
+            que estás haciendo; aquí, lo que ya lograste. */}
+        <Certificados token={token}
+                      tieneTalleres={misTalleres.length > 0}
+                      nombreCuenta={[nombre, apellido].filter(Boolean).join(' ')} />
 
       </div>
     </>
