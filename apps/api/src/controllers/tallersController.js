@@ -39,6 +39,8 @@ export async function joinTaller(req, res, next) {
       tallerId: req.params.id,
       nombre,
       whatsapp,
+      // Este es el modal del Habitat en la web, no el bot de WhatsApp.
+      origen: 'web',
     })
 
     res.status(resultado.nuevo ? 201 : 200).json({

@@ -5,6 +5,7 @@
  */
 import jwt      from 'jsonwebtoken'
 import bcrypt   from 'bcryptjs'
+import { registrarLogin } from '../services/eventoService.js'
 import { AppError }               from '../middleware/errorHandler.js'
 import { validateChispa }         from '../services/chispaService.js'
 import * as resplandorService     from '../services/resplandorService.js'
@@ -142,6 +143,11 @@ export async function loginWithSocial(req, res, next) {
 
     // 3. Emitir JWT de Destello
     const token = signToken({ userId: usuario.id, role: 'alumno' })
+
+    // Medición: primer_login_at / ultimo_login_at / total_logins.
+    // Va sin await a propósito — que la métrica no le meta latencia al login,
+    // y si falla, el login ya es válido de todos modos.
+    registrarLogin(usuario.email, provider || 'google')
 
     return res.json({
       status: 'ok',

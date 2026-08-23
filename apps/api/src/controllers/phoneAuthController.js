@@ -16,6 +16,7 @@ import { query }    from '../db/db.js'
 import * as otp     from '../services/otpService.js'
 import { sendWhatsapp, normalizarWhatsapp } from '../services/botService.js'
 import { asegurarWhatsappLibre } from '../services/usuarioService.js'
+import { registrarLogin } from '../services/eventoService.js'
 
 function signToken(payload) {
     return jwt.sign(payload, process.env.JWT_SECRET, {
@@ -92,6 +93,7 @@ export async function verifyCode(req, res, next) {
             const u = rows[0]
             if (!u) throw new AppError('Usuario no encontrado', 404, 'USER_NOT_FOUND')
             const token = signToken({ userId: u.id, role: 'alumno' })
+            registrarLogin(u.email, 'whatsapp')   // sin await: no debe frenar el login
             return res.json({ status: 'ok', token, user: { ...u, role: 'alumno' } })
         }
 
@@ -138,6 +140,7 @@ export async function verifyCode(req, res, next) {
 
         const u     = activos[0]
         const token = signToken({ userId: u.id, role: 'alumno' })
+        registrarLogin(u.email, 'whatsapp')       // sin await: no debe frenar el login
         res.json({ status: 'ok', token, user: { ...u, role: 'alumno' } })
     } catch (err) { next(err) }
 }

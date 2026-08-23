@@ -9,6 +9,8 @@ import { diagnosticar, completarWhatsapp } from '../services/diagnosticoService.
 import { crearReporte, MOTIVOS } from '../services/reporteService.js'
 import { subirComprobante, storageDisponible } from '../services/storageService.js'
 import { AppError } from '../middleware/errorHandler.js'
+import { guardarConversacion, obtenerConversacion } from '../services/botConversacionService.js'
+import { registrarEvento } from '../services/eventoService.js'
 
 /**
  * POST /bot/registrar
@@ -50,7 +52,7 @@ export async function agregarALista(req, res, next) {
         if (!email)    throw new AppError('email es requerido', 400, 'BAD_REQUEST')
         if (!tallerId) throw new AppError('tallerId es requerido', 400, 'BAD_REQUEST')
 
-        const resultado = await registrarEnLista({ email, tallerId, nombre, whatsapp })
+        const resultado = await registrarEnLista({ email, tallerId, nombre, whatsapp, origen: 'bot' })
         res.status(201).json({ status: 'ok', ...resultado })
     } catch (err) {
         next(err)
@@ -205,4 +207,54 @@ export async function reportarPago(req, res, next) {
     } catch (err) {
         next(err)
     }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Conversaciones y bitácora del bot
+// ════════════════════════════════════════════════════════════════════════════
+//
+// El bot no habla con PostgreSQL — todo lo hace por HTTP contra esta API. Por
+// eso guardar la conversación y registrar eventos necesita endpoints propios.
+//
+// Los tres son "mejor esfuerzo": si fallan, el bot debe seguir contestando
+// igual. Nunca devuelven error al bot para que una falla de medición no le
+// arruine la conversación a nadie.
+
+/**
+ * PUT /bot/conversacion/:jid
+ * Guarda en qué paso va la conversación. Se llama en cada mensaje.
+ */
+export async function guardarConversacionBot(req, res) {
+    const { whatsapp, email, paso, datos, completada } = req.body ?? {}
+    const jid = await guardarConversacion({
+        jid: req.params.jid, whatsapp, email, paso, datos, completada,
+    })
+    res.json({ status: 'ok', guardada: !!jid })
+}
+
+/**
+ * GET /bot/conversacion/:jid
+ * Recupera la conversación tras un reinicio del bot. Devuelve `null` si no hay
+ * nada reciente que retomar (más de 6 h = mejor empezar de cero).
+ */
+export async function obtenerConversacionBot(req, res) {
+    const conv = await obtenerConversacion(req.params.jid)
+    res.json({ status: 'ok', conversacion: conv })
+}
+
+/**
+ * POST /bot/evento
+ * Deja un renglón en la bitácora. Body: { tipo, email, tallerId, metadata }
+ */
+export async function registrarEventoBot(req, res) {
+    const { tipo, email, tallerId, metadata } = req.body ?? {}
+    const id = await registrarEvento({
+        tipo,
+        usuarioEmail: email ?? null,
+        tallerId:     tallerId ?? null,
+        origen:       'bot',
+        actor:        'faro',
+        metadata:     metadata ?? {},
+    })
+    res.json({ status: 'ok', id })
 }

@@ -13,7 +13,7 @@
  * FLUJO REGISTRO — opción 1 del menú:
  *   → REG_CORREO   (pedir email)
  *     ├── email existe → [si falta WA → REG_WHATSAPP] → REG_TALLER
- *     └── email nuevo  → REG_NOMBRE → REG_APELLIDO → [REG_WHATSAPP si @lid] → REG_TALLER
+ *     └── email nuevo  → REG_NOMBRE (completo, 1 mensaje) → [REG_WHATSAPP si @lid] → REG_TALLER
  *
  * FLUJO VER TALLERES — opción 2 del menú:
  *   → VER_TALLERES (lista numerada sin tope)
@@ -56,7 +56,6 @@ const PASO = {
     // Flujo registro
     REG_CORREO:   'REG_CORREO',   // pedir email primero (unifica nuevo/existente)
     REG_NOMBRE:   'REG_NOMBRE',
-    REG_APELLIDO: 'REG_APELLIDO',
     REG_WHATSAPP: 'REG_WHATSAPP', // pedir número cuando no se pudo extraer del JID
     REG_TALLER:   'REG_TALLER',
     // Sin acceso (opción 3)
@@ -96,7 +95,70 @@ function extractWhatsapp(jid, senderPn = null) {
     return null
 }
 
-const conversaciones = new Map()
+// ── Estado de las conversaciones ──────────────────────────────
+//
+// Antes esto era un `Map()` a secas. Problema: **cada reinicio del bot borraba
+// todas las conversaciones a medias.** Le pedías el correo a alguien, mientras
+// tanto se reiniciaba el bot, y su siguiente mensaje caía en el vacío — el bot
+// ya no sabía quién era ni qué estaba haciendo. Eso ya estaba pasando.
+//
+// Ahora el Map sigue siendo la memoria rápida (leer de RAM es instantáneo y el
+// bot responde igual de rápido), pero cada cambio se escribe también en la BD
+// por HTTP, sin await: si la API tarda, la persona no espera. Al arrancar en
+// frío, `procesarMensaje` rehidrata la conversación desde la BD.
+//
+// De paso, eso vuelve medible el embudo del bot: cuántos empiezan, en qué paso
+// se caen y cuántos terminan inscritos.
+//
+// La forma (get/set/has/delete) es idéntica a la de un Map a propósito, para
+// que ninguna de las ~30 llamadas que ya existían tuviera que cambiar.
+const _memoria = new Map()
+
+/** Escribe el estado en la BD. Nunca bloquea ni lanza: es solo memoria. */
+function persistir(jid, conv) {
+    const datos = conv ? { ...conv } : {}
+    // El listado de talleres se recarga solo en cada mensaje; guardarlo sería
+    // ocupar espacio con algo que caduca enseguida.
+    delete datos.talleres
+    fetch(`${API_URL}/bot/conversacion/${encodeURIComponent(jid)}`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+            whatsapp:   conv?.whatsapp ?? null,
+            email:      conv?.correo   ?? null,
+            paso:       conv?.paso     ?? null,
+            datos,
+            completada: !!conv?.completada,
+        }),
+    }).catch(() => { /* la medición nunca debe estorbarle a la conversación */ })
+}
+
+const conversaciones = {
+    get:    (jid) => _memoria.get(jid),
+    has:    (jid) => _memoria.has(jid),
+    set:    (jid, conv) => { _memoria.set(jid, conv); persistir(jid, conv); return conversaciones },
+    delete: (jid) => { _memoria.delete(jid); persistir(jid, null); return true },
+}
+
+/** Rehidrata una conversación tras un reinicio del bot. Silencioso si falla. */
+async function restaurarConversacion(jid) {
+    try {
+        const res  = await fetch(`${API_URL}/bot/conversacion/${encodeURIComponent(jid)}`)
+        const data = await res.json()
+        const c    = data?.conversacion
+        if (!c || !c.paso) return null
+        return { ...(c.datos || {}), paso: c.paso, esNuevo: false }
+    } catch { return null }
+}
+
+/** Deja un renglón en la bitácora. Sin await, nunca estorba. */
+function registrarEvento(tipo, { email = null, tallerId = null, ...metadata } = {}) {
+    fetch(`${API_URL}/bot/evento`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ tipo, email, tallerId, metadata }),
+    }).catch(() => {})
+}
 
 /**
  * Datos del alumno que se conservan al cambiar de flujo dentro de la MISMA
@@ -369,7 +431,10 @@ async function inscribirEnTaller(jid, conv, taller) {
         whatsapp: conv.whatsapp || null,
     })
 
-    conversaciones.set(jid, { paso: PASO.POST_ACCION })
+    // `completada: true` marca que esta conversación llegó hasta el final. Es
+    // el numerador del embudo del bot: de todos los que empiezan, cuántos
+    // terminan realmente inscritos en un taller.
+    conversaciones.set(jid, { paso: PASO.POST_ACCION, completada: true })
 
     if (resultado.status === 'error') {
         return (
@@ -562,6 +627,16 @@ function fmtCuando(taller) {
 
 export async function procesarMensaje(jid, texto, senderPn = null) {
     const msg  = texto.trim()
+
+    // Si no está en memoria puede ser gente nueva… o alguien cuya conversación
+    // se perdió porque el bot se reinició. Se intenta rescatar de la BD antes
+    // de tratarla como nueva. Es el único `await` que se agregó aquí: todo lo
+    // de abajo sigue siendo síncrono.
+    if (!conversaciones.has(jid)) {
+        const rescatada = await restaurarConversacion(jid)
+        if (rescatada) _memoria.set(jid, rescatada)
+    }
+
     const conv = conversaciones.get(jid) || { paso: PASO.MENU, esNuevo: true }
 
     // Número real del remitente (null si es @lid sin senderPn)
@@ -583,7 +658,14 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
     if (conv.paso === PASO.MENU) {
         if (conv.esNuevo) {
             conversaciones.set(jid, { paso: PASO.MENU, esNuevo: false })
+            registrarEvento('bot_conversacion_inicio', { whatsapp: waDelJid })
             return SALUDO_INICIAL
+        }
+
+        // Qué opción eligió. De aquí sale el embudo del bot: cuántos entran,
+        // qué buscan y en qué punto se caen.
+        if (['1','2','3','4','5','6'].includes(msg)) {
+            registrarEvento('bot_menu_opcion', { email: conv.correo ?? null, opcion: msg })
         }
 
         switch (msg) {
@@ -718,40 +800,49 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
         conversaciones.set(jid, { ...conv, paso: PASO.REG_NOMBRE, correo: msg })
         return (
             '¡Bienvenido/a! 🎉\n\n' +
-            '¿Cuál es tu *nombre*?\n\n' +
-            '_Lo usamos para personalizar tus diplomas._'
+            '¿Cuál es tu *nombre completo*?\n\n' +
+            '_Así te saludamos por aquí. El nombre exacto que quieres en tu ' +
+            'certificado lo eliges después, desde tu perfil._'
         )
     }
 
     // ── REGISTRO: nombre ──────────────────────────────────────
+    // ── REGISTRO: nombre completo, en UN solo mensaje ─────────
+    //
+    // Antes eran dos pasos (nombre, luego apellido) = dos idas y vueltas más en
+    // el momento donde la gente todavía se puede arrepentir. Ahora se pide una
+    // sola vez y se parte aquí: primera palabra = nombre, el resto = apellido.
+    //
+    // Se siguen guardando en columnas SEPARADAS de `usuarios` — nunca
+    // concatenados, que era el bug que metía el apellido dentro del nombre.
+    //
+    // Y ojo: este corte es solo una PROPUESTA para uso interno (saludarla,
+    // buscarla). El nombre que va impreso en el certificado se le pregunta
+    // aparte en su perfil — "¿cómo quieres que aparezca tu nombre?" — y se
+    // guarda tal cual en `usuarios.nombre_certificado`. Partir nombres a la
+    // fuerza es una pelea que no se gana: hay dos apellidos, nombres
+    // compuestos, "de la"… mejor que lo escriba la persona.
     if (conv.paso === PASO.REG_NOMBRE) {
-        conversaciones.set(jid, { ...conv, paso: PASO.REG_APELLIDO, nombre: msg.trim() })
-        return (
-            `Hola, *${msg.trim()}*! 😊\n\n` +
-            '¿Cuál es tu *apellido*?\n\n' +
-            '_Lo necesitamos para tu certificado._'
-        )
-    }
+        const completo = msg.trim().replace(/\s+/g, ' ')
+        const partes   = completo.split(' ')
+        const nombre   = partes[0]
+        const apellido = partes.slice(1).join(' ') || null
 
-    // ── REGISTRO: apellido ────────────────────────────────────
-    //   Nombre y apellido se guardan en columnas SEPARADAS de `usuarios`.
-    //   No concatenarlos: el certificado y el diploma los necesitan aparte.
-    if (conv.paso === PASO.REG_APELLIDO) {
-        const apellido = msg.trim()
-        const base = { ...conv, apellido, whatsapp: waDelJid, tienePerfil: false }
+        const base = { ...conv, nombre, apellido, whatsapp: waDelJid, tienePerfil: false }
 
         // Sin número extraíble (@lid) → pedirlo ANTES de registrar en BD
         if (!waDelJid) {
             conversaciones.set(jid, { ...base, paso: PASO.REG_WHATSAPP })
-            return `Gracias, *${conv.nombre}* 🙌\n\n` + PEDIR_WHATSAPP_TEXTO
+            return `Gracias, *${nombre}* 🙌\n\n` + PEDIR_WHATSAPP_TEXTO
         }
 
         await registrarUsuario({
             email:    conv.correo,
-            nombre:   conv.nombre,
+            nombre,
             apellido,
             whatsapp: waDelJid,
         })
+        registrarEvento('bot_registro_completo', { email: conv.correo, paso: 'nombre' })
 
         return await continuarTrasDatos(jid, base, '✅ *¡Registro guardado!*')
     }

@@ -30,7 +30,15 @@ export async function listPorTaller(tallerId) {
     return rows
 }
 
-export async function registrarEnLista({ email, tallerId, nombre, whatsapp }) {
+/**
+ * Da de alta a alguien en la lista de espera de un taller.
+ *
+ * `origen` dice POR DÓNDE llegó — 'bot' (WhatsApp), 'web' (modal del Habitat)
+ * o 'admin' (alta manual). Sin ese dato no se puede saber qué canal trae más
+ * gente ni cuál convierte mejor, que es lo primero que se quiere saber en
+ * cuanto se empieza a pagar publicidad.
+ */
+export async function registrarEnLista({ email, tallerId, nombre, whatsapp, origen = null }) {
     const { rows: existe } = await query(
         `SELECT * FROM lista_espera WHERE email = $1 AND taller_id = $2`,
         [email.toLowerCase().trim(), tallerId]
@@ -38,9 +46,9 @@ export async function registrarEnLista({ email, tallerId, nombre, whatsapp }) {
     if (existe.length > 0) return { nuevo: false, registro: existe[0] }
 
     const { rows } = await query(
-        `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado)
-         VALUES ($1, $2, $3, $4, 'pendiente') RETURNING *`,
-        [email.toLowerCase().trim(), tallerId, nombre || null, whatsapp || null]
+        `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado, origen)
+         VALUES ($1, $2, $3, $4, 'pendiente', $5) RETURNING *`,
+        [email.toLowerCase().trim(), tallerId, nombre || null, whatsapp || null, origen]
     )
     return { nuevo: true, registro: rows[0] }
 }
