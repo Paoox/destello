@@ -20,6 +20,18 @@ out/
 *.pem
 *.json.credentials
 
+# Sesión de WhatsApp del bot Faro (NUNCA committear)
+#
+# Baileys guarda aquí las llaves de la sesión. Quien las tenga puede
+# suplantar al bot y leer las conversaciones. Este repo es PÚBLICO, así que
+# un `git add -A` en la Toshiba las publicaría para cualquiera.
+#
+# También son irremplazables desde el lado práctico: si se borran, hay que
+# volver a escanear el QR para reconectar el bot.
+apps/bot/auth_info/
+auth_info/
+auth_info_*/
+
 # Logs
 *.log
 npm-debug.log*
