@@ -38,6 +38,7 @@ function ModalChispa({ taller, onClose }) {
   const [error,     setError]     = useState(null)
   const [exito,     setExito]     = useState(false)
   const [yaRegistrado, setYaRegistrado] = useState(false)
+  const [agotadoAlEnviar, setAgotadoAlEnviar] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -56,7 +57,14 @@ function ModalChispa({ taller, onClose }) {
         setYaRegistrado(true)
       }
     } catch (err) {
-      setError(err.message)
+      // El taller pudo llenarse entre que abrió el modal y le dio enviar. No es
+      // una falla: es una respuesta legítima, y merece un mensaje que se
+      // entienda en vez de un error técnico.
+      if (err.code === 'SIN_CUPO' || /lugares disponibles|lleno/i.test(err.message ?? '')) {
+        setAgotadoAlEnviar(true)
+      } else {
+        setError(err.message)
+      }
     } finally {
       setLoading(false)
     }
@@ -92,7 +100,34 @@ function ModalChispa({ taller, onClose }) {
             <X size={18} />
           </button>
 
-          {exito || yaRegistrado ? (
+          {agotadoAlEnviar ? (
+              /* ── Se llenó mientras llenaba el formulario ── */
+              <div style={{ textAlign: 'center', padding: 'var(--space-4) 0' }}>
+                <div style={{ fontSize: 40, marginBottom: 'var(--space-3)' }}>🔴</div>
+                <h3 style={{ fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+                  Se acaba de llenar
+                </h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
+                  Alguien más alcanzó el último lugar de <strong>{taller.nombre}</strong>.
+                  Los talleres son en vivo y con cupo limitado para que todas puedan
+                  participar de verdad.
+                  <br /><br />
+                  Escríbenos por WhatsApp y te avisamos <strong>en cuanto abramos
+                  la siguiente fecha</strong>.
+                </p>
+                <button
+                    onClick={onClose}
+                    style={{
+                      marginTop: 'var(--space-5)', padding: 'var(--space-3) var(--space-6)',
+                      background: 'var(--color-jade-500)', border: 'none',
+                      borderRadius: 'var(--radius-lg)', color: '#0a0a0a',
+                      fontFamily: 'var(--font-sans)', fontWeight: 600, cursor: 'pointer',
+                    }}
+                >
+                  Entendido
+                </button>
+              </div>
+          ) : exito || yaRegistrado ? (
               /* ── Estado de éxito ── */
               <div style={{ textAlign: 'center', padding: 'var(--space-4) 0' }}>
                 <CheckCircle size={44} weight="fill" color="#22c55e" style={{ marginBottom: 'var(--space-3)' }} />
@@ -217,7 +252,13 @@ function ModalChispa({ taller, onClose }) {
 function TallerCard({ taller, onQuieroChispa }) {
   const navigate = useNavigate()
   const color    = colorParaCategoria(taller.categoria)
-  const activo   = taller.estado === 'activo'
+  // `agotado` viene calculado de la API (v_cupo_taller) — el front NUNCA
+  // recalcula el cupo por su cuenta: si el navegador y el servidor usaran
+  // fórmulas distintas, alguien acabaría inscribiéndose a un taller lleno.
+  const agotado  = !!taller.agotado || taller.estado === 'lleno'
+  const activo   = taller.estado === 'activo' && !agotado
+  const libres   = Number(taller.lugares_libres ?? 0)
+  const ultimos  = activo && libres > 0 && libres <= 3
 
   return (
       <div style={{
@@ -271,8 +312,36 @@ function TallerCard({ taller, onQuieroChispa }) {
                 {taller.categoria}
               </p>
           )}
-          <h3 style={{ fontWeight: 600, fontSize: 'var(--text-base)', margin: '0 0 4px' }}>
+          <h3 style={{
+            fontWeight: 600, fontSize: 'var(--text-base)', margin: '0 0 4px',
+            display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          }}>
             {taller.nombre}
+            {agotado && (
+                <span style={{
+                  fontSize: 10, fontWeight: 800, letterSpacing: '.06em',
+                  textTransform: 'uppercase', whiteSpace: 'nowrap',
+                  padding: '2px 8px', borderRadius: 999,
+                  background: 'rgba(239,68,68,0.12)',
+                  border: '1px solid rgba(239,68,68,0.45)',
+                  color: 'var(--color-error)',
+                }}>
+                  Agotado
+                </span>
+            )}
+            {/* Sin urgencia inventada: solo se muestra cuando de verdad quedan
+                pocos, y con el número real. */}
+            {ultimos && (
+                <span style={{
+                  fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
+                  padding: '2px 8px', borderRadius: 999,
+                  background: 'rgba(217,119,6,0.12)',
+                  border: '1px solid rgba(217,119,6,0.45)',
+                  color: '#D97706',
+                }}>
+                  {libres === 1 ? 'Último lugar' : `Últimos ${libres}`}
+                </span>
+            )}
           </h3>
           {taller.descripcion && (
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
@@ -325,12 +394,14 @@ function TallerCard({ taller, onQuieroChispa }) {
           ) : (
               <button disabled style={{
                 flex: 1, padding: 'var(--space-3)',
-                background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-lg)', color: 'var(--text-disabled)',
+                background: agotado ? 'rgba(239,68,68,0.08)' : 'var(--bg-surface)',
+                border: `1px solid ${agotado ? 'rgba(239,68,68,0.35)' : 'var(--border-subtle)'}`,
+                borderRadius: 'var(--radius-lg)',
+                color: agotado ? 'var(--color-error)' : 'var(--text-disabled)',
                 fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 'var(--text-sm)',
                 cursor: 'not-allowed',
               }}>
-                Próximamente
+                {agotado ? 'Agotado' : 'Próximamente'}
               </button>
           )}
         </div>

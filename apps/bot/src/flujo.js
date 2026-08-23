@@ -417,7 +417,14 @@ function menuTalleres(talleres, titulo = '*Talleres disponibles:*') {
             const horario = t.horario     ? `\n   🕐 ${t.horario}` : ''
             const fecha   = fmtFecha(t.fecha_inicio) ? `\n   📅 ${fmtFecha(t.fecha_inicio)}` : ''
             const prox    = t.estado === 'proximamente' ? ' _(Próximamente)_' : ''
-            return `${numeroLista(i)}  *${t.nombre}*${prox}${precio}${horario}${fecha}`
+            // Un taller agotado se sigue mostrando (sirve de prueba social y
+            // para avisarle de la próxima fecha), pero se dice de una vez para
+            // que nadie se ilusione y luego se lleve el "no hay lugar".
+            const lleno   = (t.agotado || t.estado === 'lleno') ? ' 🔴 _AGOTADO_' : ''
+            // Últimos lugares: sin inventar urgencia, solo el dato real.
+            const pocos   = (!t.agotado && t.lugares_libres > 0 && t.lugares_libres <= 3)
+                ? `\n   ⚡ Últimos ${t.lugares_libres} lugares` : ''
+            return `${numeroLista(i)}  *${t.nombre}*${prox}${lleno}${precio}${horario}${fecha}${pocos}`
         }).join('\n\n')
     )
 }
@@ -460,6 +467,19 @@ async function inscribirEnTaller(jid, conv, taller) {
     }
 
     const primerNombre = nombre?.split(' ')[0] || 'Hola'
+
+    // El taller se llenó. Puede pasar entre que vio la lista y eligió: alguien
+    // más alcanzó el último lugar en esos segundos. Se le dice claro y se le
+    // ofrece la única salida real, que es avisarle de la próxima fecha.
+    if (resultado.sinCupo) {
+        return (
+            `😔 *${primerNombre}*, *${taller.nombre}* acaba de llenarse.\n\n` +
+            'Los talleres son en vivo y con cupo limitado para que todas puedan ' +
+            'participar de verdad, así que ya no podemos apartar más lugares.\n\n' +
+            '✨ Escríbenos por aquí y te avisamos *en cuanto abramos la siguiente fecha*.\n\n' +
+            POST_ACCION_TEXTO
+        )
+    }
 
     // Ya tiene acceso a ese taller: no está esperando nada, ya está adentro.
     // Decirle "te avisamos cuando haya lugar" sería confundirla — y volver a

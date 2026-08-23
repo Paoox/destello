@@ -14,6 +14,7 @@
 
 import crypto    from 'node:crypto'
 import { query } from '../db/db.js'
+import { hayCupo, sincronizarEstadoCupo } from './cupoService.js'
 import { normalizarWhatsapp, asegurarWhatsappLibre } from './usuarioService.js'
 
 // ── Mapper snake_case → camelCase ─────────────────────────────────────────────
@@ -153,6 +154,24 @@ export async function createChispa({
             [emailOwner, tallerId]
         )
 
+        // ── Cupo ────────────────────────────────────────────────────────────
+        // Solo se valida si esta persona va a ocupar un lugar NUEVO. Quien ya
+        // tiene el suyo apartado ('cupo_confirmado') o pagado no debe quedarse
+        // fuera por un taller lleno: su silla ya está contada, y bloquearlo
+        // sería negarle acceso a algo que ya es suyo.
+        const yaOcupaLugar = ['cupo_confirmado', 'confirmado', 'pagado']
+            .includes(yaEnLista[0]?.estado)
+
+        if (!yaOcupaLugar) {
+            const { hayCupo: hayLugar, motivo } = await hayCupo(tallerId)
+            if (!hayLugar) {
+                const err = new Error(motivo ?? 'El taller ya está lleno.')
+                err.statusCode = 409
+                err.code = 'SIN_CUPO'
+                throw err
+            }
+        }
+
         let listaEsperaId = yaEnLista[0]?.id ?? null
 
         if (!yaEnLista.length) {
@@ -191,6 +210,8 @@ export async function createChispa({
                 [emailOwner, listaEsperaId, tallerId]
             )
         }
+
+        await sincronizarEstadoCupo(tallerId)
     }
 
     const code      = await uniqueCode(prefix.toUpperCase())

@@ -41,16 +41,28 @@ export async function listTalleresActivos() {
 
 /** Para la landing: activo + próximamente + lleno (con sold out badge) */
 export async function listTalleresPublicos() {
+    // Se trae el cupo junto con el taller para que el Habitat pueda pintar
+    // "AGOTADO" sin una segunda llamada. `v_cupo_taller` (migración 008) es la
+    // única fórmula del cupo en todo el sistema.
     const { rows } = await query(
-        `SELECT * FROM talleres
-         WHERE estado IN ('activo', 'proximamente', 'lleno')
+        `SELECT t.*,
+                cu.cupo_ocupado,
+                cu.lugares_libres,
+                cu.agotado
+         FROM talleres t
+         JOIN v_cupo_taller cu ON cu.id = t.id
+         WHERE t.estado IN ('activo', 'proximamente', 'lleno')
          ORDER BY
-             CASE estado
+             -- Los agotados hasta abajo: siguen visibles (sirven de prueba
+             -- social y para la lista de espera de la próxima edición) pero no
+             -- le quitan el lugar a los que sí tienen cupo.
+             cu.agotado ASC,
+             CASE t.estado
                  WHEN 'activo'       THEN 1
                  WHEN 'proximamente' THEN 2
                  WHEN 'lleno'        THEN 3
              END,
-             nombre ASC`
+             t.nombre ASC`
     )
     return rows
 }

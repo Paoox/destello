@@ -12,7 +12,16 @@ const BASE = '/api'
 
 async function handleResponse(res) {
     const data = await res.json()
-    if (!res.ok) throw new Error(data.message ?? `Error ${res.status}`)
+    if (!res.ok) {
+        // El `code` de la API viaja con el error para que quien lo atrape pueda
+        // distinguir casos legítimos (un taller lleno) de fallas de verdad, sin
+        // tener que adivinar leyendo el texto del mensaje.
+        const err = new Error(data.message ?? `Error ${res.status}`)
+        err.code   = data.code ?? null
+        err.status = res.status
+        err.data   = data
+        throw err
+    }
     return data
 }
 

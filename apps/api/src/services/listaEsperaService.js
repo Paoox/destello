@@ -2,6 +2,7 @@
  * Destello API — Lista de Espera Service
  */
 import { query } from '../db/db.js'
+import { hayCupo, sincronizarEstadoCupo } from './cupoService.js'
 
 export async function listTodas() {
     const { rows } = await query(
@@ -81,11 +82,30 @@ export async function registrarEnLista({ email, tallerId, nombre, whatsapp, orig
         }
     }
 
+    // ── ¿Todavía hay lugar? ─────────────────────────────────────────────────
+    //
+    // Se revisa AQUÍ, en el servicio, y no en cada endpoint: el bot, el modal
+    // del Habitat y el panel entran todos por esta puerta. Validar en un solo
+    // lugar es lo que garantiza que ninguno se salte la regla.
+    //
+    // Ojo: entrar a la lista como 'pendiente' NO aparta lugar todavía — pero
+    // si el taller ya está lleno tampoco tiene sentido seguir formando gente
+    // para un salón sin sillas. Mejor decírselo de una vez.
+    const { hayCupo: hayLugar, cupo, motivo } = await hayCupo(tallerId)
+    if (!hayLugar) {
+        return { nuevo: false, sinCupo: true, cupo, motivo, registro: null }
+    }
+
     const { rows } = await query(
         `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado, origen)
          VALUES ($1, $2, $3, $4, 'pendiente', $5) RETURNING *`,
         [emailNorm, tallerId, nombre || null, whatsapp || null, origen]
     )
+    // Si esta inscripción fue la que llenó el taller, el estado pasa a 'lleno'
+    // solo. Así el Habitat y el bot no tienen que calcular nada: leen el taller
+    // y ya saben si mostrar "AGOTADO".
+    await sincronizarEstadoCupo(tallerId)
+
     return { nuevo: true, registro: rows[0] }
 }
 

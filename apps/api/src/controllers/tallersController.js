@@ -43,6 +43,20 @@ export async function joinTaller(req, res, next) {
       origen: 'web',
     })
 
+    // Taller lleno: 409 y un mensaje que la persona pueda entender. No es un
+    // error del sistema, es una respuesta legítima — por eso lleva su propio
+    // código para que el front lo distinga de una falla.
+    if (resultado.sinCupo) {
+      return res.status(409).json({
+        status:  'error',
+        code:    'SIN_CUPO',
+        agotado: true,
+        cupo:    resultado.cupo,
+        message: `"${taller.nombre}" ya no tiene lugares disponibles. ` +
+                 'Escríbenos por WhatsApp y te avisamos en cuanto abramos otra fecha.',
+      })
+    }
+
     res.status(resultado.nuevo ? 201 : 200).json({
       status:  'ok',
       nuevo:   resultado.nuevo,

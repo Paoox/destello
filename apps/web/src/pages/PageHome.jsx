@@ -485,6 +485,27 @@ export default function PageHome() {
   }
   useEffect(() => { cargarTalleres() }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Confirmaciones de asistencia pendientes ──
+  // Se piden una sola vez al entrar. Si hay varias se muestran de una en una:
+  // un muro de modales apilados sería peor experiencia que preguntarle otra vez
+  // la próxima vez que entre.
+  const [porConfirmar, setPorConfirmar] = useState([])
+
+  useEffect(() => {
+    if (!token) return
+    fetch('/api/users/me/confirmar-asistencia', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : { pendientes: [] })
+      .then(d => setPorConfirmar(d.pendientes ?? []))
+      .catch(() => {})   // que falle esto nunca debe estropear el Home
+  }, [token])
+
+  const resolverConfirmacion = (listaEsperaId, asiste) => {
+    setPorConfirmar(prev => prev.filter(p => p.lista_espera_id !== listaEsperaId))
+    // Si dijo que no va, su taller deja de estar disponible: se recarga la
+    // lista para que no se quede viendo algo a lo que ya no tiene acceso.
+    if (!asiste) cargarTalleres()
+  }
+
   // Próximos cursos = talleres 'proximamente' que aún no tomas, por fecha.
   // (Se calcula aquí, después de declarar misTalleres, para evitar usarlo antes.)
   const misIds = new Set(misTalleres.map((t) => t.tallerId))
@@ -514,9 +535,154 @@ export default function PageHome() {
   }
   const dotIconColor = (estado) => (estado === 'locked' ? 'var(--text-disabled)' : '#fff')
 
+
+/**
+ * Pide confirmar la asistencia a un taller.
+ *
+ * Por qué existe: cuando Paola le da una cortesía a alguien que ya tiene cuenta,
+ * esa persona ni se entera — la chispa aparece en su dashboard y ya. Pero una
+ * cortesía **ocupa una silla real en un taller en vivo**, así que si no piensa
+ * ir, ese lugar se lo está quitando a alguien que sí iría.
+ *
+ * Un clic resuelve eso. Y el "No podré ir" es tan valioso como el "sí": libera
+ * la silla a tiempo para ofrecérsela a alguien más.
+ */
+function ModalConfirmarAsistencia({ pendiente, token, onResuelto }) {
+    const [enviando, setEnviando] = useState(null)   // 'si' | 'no' | null
+    const [error,    setError]    = useState(null)
+
+    if (!pendiente) return null
+
+    const responder = async (asiste) => {
+        setEnviando(asiste ? 'si' : 'no')
+        setError(null)
+        try {
+            const res = await fetch('/api/users/me/confirmar-asistencia', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body:    JSON.stringify({ listaEsperaId: pendiente.lista_espera_id, asiste }),
+            })
+            if (!res.ok) throw new Error('No se pudo guardar tu respuesta')
+            onResuelto(pendiente.lista_espera_id, asiste)
+        } catch (e) {
+            setError(e.message)
+            setEnviando(null)
+        }
+    }
+
+    const fecha = pendiente.fecha_inicio
+        ? new Date(`${pendiente.fecha_inicio}T12:00:00`).toLocaleDateString('es-MX', {
+              weekday: 'long', day: 'numeric', month: 'long' })
+        : null
+
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 900,
+            background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 'var(--space-4)',
+        }}>
+            <div style={{
+                background: 'var(--bg-elevated, #10201c)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-xl, 18px)',
+                padding: 'var(--space-6)', maxWidth: 440, width: '100%',
+                boxShadow: '0 24px 64px rgba(0,0,0,0.5)',
+            }}>
+                {pendiente.is_demo && (
+                    <span style={{
+                        display: 'inline-block', marginBottom: 12,
+                        fontSize: 10, fontWeight: 800, letterSpacing: '.06em',
+                        textTransform: 'uppercase', padding: '3px 10px', borderRadius: 999,
+                        background: '#D9770622', border: '1px solid #D97706', color: '#D97706',
+                    }}>
+                        🎁 Acceso de cortesía
+                    </span>
+                )}
+
+                <h2 style={{ margin: '0 0 8px', fontSize: 'var(--text-xl)', fontWeight: 700 }}>
+                    ¿Nos confirmas tu asistencia?
+                </h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', margin: '0 0 20px', lineHeight: 1.6 }}>
+                    Tienes un lugar apartado. Los talleres son <strong>en vivo y con cupo
+                    limitado</strong>, así que saber si vas nos ayuda a no dejar sillas vacías.
+                </p>
+
+                <div style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)',
+                    marginBottom: 'var(--space-5)',
+                }}>
+                    <p style={{ margin: '0 0 6px', fontWeight: 700 }}>{pendiente.taller_nombre}</p>
+                    {fecha && (
+                        <p style={{ margin: '0 0 2px', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                            📅 {fecha}
+                        </p>
+                    )}
+                    {pendiente.horario && (
+                        <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                            🕐 {pendiente.horario} (CDMX)
+                        </p>
+                    )}
+                </div>
+
+                {error && (
+                    <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-sm)', marginBottom: 12 }}>
+                        {error}
+                    </p>
+                )}
+
+                <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                    <button
+                        onClick={() => responder(true)}
+                        disabled={!!enviando}
+                        style={{
+                            flex: 2, minWidth: 150, padding: 'var(--space-3)',
+                            background: 'var(--color-jade-500)', border: 'none',
+                            borderRadius: 'var(--radius-lg)', color: '#0a0a0a',
+                            fontFamily: 'var(--font-sans)', fontWeight: 700,
+                            cursor: enviando ? 'wait' : 'pointer',
+                        }}
+                    >
+                        {enviando === 'si' ? 'Guardando…' : '✓ Sí, ahí estaré'}
+                    </button>
+                    <button
+                        onClick={() => responder(false)}
+                        disabled={!!enviando}
+                        style={{
+                            flex: 1, minWidth: 120, padding: 'var(--space-3)',
+                            background: 'transparent',
+                            border: '1px solid var(--border-default)',
+                            borderRadius: 'var(--radius-lg)', color: 'var(--text-muted)',
+                            fontFamily: 'var(--font-sans)', fontWeight: 600,
+                            cursor: enviando ? 'wait' : 'pointer',
+                        }}
+                    >
+                        {enviando === 'no' ? 'Guardando…' : 'No podré ir'}
+                    </button>
+                </div>
+
+                <p style={{
+                    margin: '14px 0 0', fontSize: 'var(--text-xs)',
+                    color: 'var(--text-disabled)', textAlign: 'center', lineHeight: 1.5,
+                }}>
+                    Si no puedes ir, avisarnos libera tu lugar para alguien de la lista de espera. 🙏
+                </p>
+            </div>
+        </div>
+    )
+}
+
   return (
     <>
       <style>{HOME_CSS}</style>
+
+      <ModalConfirmarAsistencia
+          pendiente={porConfirmar[0] ?? null}
+          token={token}
+          onResuelto={resolverConfirmacion}
+      />
 
       <div className="dh-wrap">
 

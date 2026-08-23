@@ -85,7 +85,7 @@ export async function getTalleresStats(_req, res, next) {
                 t.nombre,
                 t.estado,
                 COUNT(le.id) FILTER (WHERE le.estado = 'pendiente')  AS pendientes,
-                COUNT(le.id) FILTER (WHERE le.estado = 'confirmado') AS confirmados,
+                COUNT(le.id) FILTER (WHERE le.estado IN ('cupo_confirmado', 'confirmado')) AS confirmados,
                 COUNT(le.id)                                          AS total_espera
             FROM talleres t
                      LEFT JOIN lista_espera le ON le.taller_id = t.id::text

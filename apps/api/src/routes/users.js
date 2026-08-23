@@ -9,6 +9,8 @@ import { query } from '../db/db.js'
 import * as chispaService from '../services/chispaService.js'
 import * as referralService from '../services/referralService.js'
 import * as usuarioService from '../services/usuarioService.js'
+import { sincronizarEstadoCupo } from '../services/cupoService.js'
+import { registrarEvento } from '../services/eventoService.js'
 
 const router = Router()
 
@@ -149,6 +151,90 @@ router.post('/me/supernovas/:id/canjear', async (req, res, next) => {
   } catch (err) {
     next(err)
   }
+})
+
+// ── Confirmación de asistencia ────────────────────────────────────────────
+//
+// Una cortesía ocupa una silla real en un taller en vivo. Si a quien la recibe
+// no le avisamos ni le preguntamos, ese lugar se lo puede estar quitando a
+// alguien que sí iría. Por eso, la primera vez que entra después de recibir su
+// acceso, se le muestra el taller y se le pide un sí o un no.
+
+/** GET /users/me/confirmar-asistencia → talleres que le faltan por confirmar */
+router.get('/me/confirmar-asistencia', async (req, res, next) => {
+  try {
+    const email = await emailDelUsuario(req.user.userId)
+    if (!email) return res.json({ status: 'ok', pendientes: [] })
+
+    const { rows } = await query(
+      `SELECT lista_espera_id, taller_id, taller_nombre, taller_descripcion,
+              fecha_inicio, horario, is_demo, expires_at
+         FROM v_falta_confirmar_asistencia
+        WHERE LOWER(email) = LOWER($1)
+        ORDER BY fecha_inicio NULLS LAST`,
+      [email]
+    )
+    res.json({ status: 'ok', pendientes: rows })
+  } catch (err) { next(err) }
+})
+
+/**
+ * POST /users/me/confirmar-asistencia
+ * Body: { listaEsperaId, asiste: true | false }
+ *
+ * Un "no" es tan valioso como un "sí": libera la silla a tiempo. Por eso se
+ * guarda la respuesta y no solo el hecho de haber contestado.
+ */
+router.post('/me/confirmar-asistencia', async (req, res, next) => {
+  try {
+    const { listaEsperaId, asiste } = req.body ?? {}
+    if (listaEsperaId == null) {
+      return res.status(400).json({ status: 'error', message: 'listaEsperaId es requerido' })
+    }
+
+    const email = await emailDelUsuario(req.user.userId)
+    if (!email) return res.status(404).json({ status: 'error', message: 'Usuario no encontrado' })
+
+    // El WHERE incluye el correo a propósito: sin eso, cualquiera con sesión
+    // podría confirmar (o cancelar) la asistencia de otra persona mandando un
+    // id distinto.
+    const { rows } = await query(
+      `UPDATE lista_espera
+          SET asistencia_confirmada_at = NOW(),
+              asistencia_respuesta     = $3
+        WHERE id = $1 AND LOWER(email) = LOWER($2)
+      RETURNING id, taller_id, asistencia_respuesta`,
+      [listaEsperaId, email, asiste === false ? 'no' : 'si']
+    )
+    if (!rows.length) {
+      return res.status(404).json({ status: 'error', message: 'Registro no encontrado' })
+    }
+
+    // Dijo que no va: se le revoca la chispa para que la silla vuelva a estar
+    // disponible de inmediato. Es el punto de todo esto.
+    if (asiste === false) {
+      await query(
+        `UPDATE chispas
+            SET revoked = TRUE
+          WHERE LOWER(usuario_email) = LOWER($1)
+            AND taller_id = $2
+            AND revoked = FALSE`,
+        [email, rows[0].taller_id]
+      )
+      await query(`UPDATE lista_espera SET estado = 'rechazado' WHERE id = $1`, [listaEsperaId])
+      await sincronizarEstadoCupo(rows[0].taller_id)
+    }
+
+    await registrarEvento({
+      tipo:         asiste === false ? 'asistencia_cancelada' : 'asistencia_confirmada',
+      usuarioEmail: email,
+      tallerId:     rows[0].taller_id,
+      origen:       'web',
+      metadata:     { lista_espera_id: listaEsperaId },
+    })
+
+    res.json({ status: 'ok', registro: rows[0] })
+  } catch (err) { next(err) }
 })
 
 export default router
