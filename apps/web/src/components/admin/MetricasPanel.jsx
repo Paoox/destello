@@ -1,51 +1,35 @@
 /**
  * Destello Admin — MetricasPanel
  *
- * El dashboard de métricas. Lee `GET /admin/metricas`, que devuelve todo el
- * paquete en una sola llamada para que la pantalla se dibuje de golpe y cada
- * filtro no dispare cinco peticiones.
+ * Anfitrión de las tres vistas del tablero:
+ *   Resumen     → el embudo, los tiempos, la actividad y el cupo por taller
+ *   Financiero  → de dónde entra el dinero, con el detalle operación por operación
+ *   Alumno      → todo lo de una persona en una pantalla
+ *
+ * Los filtros (fechas · taller · categoría) viven aquí arriba y se comparten
+ * entre Resumen y Financiero: si cada vista tuviera los suyos, cambiar de
+ * pestaña te haría volver a filtrar y los números no se podrían comparar.
+ * La ficha de alumno no los usa — ahí el filtro es la persona.
  *
  * ── Por qué no hay librería de gráficas ─────────────────────────────────────
  *
- * Las formas que se necesitan aquí son barras horizontales y una línea de dos
- * series. Eso es SVG y CSS — no vale meter ~100 KB de dependencia al bundle
- * para dibujarlo, y menos con la regla de mantener todo ligero.
- *
- * ── La paleta está validada, no elegida a ojo ───────────────────────────────
- *
- * Los cuatro colores de serie pasan las seis pruebas sobre el fondo oscuro de
- * Destello: banda de luminosidad, croma mínimo, separación para daltonismo
- * (protan/deutan/tritan), piso de visión normal y contraste contra la
- * superficie. No se cambian sin volver a validarlos.
- *
- * Reglas que se respetan a propósito:
- *   · un solo eje — nunca dos escalas en la misma gráfica
- *   · el color sigue a la entidad, no a su posición en el ranking
- *   · con dos o más series siempre hay leyenda, y además etiqueta directa
- *   · los colores de estado (bien/atención/urgente) no se reciclan como serie
- *   · los números y etiquetas van en color de texto, nunca en el de la serie
+ * Las formas necesarias son barras horizontales y una línea de dos series. Eso
+ * es SVG y CSS. Meter ~100 KB de dependencia para dibujarlo iría contra la
+ * regla de mantener todo ligero.
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
     ArrowClockwise, TrendUp, Users, CurrencyDollar, Warning,
-    ChartLineUp, Clock, Ticket,
+    ChartLineUp, Clock, Ticket, ChartPieSlice, User,
 } from '@phosphor-icons/react'
-
-// ── Paleta de series (validada sobre superficie #0E1B18) ─────────────────────
-const SERIE = {
-    uno:    '#199e70',   // jade — la marca
-    dos:    '#3987e5',   // azul
-    tres:   '#c98500',   // ámbar
-    cuatro: '#d55181',   // magenta
-}
-
-// Estados: reservados, nunca se usan como "serie 5". Siempre con texto al lado.
-const ESTADO = {
-    bien:    '#199e70',
-    atencion:'#c98500',
-    urgente: '#e66767',
-}
+import {
+    SERIE, ESTADO, fmtMoneda, fmtNum, fmtDia, fmtHoras,
+    Tile, BarraH, Seccion, Vacio, Campo, Tabla,
+    sInput, sBtnGhost, sSubtitulo, PRINT_CSS, BotonPDF, EncabezadoImpresion,
+} from './metricasUI.jsx'
+import MetricasFinanciero from './MetricasFinanciero.jsx'
+import MetricasAlumno     from './MetricasAlumno.jsx'
 
 const ALERTA_CFG = {
     pagado_sin_activar:  { color: ESTADO.urgente,  texto: 'Pagaron y su cuenta no está activa' },
@@ -56,95 +40,18 @@ const ALERTA_CFG = {
     taller_sobrevendido: { color: ESTADO.urgente,  texto: 'Talleres con más inscritos que cupo' },
 }
 
-const fmtMoneda = n => `$${Number(n ?? 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}`
-const fmtNum    = n => Number(n ?? 0).toLocaleString('es-MX')
-const fmtDia    = d => new Date(`${d}T12:00:00`).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
-
-/** Horas → "3 h" o "2.5 días", lo que se lea mejor. */
-function fmtHoras(h) {
-    if (h == null) return '—'
-    const n = Number(h)
-    if (Number.isNaN(n)) return '—'
-    if (n < 48) return `${Math.round(n)} h`
-    return `${(n / 24).toFixed(1)} días`
-}
-
-// ── Piezas ───────────────────────────────────────────────────────────────────
-
-/**
- * Número protagonista. No lleva gráfica: cuando el dato es UNO, dibujarlo sería
- * decorar en vez de informar.
- */
-function Tile({ icon: Icon, label, valor, sub, color = 'var(--text-primary)' }) {
-    return (
-        <div style={{
-            background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)',
-            display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0,
-        }}>
-            <span style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                fontSize: 'var(--text-xs)', color: 'var(--text-muted)',
-                textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600,
-            }}>
-                {Icon && <Icon size={13} />} {label}
-            </span>
-            <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.1, color }}>
-                {valor}
-            </span>
-            {sub && (
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                    {sub}
-                </span>
-            )}
-        </div>
-    )
-}
-
-/**
- * Barra horizontal para comparar magnitudes.
- *
- * Horizontal y no vertical porque las etiquetas son nombres largos de taller:
- * en vertical habría que girarlas y dejarían de leerse.
- */
-function BarraH({ label, valor, max, sufijo = '', color = SERIE.uno, nota }) {
-    const pct = max > 0 ? Math.max((valor / max) * 100, valor > 0 ? 1.5 : 0) : 0
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
-                <span style={{
-                    fontSize: 'var(--text-xs)', color: 'var(--text-secondary, var(--text-muted))',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                    {label}
-                </span>
-                {/* El número va en color de texto, no en el de la serie. */}
-                <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                    {valor}{sufijo}
-                </span>
-            </div>
-            <div style={{ height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 4 }}>
-                <div style={{
-                    width: `${pct}%`, height: '100%', background: color,
-                    // Extremo redondeado solo del lado del dato; el otro queda
-                    // anclado a la línea base.
-                    borderRadius: '0 4px 4px 0',
-                    transition: 'width .3s ease',
-                }} />
-            </div>
-            {nota && (
-                <span style={{ fontSize: 10, color: 'var(--text-disabled)' }}>{nota}</span>
-            )}
-        </div>
-    )
-}
+const VISTAS = [
+    { id: 'resumen',    label: 'Resumen',    Icon: ChartLineUp },
+    { id: 'financiero', label: 'Financiero', Icon: ChartPieSlice },
+    { id: 'alumno',     label: 'Ficha de alumno', Icon: User },
+]
 
 /**
  * Embudo: cuánta gente sobrevive a cada etapa.
  *
- * Cada barra se mide contra la PRIMERA etapa, no contra la más grande de todas,
- * porque lo que importa es "de los que empezaron, cuántos llegaron hasta aquí".
- * El porcentaje entre etapas se pone a un lado: es la caída real.
+ * Cada barra se mide contra la PRIMERA etapa, no contra la más grande, porque
+ * lo que importa es "de los que empezaron, cuántos llegaron hasta aquí". El
+ * porcentaje al lado es la caída real entre una etapa y la siguiente.
  */
 function Embudo({ etapas }) {
     const base = etapas[0]?.valor || 0
@@ -154,15 +61,9 @@ function Embudo({ etapas }) {
                 const anterior = i === 0 ? null : etapas[i - 1].valor
                 const caida    = anterior > 0 ? Math.round((e.valor / anterior) * 100) : null
                 return (
-                    <div key={e.label}>
-                        <BarraH
-                            label={e.label}
-                            valor={fmtNum(e.valor)}
-                            max={base}
-                            color={e.color ?? SERIE.uno}
-                            nota={caida != null ? `${caida}% de "${etapas[i - 1].label}"` : null}
-                        />
-                    </div>
+                    <BarraH key={e.label} label={e.label} valor={fmtNum(e.valor)} max={base}
+                            color={SERIE.uno}
+                            nota={caida != null ? `${caida}% de "${etapas[i - 1].label}"` : null} />
                 )
             })}
         </div>
@@ -172,47 +73,41 @@ function Embudo({ etapas }) {
 /**
  * Altas por día — dos series, un solo eje.
  *
- * SVG a mano: dos polilíneas de 2 px, puntos de 8 px, rejilla discreta y una
- * capa de hover que muestra el día completo. Con dos series hay leyenda Y
- * etiqueta directa al final de cada línea, para que la identidad nunca dependa
- * solo del color.
+ * SVG a mano: polilíneas de 2 px, puntos de 8 px, rejilla discreta y una capa
+ * de hover. Con dos series hay leyenda Y etiqueta directa al final de cada
+ * línea, para que la identidad nunca dependa solo del color.
  */
 function LineasDiarias({ datos }) {
     const [hover, setHover] = useState(null)
-
     const W = 640, H = 200, PAD = { t: 16, r: 56, b: 26, l: 34 }
     const iw = W - PAD.l - PAD.r
     const ih = H - PAD.t - PAD.b
 
-    if (!datos.length) {
-        return <Vacio texto="Todavía no hay inscripciones en este rango." />
-    }
+    if (!datos.length) return <Vacio texto="Todavía no hay inscripciones en este rango." />
 
     const maxY = Math.max(1, ...datos.map(d => Math.max(Number(d.altas), Number(d.pagados))))
     const x = i => PAD.l + (datos.length === 1 ? iw / 2 : (i / (datos.length - 1)) * iw)
     const y = v => PAD.t + ih - (v / maxY) * ih
-
     const linea = campo => datos.map((d, i) => `${x(i)},${y(Number(d[campo]))}`).join(' ')
     const ticksY = [0, Math.round(maxY / 2), maxY].filter((v, i, a) => a.indexOf(v) === i)
+    const series = [['altas', SERIE.uno, 'Altas'], ['pagados', SERIE.dos, 'Pagados']]
 
     return (
         <div style={{ position: 'relative' }}>
             {/* Leyenda: obligatoria con dos o más series */}
             <div style={{ display: 'flex', gap: 'var(--space-4)', marginBottom: 8, flexWrap: 'wrap' }}>
-                {[['Altas', SERIE.uno], ['Pagados', SERIE.dos]].map(([t, c]) => (
+                {series.map(([, c, t]) => (
                     <span key={t} style={{
                         display: 'flex', alignItems: 'center', gap: 6,
                         fontSize: 'var(--text-xs)', color: 'var(--text-muted)',
                     }}>
-                        <span style={{ width: 10, height: 10, borderRadius: 3, background: c }} />
-                        {t}
+                        <span style={{ width: 10, height: 10, borderRadius: 3, background: c }} /> {t}
                     </span>
                 ))}
             </div>
 
             <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}
                  onMouseLeave={() => setHover(null)}>
-                {/* Rejilla discreta: guía, no protagonista */}
                 {ticksY.map(v => (
                     <g key={v}>
                         <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)}
@@ -222,21 +117,20 @@ function LineasDiarias({ datos }) {
                     </g>
                 ))}
 
-                {[['altas', SERIE.uno], ['pagados', SERIE.dos]].map(([campo, color]) => (
-                    <polyline key={campo} points={linea(campo)} fill="none"
-                              stroke={color} strokeWidth="2"
-                              strokeLinecap="round" strokeLinejoin="round" />
+                {series.map(([campo, color]) => (
+                    <polyline key={campo} points={linea(campo)} fill="none" stroke={color}
+                              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 ))}
 
                 {datos.map((d, i) => (
                     <g key={d.dia}>
-                        {[['altas', SERIE.uno], ['pagados', SERIE.dos]].map(([campo, color]) => (
+                        {series.map(([campo, color]) => (
                             <circle key={campo} cx={x(i)} cy={y(Number(d[campo]))} r="4"
                                     fill={color} stroke="var(--bg-base, #0E1B18)" strokeWidth="2" />
                         ))}
                         {/* Zona de hover más ancha que el punto: apuntarle a 8 px
                             con el mouse es una lucha innecesaria. */}
-                        <rect x={x(i) - iw / (datos.length * 2 || 1) / 2 - 6} y={PAD.t}
+                        <rect x={x(i) - Math.max(7, iw / (datos.length * 2 || 1))} y={PAD.t}
                               width={Math.max(14, iw / (datos.length || 1))} height={ih}
                               fill="transparent" style={{ cursor: 'crosshair' }}
                               onMouseEnter={() => setHover({ i, d })} />
@@ -249,12 +143,11 @@ function LineasDiarias({ datos }) {
                 )}
 
                 {/* Etiqueta directa al final: identidad sin depender del color */}
-                {datos.length > 1 && [['altas', SERIE.uno, 'Altas'], ['pagados', SERIE.dos, 'Pagados']].map(([campo, color, txt]) => (
+                {datos.length > 1 && series.map(([campo, color, txt]) => (
                     <text key={campo} x={W - PAD.r + 8} y={y(Number(datos[datos.length - 1][campo])) + 3}
                           fontSize="10" fill={color} fontWeight="600">{txt}</text>
                 ))}
 
-                {/* Solo primera y última fecha: una etiqueta por punto sería ruido */}
                 <text x={PAD.l} y={H - 6} fontSize="10" fill="var(--text-disabled)">{fmtDia(datos[0].dia)}</text>
                 {datos.length > 1 && (
                     <text x={W - PAD.r} y={H - 6} fontSize="10" textAnchor="end"
@@ -265,8 +158,7 @@ function LineasDiarias({ datos }) {
             {hover && (
                 <div style={{
                     position: 'absolute', top: 0, right: 0,
-                    background: 'var(--bg-elevated, #14241f)',
-                    border: '1px solid var(--border-default)',
+                    background: 'var(--bg-elevated, #14241f)', border: '1px solid var(--border-default)',
                     borderRadius: 'var(--radius-md)', padding: '8px 12px',
                     fontSize: 'var(--text-xs)', pointerEvents: 'none', zIndex: 5,
                     boxShadow: '0 8px 24px rgba(0,0,0,.4)',
@@ -289,60 +181,26 @@ function LineasDiarias({ datos }) {
     )
 }
 
-function Vacio({ texto }) {
-    return (
-        <p style={{
-            color: 'var(--text-muted)', fontSize: 'var(--text-sm)',
-            textAlign: 'center', padding: 'var(--space-6) 0', margin: 0,
-        }}>
-            {texto}
-        </p>
-    )
-}
-
-function Seccion({ titulo, icon: Icon, children, accion }) {
-    return (
-        <section style={{
-            background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-xl, 16px)', padding: 'var(--space-5)',
-        }}>
-            <header style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                gap: 12, marginBottom: 'var(--space-4)', flexWrap: 'wrap',
-            }}>
-                <h3 style={{
-                    margin: 0, fontWeight: 700, fontSize: 'var(--text-base)',
-                    display: 'flex', alignItems: 'center', gap: 8,
-                }}>
-                    {Icon && <Icon size={16} />} {titulo}
-                </h3>
-                {accion}
-            </header>
-            {children}
-        </section>
-    )
-}
-
 // ── Panel ────────────────────────────────────────────────────────────────────
 
 export default function MetricasPanel({ adminToken }) {
-    const [data,     setData]     = useState(null)
-    const [loading,  setLoading]  = useState(true)
-    const [error,    setError]    = useState(null)
-    const [talleres, setTalleres] = useState([])
-    const [verTabla, setVerTabla] = useState(false)
+    const [vista,      setVista]      = useState('resumen')
+    const [data,       setData]       = useState(null)
+    const [loading,    setLoading]    = useState(true)
+    const [error,      setError]      = useState(null)
+    const [talleres,   setTalleres]   = useState([])
+    const [categorias, setCategorias] = useState([])
+    const [verTabla,   setVerTabla]   = useState(false)
 
-    const [filtros, setFiltros] = useState({ desde: '', hasta: '', tallerId: '' })
+    const [filtros, setFiltros] = useState({ desde: '', hasta: '', tallerId: '', categoria: '' })
 
     const cargar = useCallback(async () => {
         setLoading(true); setError(null)
         try {
             const qs = new URLSearchParams(
-                Object.entries(filtros).filter(([, v]) => v)
-            ).toString()
-            const res  = await fetch(`/api/admin/metricas${qs ? `?${qs}` : ''}`, {
-                headers: { Authorization: `Bearer ${adminToken}` },
-            })
+                Object.entries(filtros).filter(([, v]) => v)).toString()
+            const res  = await fetch(`/api/admin/metricas${qs ? `?${qs}` : ''}`,
+                { headers: { Authorization: `Bearer ${adminToken}` } })
             const json = await res.json()
             if (!res.ok) throw new Error(json.message ?? 'No se pudieron cargar las métricas')
             setData(json)
@@ -350,319 +208,303 @@ export default function MetricasPanel({ adminToken }) {
         finally { setLoading(false) }
     }, [adminToken, filtros])
 
-    useEffect(() => { cargar() }, [cargar])
+    // Solo el Resumen necesita este paquete; la ficha de alumno trae el suyo.
+    useEffect(() => { if (vista !== 'alumno') cargar() }, [cargar, vista])
 
     useEffect(() => {
-        fetch('/api/admin/talleres', { headers: { Authorization: `Bearer ${adminToken}` } })
-            .then(r => r.json()).then(d => setTalleres(d.talleres ?? [])).catch(() => {})
+        const auth = { headers: { Authorization: `Bearer ${adminToken}` } }
+        fetch('/api/admin/talleres', auth).then(r => r.json())
+            .then(d => setTalleres(d.talleres ?? [])).catch(() => {})
+        fetch('/api/admin/metricas/categorias', auth).then(r => r.json())
+            .then(d => setCategorias(d.categorias ?? [])).catch(() => {})
     }, [adminToken])
 
     const etapas = useMemo(() => {
         if (!data) return []
         const e = data.embudo
         return [
-            { label: 'Se inscribieron',   valor: Number(e.inscripciones ?? 0) },
-            { label: 'Lugar confirmado',  valor: Number(e.cupos_confirmados ?? 0) },
-            { label: 'Pagaron',           valor: Number(e.pagados ?? 0) },
+            { label: 'Se inscribieron',     valor: Number(e.inscripciones ?? 0) },
+            { label: 'Lugar confirmado',    valor: Number(e.cupos_confirmados ?? 0) },
+            { label: 'Pagaron',             valor: Number(e.pagados ?? 0) },
             { label: 'Entraron alguna vez', valor: Number(e.usuarios?.entraron ?? 0) },
         ]
     }, [data])
 
     const ingresoTotal = useMemo(
-        () => (data?.ingresos ?? []).reduce((s, r) => s + Number(r.monto), 0), [data])
+        () => (data?.ingresos ?? [])
+            .filter(r => r.metodo !== 'cortesia')
+            .reduce((s, r) => s + Number(r.monto), 0), [data])
 
     const maxIngreso = useMemo(
         () => Math.max(1, ...(data?.talleres ?? []).map(t => Number(t.ingresos))), [data])
 
     const set = (k, v) => setFiltros(f => ({ ...f, [k]: v }))
+    const hayFiltro = filtros.desde || filtros.hasta || filtros.tallerId || filtros.categoria
+    const tallerNombre = talleres.find(t => t.id === filtros.tallerId)?.nombre ?? null
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+            <style>{PRINT_CSS}</style>
 
-            {/* ── Filtros: una sola fila, arriba de todo ── */}
-            <div style={{
-                display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-end',
-                flexWrap: 'wrap',
-                background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)',
-            }}>
-                <Campo label="Desde">
-                    <input type="date" value={filtros.desde} onChange={e => set('desde', e.target.value)} style={sInput} />
-                </Campo>
-                <Campo label="Hasta">
-                    <input type="date" value={filtros.hasta} onChange={e => set('hasta', e.target.value)} style={sInput} />
-                </Campo>
-                <Campo label="Taller">
-                    <select value={filtros.tallerId} onChange={e => set('tallerId', e.target.value)}
-                            style={{ ...sInput, maxWidth: 260 }}>
-                        <option value="">Todos los talleres</option>
-                        {talleres.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-                    </select>
-                </Campo>
-
-                {(filtros.desde || filtros.hasta || filtros.tallerId) && (
-                    <button onClick={() => setFiltros({ desde: '', hasta: '', tallerId: '' })}
-                            style={sBtnGhost}>
-                        Limpiar
-                    </button>
-                )}
-                <button onClick={cargar} disabled={loading} style={{ ...sBtnGhost, marginLeft: 'auto' }}>
-                    <ArrowClockwise size={14} /> {loading ? 'Cargando…' : 'Actualizar'}
-                </button>
+            {/* ── Sub-pestañas ── */}
+            <div className="mx-no-print" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                {VISTAS.map(({ id, label, Icon }) => {
+                    const activa = vista === id
+                    return (
+                        <button key={id} onClick={() => setVista(id)} style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '7px 14px', borderRadius: 999,
+                            border: `1px solid ${activa ? 'var(--color-jade-500)' : 'var(--border-default)'}`,
+                            background: activa ? 'rgba(25,158,112,0.14)' : 'transparent',
+                            color: activa ? 'var(--color-jade-500)' : 'var(--text-muted)',
+                            fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+                            fontWeight: activa ? 700 : 500, cursor: 'pointer',
+                        }}>
+                            <Icon size={14} /> {label}
+                        </button>
+                    )
+                })}
             </div>
 
-            {error && (
-                <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-sm)' }}>{error}</p>
+            {/* ── Filtros: compartidos entre Resumen y Financiero ── */}
+            {vista !== 'alumno' && (
+                <div className="mx-no-print" style={{
+                    display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-end', flexWrap: 'wrap',
+                    background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)',
+                }}>
+                    <Campo label="Desde">
+                        <input type="date" value={filtros.desde}
+                               onChange={e => set('desde', e.target.value)} style={sInput} />
+                    </Campo>
+                    <Campo label="Hasta">
+                        <input type="date" value={filtros.hasta}
+                               onChange={e => set('hasta', e.target.value)} style={sInput} />
+                    </Campo>
+                    <Campo label="Categoría">
+                        <select value={filtros.categoria} onChange={e => set('categoria', e.target.value)}
+                                style={{ ...sInput, maxWidth: 180 }}>
+                            <option value="">Todas</option>
+                            {categorias.map(c => (
+                                <option key={c.categoria} value={c.categoria}>
+                                    {c.categoria} ({c.talleres})
+                                </option>
+                            ))}
+                        </select>
+                    </Campo>
+                    <Campo label="Taller">
+                        <select value={filtros.tallerId} onChange={e => set('tallerId', e.target.value)}
+                                style={{ ...sInput, maxWidth: 260 }}>
+                            <option value="">Todos los talleres</option>
+                            {talleres.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                        </select>
+                    </Campo>
+
+                    {hayFiltro && (
+                        <button onClick={() => setFiltros({ desde: '', hasta: '', tallerId: '', categoria: '' })}
+                                style={sBtnGhost}>Limpiar</button>
+                    )}
+                    <button onClick={cargar} disabled={loading} style={{ ...sBtnGhost, marginLeft: 'auto' }}>
+                        <ArrowClockwise size={14} /> {loading ? 'Cargando…' : 'Actualizar'}
+                    </button>
+                </div>
             )}
 
-            {!data && loading && <Vacio texto="Cargando métricas…" />}
+            {/* ══ FINANCIERO ══ */}
+            {vista === 'financiero' && (
+                <MetricasFinanciero adminToken={adminToken} filtros={filtros} tallerNombre={tallerNombre} />
+            )}
 
-            {data && (
+            {/* ══ FICHA DE ALUMNO ══ */}
+            {vista === 'alumno' && <MetricasAlumno adminToken={adminToken} />}
+
+            {/* ══ RESUMEN ══ */}
+            {vista === 'resumen' && (
                 <>
-                    {/* ── Los cuatro números que importan ── */}
-                    <div style={{
-                        display: 'grid', gap: 'var(--space-3)',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                    }}>
-                        <Tile icon={CurrencyDollar} label="Ingresos" valor={fmtMoneda(ingresoTotal)}
-                              sub={`${data.ingresos.reduce((s, r) => s + r.operaciones, 0)} pagos verificados`}
-                              color={SERIE.uno} />
-                        <Tile icon={Users} label="Cuentas activas" valor={fmtNum(data.embudo.usuarios?.activos)}
-                              sub={`${fmtNum(data.embudo.usuarios?.en_espera)} en espera`} />
-                        <Tile icon={TrendUp} label="Conversión" valor={
-                            data.embudo.inscripciones > 0
-                                ? `${Math.round((data.embudo.pagados / data.embudo.inscripciones) * 100)}%`
-                                : '—'
-                        } sub="de inscritos a pagados" />
-                        <Tile
-                            icon={Warning}
-                            label="Pagaron y no entraron"
-                            valor={fmtNum(Math.max(
-                                Number(data.embudo.usuarios?.activos ?? 0) -
-                                Number(data.embudo.usuarios?.entraron ?? 0), 0))}
-                            sub="cuentas activas sin un solo acceso"
-                            color={ESTADO.atencion}
-                        />
-                    </div>
+                    {error && <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-sm)' }}>{error}</p>}
+                    {!data && loading && <Vacio texto="Cargando métricas…" />}
 
-                    {/* ── Lo que necesita atención hoy ── */}
-                    {data.alertas.length > 0 && (
-                        <Seccion titulo="Necesita tu atención" icon={Warning}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {data.alertas.map(a => {
-                                    const cfg = ALERTA_CFG[a.tipo] ?? { color: ESTADO.atencion, texto: a.tipo }
-                                    return (
-                                        <div key={a.tipo} style={{
-                                            display: 'flex', alignItems: 'center', gap: 10,
-                                            padding: '8px 12px', borderRadius: 'var(--radius-md)',
-                                            background: `${cfg.color}14`,
-                                            border: `1px solid ${cfg.color}55`,
-                                        }}>
-                                            {/* Icono + texto: el estado nunca se comunica solo con color */}
-                                            <Warning size={15} color={cfg.color} weight="fill" />
-                                            <span style={{ fontSize: 'var(--text-sm)', flex: 1 }}>{cfg.texto}</span>
-                                            <strong style={{ fontSize: 'var(--text-sm)' }}>{a.total}</strong>
-                                        </div>
-                                    )
-                                })}
+                    {data && (
+                        <>
+                            <EncabezadoImpresion titulo="Resumen"
+                                                 filtros={{ ...filtros, tallerNombre }} />
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end' }} className="mx-no-print">
+                                <BotonPDF label="Descargar resumen" />
                             </div>
-                        </Seccion>
-                    )}
 
-                    <div style={{
-                        display: 'grid', gap: 'var(--space-5)',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-                    }}>
-                        {/* ── Embudo ── */}
-                        <Seccion titulo="Embudo" icon={TrendUp}>
-                            <Embudo etapas={etapas} />
-                            <p style={{
-                                marginTop: 'var(--space-4)', marginBottom: 0,
-                                fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5,
+                            {/* ── Los cuatro números que importan ── */}
+                            <div className="mx-grid-tiles" style={{
+                                display: 'grid', gap: 'var(--space-3)',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                             }}>
-                                La caída entre <strong>Pagaron</strong> y <strong>Entraron</strong> es
-                                gente que ya te pagó y nunca usó la plataforma.
-                            </p>
-                        </Seccion>
-
-                        {/* ── Tiempos ── */}
-                        <Seccion titulo="Cuánto tarda la gente" icon={Clock}>
-                            <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
-                                <Tile label="De inscribirse a que le confirmes"
-                                      valor={fmtHoras(data.tiempos?.horas_alta_a_cupo)} />
-                                <Tile label="De confirmarle a que pague"
-                                      valor={fmtHoras(data.tiempos?.horas_cupo_a_pago)}
-                                      sub="el plazo es de 48 h" />
-                                <Tile label="Del primer contacto al pago"
-                                      valor={fmtHoras(data.tiempos?.horas_alta_a_pago)} />
-                            </div>
-                        </Seccion>
-                    </div>
-
-                    {/* ── Actividad diaria ── */}
-                    <Seccion titulo="Altas y pagos por día" icon={ChartLineUp}>
-                        <LineasDiarias datos={data.actividad} />
-                    </Seccion>
-
-                    {/* ── Por taller ── */}
-                    <Seccion
-                        titulo="Por taller" icon={Ticket}
-                        accion={
-                            <button onClick={() => setVerTabla(v => !v)} style={sBtnGhost}>
-                                {verTabla ? 'Ver gráfica' : 'Ver tabla'}
-                            </button>
-                        }
-                    >
-                        {data.talleres.length === 0 ? (
-                            <Vacio texto="No hay talleres que mostrar." />
-                        ) : verTabla ? (
-                            /* La vista de tabla no es un extra: es lo que hace que
-                               estos datos se puedan leer sin depender del color. */
-                            <div style={{ overflowX: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
-                                    <thead>
-                                        <tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}>
-                                            {['Taller', 'Cupo', 'En lista', 'Pagados', 'Conversión', 'Ingresos'].map(h => (
-                                                <th key={h} style={{ padding: '8px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {data.talleres.map(t => (
-                                            <tr key={t.id} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                                                <td style={{ padding: '8px 10px' }}>
-                                                    {t.nombre}
-                                                    {t.agotado && (
-                                                        <span style={{ marginLeft: 6, color: ESTADO.urgente, fontWeight: 700 }}>
-                                                            AGOTADO
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                                                    {t.cupo_ocupado}/{t.cupo_maximo}
-                                                </td>
-                                                <td style={{ padding: '8px 10px' }}>{t.en_lista}</td>
-                                                <td style={{ padding: '8px 10px' }}>{t.pagados}</td>
-                                                <td style={{ padding: '8px 10px' }}>{t.tasa_conversion ?? 0}%</td>
-                                                <td style={{ padding: '8px 10px', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                                                    {fmtMoneda(t.ingresos)}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-                                <div>
-                                    <p style={sSubtitulo}>Ingresos</p>
-                                    <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
-                                        {data.talleres.map(t => (
-                                            <BarraH key={t.id} label={t.nombre} valor={fmtMoneda(t.ingresos)}
-                                                    max={maxIngreso}
-                                                    color={SERIE.uno} />
-                                        ))}
-                                    </div>
-                                </div>
-                                <div>
-                                    <p style={sSubtitulo}>Cupo ocupado</p>
-                                    <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
-                                        {data.talleres.map(t => (
-                                            <BarraH key={t.id} label={t.nombre}
-                                                    valor={`${t.cupo_ocupado}/${t.cupo_maximo}`}
-                                                    max={Number(t.cupo_maximo) || 1}
-                                                    color={t.agotado ? ESTADO.urgente : SERIE.tres}
-                                                    nota={t.agotado ? 'AGOTADO' : `${t.lugares_libres} libres`} />
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </Seccion>
-
-                    {/* ── Bot ── */}
-                    <div style={{
-                        display: 'grid', gap: 'var(--space-5)',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-                    }}>
-                        <Seccion titulo="Bot de WhatsApp">
-                            <div style={{ display: 'grid', gap: 'var(--space-3)',
-                                          gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))' }}>
-                                <Tile label="Conversaciones" valor={fmtNum(data.embudo.conversaciones)} />
-                                <Tile label="Terminaron inscritas" valor={fmtNum(data.embudo.completadas)}
+                                <Tile icon={CurrencyDollar} label="Ingresos" valor={fmtMoneda(ingresoTotal)}
+                                      sub={`${data.ingresos.filter(r => r.metodo !== 'cortesia')
+                                          .reduce((s, r) => s + r.operaciones, 0)} pagos verificados`}
                                       color={SERIE.uno} />
-                                <Tile label="Se quedaron a medias" valor={fmtNum(data.embudo.abandonadas)}
+                                <Tile icon={Users} label="Cuentas activas"
+                                      valor={fmtNum(data.embudo.usuarios?.activos)}
+                                      sub={`${fmtNum(data.embudo.usuarios?.en_espera)} en espera`} />
+                                <Tile icon={TrendUp} label="Conversión" valor={
+                                    data.embudo.inscripciones > 0
+                                        ? `${Math.round((data.embudo.pagados / data.embudo.inscripciones) * 100)}%`
+                                        : '—'
+                                } sub="de inscritos a pagados" />
+                                <Tile icon={Warning} label="Pagaron y no entraron"
+                                      valor={fmtNum(Math.max(
+                                          Number(data.embudo.usuarios?.activos ?? 0) -
+                                          Number(data.embudo.usuarios?.entraron ?? 0), 0))}
+                                      sub="cuentas activas sin un solo acceso"
                                       color={ESTADO.atencion} />
                             </div>
-                            {data.abandonos.length > 0 && (
-                                <>
-                                    <p style={{ ...sSubtitulo, marginTop: 'var(--space-4)' }}>
-                                        ¿En qué paso se caen?
-                                    </p>
-                                    <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
-                                        {data.abandonos.map(a => (
-                                            <BarraH key={a.paso} label={a.paso} valor={a.total}
-                                                    max={Math.max(...data.abandonos.map(x => x.total))}
-                                                    color={SERIE.cuatro} />
-                                        ))}
-                                    </div>
-                                </>
-                            )}
-                        </Seccion>
 
-                        <Seccion titulo="Cómo te pagan" icon={CurrencyDollar}>
-                            {data.ingresos.length === 0 ? (
-                                <Vacio texto="Todavía no hay pagos registrados en este rango." />
-                            ) : (
-                                <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
-                                    {data.ingresos.map(p => (
-                                        <BarraH key={p.metodo} label={p.metodo}
-                                                valor={fmtMoneda(p.monto)}
-                                                max={Math.max(...data.ingresos.map(x => Number(x.monto)), 1)}
-                                                color={p.metodo === 'cortesia' ? SERIE.tres : SERIE.dos}
-                                                nota={`${p.operaciones} ${p.operaciones === 1 ? 'operación' : 'operaciones'}`} />
-                                    ))}
-                                </div>
+                            {/* ── Lo que necesita atención hoy ── */}
+                            {data.alertas.length > 0 && (
+                                <Seccion titulo="Necesita tu atención" icon={Warning}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        {data.alertas.map(a => {
+                                            const cfg = ALERTA_CFG[a.tipo] ?? { color: ESTADO.atencion, texto: a.tipo }
+                                            return (
+                                                <div key={a.tipo} style={{
+                                                    display: 'flex', alignItems: 'center', gap: 10,
+                                                    padding: '8px 12px', borderRadius: 'var(--radius-md)',
+                                                    background: `${cfg.color}14`, border: `1px solid ${cfg.color}55`,
+                                                }}>
+                                                    {/* Icono + texto: el estado nunca se comunica solo con color */}
+                                                    <Warning size={15} color={cfg.color} weight="fill" />
+                                                    <span style={{ fontSize: 'var(--text-sm)', flex: 1 }}>{cfg.texto}</span>
+                                                    <strong style={{ fontSize: 'var(--text-sm)' }}>{a.total}</strong>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </Seccion>
                             )}
-                        </Seccion>
-                    </div>
+
+                            <div className="mx-grid" style={{
+                                display: 'grid', gap: 'var(--space-5)',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                            }}>
+                                <Seccion titulo="Embudo" icon={TrendUp}
+                                         nota="La caída entre Pagaron y Entraron es gente que ya te pagó y nunca usó la plataforma.">
+                                    <Embudo etapas={etapas} />
+                                </Seccion>
+
+                                <Seccion titulo="Cuánto tarda la gente" icon={Clock}>
+                                    <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
+                                        <Tile label="De inscribirse a que le confirmes"
+                                              valor={fmtHoras(data.tiempos?.horas_alta_a_cupo)} />
+                                        <Tile label="De confirmarle a que pague"
+                                              valor={fmtHoras(data.tiempos?.horas_cupo_a_pago)}
+                                              sub="el plazo es de 48 h" />
+                                        <Tile label="Del primer contacto al pago"
+                                              valor={fmtHoras(data.tiempos?.horas_alta_a_pago)} />
+                                    </div>
+                                </Seccion>
+                            </div>
+
+                            <Seccion titulo="Altas y pagos por día" icon={ChartLineUp}>
+                                <LineasDiarias datos={data.actividad} />
+                            </Seccion>
+
+                            {/* ── Por taller ── */}
+                            <Seccion titulo="Por taller" icon={Ticket}
+                                     accion={
+                                         <button onClick={() => setVerTabla(v => !v)} style={sBtnGhost}>
+                                             {verTabla ? 'Ver gráfica' : 'Ver tabla'}
+                                         </button>
+                                     }>
+                                {data.talleres.length === 0 ? (
+                                    <Vacio texto="No hay talleres que mostrar." />
+                                ) : verTabla ? (
+                                    /* La vista de tabla no es un extra: es lo que hace que
+                                       estos datos se puedan leer sin depender del color. */
+                                    <Tabla
+                                        columnas={['Taller', 'Categoría', 'Cupo', 'En lista', 'Pagados',
+                                                   'Cortesías', 'Tardó en llenarse', 'Conversión', 'Ingresos']}
+                                        filas={data.talleres}
+                                        render={t => [
+                                            <>
+                                                {t.nombre}
+                                                {t.agotado && (
+                                                    <span style={{ marginLeft: 6, color: ESTADO.urgente, fontWeight: 700 }}>
+                                                        AGOTADO
+                                                    </span>
+                                                )}
+                                            </>,
+                                            t.categoria ?? '—',
+                                            `${t.cupo_ocupado}/${t.cupo_maximo}`,
+                                            t.en_lista,
+                                            t.pagados,
+                                            t.cortesias ?? 0,
+                                            fmtHoras(t.horas_en_llenarse),
+                                            `${t.tasa_conversion ?? 0}%`,
+                                            <strong>{fmtMoneda(t.ingresos)}</strong>,
+                                        ]}
+                                    />
+                                ) : (
+                                    <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+                                        <div>
+                                            <p style={sSubtitulo}>Ingresos</p>
+                                            <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
+                                                {data.talleres.map(t => (
+                                                    <BarraH key={t.id} label={t.nombre} valor={fmtMoneda(t.ingresos)}
+                                                            max={maxIngreso} color={SERIE.uno}
+                                                            nota={t.categoria} />
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <p style={sSubtitulo}>Cupo ocupado</p>
+                                            <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
+                                                {data.talleres.map(t => (
+                                                    <BarraH key={t.id} label={t.nombre}
+                                                            valor={`${t.cupo_ocupado}/${t.cupo_maximo}`}
+                                                            max={Number(t.cupo_maximo) || 1}
+                                                            color={t.agotado ? ESTADO.urgente : SERIE.tres}
+                                                            nota={[
+                                                                t.agotado ? 'AGOTADO' : `${t.lugares_libres} libres`,
+                                                                t.cortesias > 0 ? `${t.cortesias} de cortesía` : null,
+                                                                t.horas_en_llenarse ? `tardó ${fmtHoras(t.horas_en_llenarse)}` : null,
+                                                            ].filter(Boolean).join(' · ')} />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </Seccion>
+
+                            {/* ── Bot ── */}
+                            <Seccion titulo="Bot de WhatsApp">
+                                <div className="mx-grid-tiles" style={{
+                                    display: 'grid', gap: 'var(--space-3)',
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                                }}>
+                                    <Tile label="Conversaciones" valor={fmtNum(data.embudo.conversaciones)} />
+                                    <Tile label="Terminaron inscritas" valor={fmtNum(data.embudo.completadas)}
+                                          color={SERIE.uno} />
+                                    <Tile label="Se quedaron a medias" valor={fmtNum(data.embudo.abandonadas)}
+                                          color={ESTADO.atencion} />
+                                </div>
+                                {data.abandonos.length > 0 && (
+                                    <>
+                                        <p style={{ ...sSubtitulo, marginTop: 'var(--space-4)' }}>
+                                            ¿En qué paso se caen?
+                                        </p>
+                                        <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                                            {data.abandonos.map(a => (
+                                                <BarraH key={a.paso} label={a.paso} valor={a.total}
+                                                        max={Math.max(...data.abandonos.map(x => x.total))}
+                                                        color={SERIE.cuatro} />
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+                            </Seccion>
+                        </>
+                    )}
                 </>
             )}
         </div>
     )
-}
-
-// ── Estilos sueltos ──────────────────────────────────────────────────────────
-
-function Campo({ label, children }) {
-    return (
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase',
-                           letterSpacing: '.04em', fontWeight: 600 }}>
-                {label}
-            </span>
-            {children}
-        </label>
-    )
-}
-
-const sInput = {
-    padding: '6px 10px', background: 'var(--bg-base, #0E1B18)',
-    border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)',
-    color: 'var(--text-primary)', fontFamily: 'var(--font-sans)',
-    fontSize: 'var(--text-xs)', outline: 'none',
-}
-
-const sBtnGhost = {
-    display: 'flex', alignItems: 'center', gap: 6,
-    padding: '6px 12px', height: 30,
-    background: 'transparent', border: '1px solid var(--border-default)',
-    borderRadius: 'var(--radius-md)', color: 'var(--text-muted)',
-    fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', fontWeight: 600,
-    cursor: 'pointer',
-}
-
-const sSubtitulo = {
-    fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase',
-    letterSpacing: '.04em', fontWeight: 700, margin: '0 0 10px',
 }
