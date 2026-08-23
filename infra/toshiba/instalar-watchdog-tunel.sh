@@ -54,6 +54,10 @@ done
 # 3. Tres fallas seguidas con la API sana = el túnel está atorado.
 echo "Túnel sin responder ($fallas/3) pero la API está sana. Reiniciando cloudflared."
 systemctl restart destello-tunnel
+# Sale con 10 (no 0) para que quien lo corra a mano distinga "no hizo falta"
+# de "sí tuve que reiniciar". systemd trata cualquier código != 0 como fallo,
+# así que la unit lleva SuccessExitStatus=10 para no marcarlo como error.
+exit 10
 SCRIPT
 
 sudo chmod +x /usr/local/bin/destello-tunel-watchdog.sh
@@ -66,6 +70,8 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/destello-tunel-watchdog.sh
+# 10 = "tuve que reiniciar el túnel". Es una acción esperada, no un fallo.
+SuccessExitStatus=10
 UNIT
 
 sudo tee /etc/systemd/system/destello-tunel-watchdog.timer > /dev/null <<'UNIT'
@@ -89,8 +95,13 @@ echo "═══ Estado ═══"
 systemctl list-timers destello-tunel-watchdog --no-pager | head -4
 
 echo
-echo "═══ Prueba inmediata (debe salir sin hacer nada si todo está bien) ═══"
-sudo /usr/local/bin/destello-tunel-watchdog.sh && echo "  ✅ túnel respondiendo, no hizo falta reiniciar"
+echo "═══ Prueba inmediata ═══"
+sudo /usr/local/bin/destello-tunel-watchdog.sh
+case $? in
+    0)  echo "  ✅ El túnel respondió. No hizo falta reiniciar nada." ;;
+    10) echo "  🔁 El túnel estaba caído y se reinició. Vuelve a probar en 30 s." ;;
+    *)  echo "  ⚠️  El vigilante terminó con un código inesperado." ;;
+esac
 
 echo
 echo "─────────────────────────────────────────────────────────────"
