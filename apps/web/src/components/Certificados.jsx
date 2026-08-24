@@ -24,6 +24,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import {
     Certificate, CaretLeft, CaretRight, DownloadSimple, ShareNetwork, X,
 } from '@phosphor-icons/react'
@@ -50,25 +51,49 @@ const URL_BASE = 'https://destello.courses'
 
 const PRINT_CSS = `
 @media print {
-    /* Sin esto el PDF sale con el fondo oscuro de la app alrededor del
-       diploma: en pantalla no se nota, pero impreso es una plancha de tinta
-       negra. La app es oscura; el papel no. */
+    /* Sin esto el PDF sale con el fondo oscuro de la app: en pantalla no se
+       nota, pero impreso es una plancha de tinta negra. */
     html, body { background: #ffffff !important; }
-    body * { visibility: hidden !important; }
-    .cert-hoja, .cert-hoja * { visibility: visible !important; }
+
+    /* Toda la app se APAGA con display:none, no con visibility.
+       ⚠️ Con \`visibility: hidden\` los elementos se ocultan pero SIGUEN
+       ocupando su espacio, así que el PDF salía con la altura completa de
+       Inicio: tres hojas, con el diploma en la primera y dos en blanco.
+       Por eso el diploma se saca a un portal fuera de #root: así se puede
+       apagar la app entera sin apagarlo a él. */
+    #root { display: none !important; }
+
+    /* El portal deja de ser una capa flotante y pasa a ser la hoja. */
+    .cert-portal {
+        position: static !important; inset: auto !important;
+        display: block !important; overflow: visible !important;
+        background: none !important; backdrop-filter: none !important;
+        padding: 0 !important; margin: 0 !important;
+    }
+    .cert-portal > * { max-width: none !important; width: 100% !important; }
+
     .cert-hoja {
-        position: absolute !important; left: 0; top: 0;
-        /* box-sizing explícito: sin él el padding se suma al 100 % y el folio
-           de la esquina se sale de la hoja. */
         box-sizing: border-box !important;
-        width: 100%; margin: 0;
         box-shadow: none !important;
         /* El papel se imprime aunque el navegador tenga apagados los gráficos
            de fondo: el degradado es un adorno, no puede ser un requisito. */
         background: #ffffff !important;
     }
+
     .cert-no-print { display: none !important; }
-    @page { size: landscape; margin: 10mm; }
+
+    /* Que quepa en UNA hoja aunque el navegador imprima con encabezado y pie.
+       Los tamaños de pantalla usan vw y en papel se quedan grandes: aquí se
+       aprietan a mano, con margen de sobra sobre el alto de la página. */
+    body { margin: 0 !important; padding: 0 !important; }
+    .cert-hoja  { padding: 26px !important; }
+    .cert-logo  { width: 38px !important; height: 38px !important; margin-bottom: 4px !important; }
+    .cert-titulo { font-size: 34px !important; margin-top: 10px !important; }
+    .cert-nombre { font-size: 38px !important; }
+    .cert-pie    { margin-top: 16px !important; }
+    .cert-sello  { width: 74px !important; height: 99px !important; }
+
+    @page { size: landscape; margin: 8mm; }
 }`
 
 function fmtFecha(v) {
@@ -174,7 +199,8 @@ function pathFestoneado(cx, cy, r, ondas) {
  */
 function Sello({ tam = 118 }) {
     return (
-        <svg width={tam} height={tam * 1.34} viewBox="0 0 100 134" aria-hidden="true"
+        <svg className="cert-sello" width={tam} height={tam * 1.34}
+             viewBox="0 0 100 134" aria-hidden="true"
              style={{ flexShrink: 0, display: 'block' }}>
             <defs>
                 <linearGradient id="cert-oro" x1="0" y1="0" x2="0" y2="1">
@@ -309,7 +335,7 @@ function Diploma({ cert }) {
             <div style={{ position: 'relative', textAlign: 'center' }}>
 
                 {/* ── Marca ── */}
-                <img src={logoDestello} alt="" width={48} height={48}
+                <img className="cert-logo" src={logoDestello} alt="" width={48} height={48}
                      style={{ display: 'block', margin: '0 auto 6px' }} />
                 <div style={{
                     fontFamily: SERIF, fontSize: 13, fontWeight: 700,
@@ -321,7 +347,7 @@ function Diploma({ cert }) {
 
                 {/* ── Título ── En <div>, no en <h2>: el CSS global de la app le
                     pone degradado a los encabezados y salía fantasma. */}
-                <div style={{
+                <div className="cert-titulo" style={{
                     marginTop: 16, fontFamily: SERIF, fontWeight: 700,
                     fontSize: 'clamp(30px, 5.6vw, 54px)',
                     letterSpacing: '.16em', textIndent: '.16em',
@@ -347,7 +373,7 @@ function Diploma({ cert }) {
                 </div>
 
                 {/* ── El nombre ── Lo más grande de la hoja: el logro es suyo. */}
-                <div style={{
+                <div className="cert-nombre" style={{
                     margin: '8px auto 0', maxWidth: '92%',
                     fontFamily: SERIF, fontStyle: 'italic', fontWeight: 700,
                     fontSize: 'clamp(30px, 5.8vw, 56px)',
@@ -372,7 +398,7 @@ function Diploma({ cert }) {
                 {/* ── Firma · sello · folio ──
                     Agrupados al centro y no pegados a los bordes: separados se
                     leían como tres cosas sueltas en vez de un pie de documento. */}
-                <div style={{
+                <div className="cert-pie" style={{
                     display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
                     gap: 'clamp(14px, 3vw, 38px)',
                     margin: 'clamp(18px, 3vw, 34px) auto 0',
@@ -535,8 +561,10 @@ function ModalCertificado({ cert, onCerrar }) {
         } catch { /* sin portapapeles: no pasa nada */ }
     }
 
-    return (
-        <div style={{
+    // Portal a <body>: fuera de #root. Es lo que permite apagar la app entera
+    // al imprimir sin apagar el diploma — y por lo tanto imprimir UNA hoja.
+    return createPortal(
+        <div className="cert-portal" style={{
             position: 'fixed', inset: 0, zIndex: 80,
             background: 'rgba(6,14,12,.82)', backdropFilter: 'blur(5px)',
             display: 'grid', placeItems: 'center',
@@ -569,7 +597,8 @@ function ModalCertificado({ cert, onCerrar }) {
                     “Gráficos de fondo” para que salga con el papel y el marco dorado.
                 </p>
             </div>
-        </div>
+        </div>,
+        document.body
     )
 }
 
