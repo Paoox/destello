@@ -28,7 +28,6 @@ import {
     Certificate, CaretLeft, CaretRight, DownloadSimple, ShareNetwork, X,
 } from '@phosphor-icons/react'
 import logoDestello from '../Images/destello-logo-512.png'
-import qrcode from 'qrcode-generator'
 
 const POR_PAGINA = 3
 
@@ -43,10 +42,6 @@ const SERIF = 'Georgia, "Iowan Old Style", "Times New Roman", serif'
 /** Hoy todos los talleres duran lo mismo. Si un día dejan de durarlo, el dato
  *  de `talleres.duracion_horas` manda y esto solo es el respaldo. */
 const HORAS_POR_DEFECTO = 4
-
-/** Dominio para el QR. Fijo y no `window.location`: un certificado emitido
- *  desde una vista previa local no puede quedarse con un enlace a localhost. */
-const URL_BASE = 'https://destello.courses'
 
 const PRINT_CSS = `
 @media print {
@@ -222,50 +217,6 @@ function Sello({ tam = 118 }) {
     )
 }
 
-/**
- * Código QR a la página pública de verificación.
- *
- * Un certificado impreso no se puede comprobar: quien lo recibe tendría que
- * teclear el folio a mano. Con el QR, apunta la cámara y la plataforma le dice
- * si ese folio existe y a nombre de quién.
- *
- * ── Por qué una librería y no código propio ─────────────────────────────────
- * Codificar un QR es Reed-Solomon, tablas de bloques por versión y ocho
- * máscaras con su puntuación. Escribirlo a mano son ~300 líneas donde un error
- * sutil produce un código que se ve bien y que algunos teléfonos no leen — y
- * eso es peor que no tener QR. `qrcode-generator` no tiene dependencias y pesa
- * ~6 KB comprimido: menos de lo que costaría equivocarse.
- *
- * El DIBUJO sí es nuestro: un solo `path` de SVG en vez de cientos de `<rect>`,
- * para que imprima nítido y no infle el DOM.
- */
-function QR({ texto, tam = 96 }) {
-    // 0 = que la librería elija la versión más chica que quepa.
-    // 'M' aguanta ~15 % de daño: suficiente para papel, sin agrandar el código.
-    const qr = qrcode(0, 'M')
-    qr.addData(texto)
-    qr.make()
-
-    const n = qr.getModuleCount()
-    let d = ''
-    for (let f = 0; f < n; f++) {
-        for (let c = 0; c < n; c++) {
-            if (qr.isDark(f, c)) d += `M${c},${f}h1v1h-1z`
-        }
-    }
-
-    return (
-        <svg width={tam} height={tam} viewBox={`-2 -2 ${n + 4} ${n + 4}`}
-             shapeRendering="crispEdges" aria-hidden="true"
-             style={{ display: 'block' }}>
-            {/* El margen blanco (las 2 unidades del viewBox) no es decorativo:
-                sin zona tranquila alrededor, muchos lectores no enganchan. */}
-            <rect x="-2" y="-2" width={n + 4} height={n + 4} fill="#ffffff" />
-            <path d={d} fill={TINTA} />
-        </svg>
-    )
-}
-
 /* ══════════════════════════════════════════════════════════════════════════
    El diploma
    ══════════════════════════════════════════════════════════════════════════
@@ -275,9 +226,6 @@ function QR({ texto, tam = 96 }) {
 function Diploma({ cert }) {
     // Todos los talleres duran 4 h; si el dato falta, no hay razón para callarlo.
     const horas = Number(cert.duracion_horas) || HORAS_POR_DEFECTO
-    // Absoluta a propósito: el QR se escanea desde una hoja de papel, donde no
-    // existe "la página actual" contra la cual resolver una ruta relativa.
-    const urlVerificacion = `${URL_BASE}/certificado/${cert.folio}`
 
     return (
         <div className="cert-hoja" style={{
@@ -395,28 +343,26 @@ function Diploma({ cert }) {
 
                     <Sello tam={104} />
 
-                    {/* El folio ya no lleva línea: no es una firma, es un dato.
-                        La línea lo hacía parecer un segundo espacio para firmar. */}
                     <div style={{ width: 190, maxWidth: '45%', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', justifyContent: 'center' }}>
-                            <QR texto={urlVerificacion} tam={104} />
-                        </div>
-                        <div style={{
-                            fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
-                            fontSize: 12.5, fontWeight: 700, color: TINTA,
-                            letterSpacing: '.06em', marginTop: 7,
-                        }}>
-                            {cert.folio}
-                        </div>
-                        <div style={{ fontSize: 9.5, letterSpacing: '.2em', textIndent: '.2em',
-                                      textTransform: 'uppercase', color: GRIS, marginTop: 2 }}>
-                            Escanea para verificar
+                        <div style={{ height: 26 }} />
+                        <div style={{ borderTop: `1px solid ${TINTA}`, paddingTop: 6 }}>
+                            <div style={{
+                                fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+                                fontSize: 13, fontWeight: 700, color: TINTA,
+                                letterSpacing: '.06em',
+                            }}>
+                                {cert.folio}
+                            </div>
+                            <div style={{ fontSize: 9.5, letterSpacing: '.2em', textIndent: '.2em',
+                                          textTransform: 'uppercase', color: GRIS, marginTop: 2 }}>
+                                Folio
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div style={{ marginTop: 12, fontSize: 9.5, color: GRIS, fontFamily: SERIF }}>
-                    destello.courses/certificado/{cert.folio}
+                <div style={{ marginTop: 14, fontSize: 9.5, color: GRIS, fontFamily: SERIF }}>
+                    Verifica este certificado en destello.courses/certificado
                 </div>
             </div>
         </div>
