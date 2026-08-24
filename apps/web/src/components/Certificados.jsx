@@ -208,8 +208,24 @@ function Sello({ tam = 118 }) {
                     <stop offset="45%"  stopColor="#c9a227" />
                     <stop offset="100%" stopColor="#9c7112" />
                 </linearGradient>
-                <path id="cert-arco-sup" d="M 17,50 A 33,33 0 0 1 83,50" />
-                <path id="cert-arco-inf" d="M 22,50 A 28,28 0 0 0 78,50" />
+                {/* ⚠️ Los dos radios NO son iguales, y tiene que ser así.
+                    El texto del arco de arriba se dibuja hacia AFUERA de su
+                    arco y el de abajo hacia ADENTRO del suyo. Con el mismo
+                    radio las dos palabras quedan pegadas a anillos opuestos:
+                    DESTELLO al dorado de afuera y CONSTANCIA al fino de
+                    adentro. (Con r=33 DESTELLO ni siquiera cabía: llegaba a
+                    r≈38 sobre un papel que termina en 37, y se perdía encima
+                    del borde dorado.)
+
+                    La banda clara va del anillo interior (r=21) al exterior
+                    (r=34.5), así que su centro está en r≈27.75. Cada radio se
+                    calcula para que su palabra quede centrada AHÍ:
+                      · arriba  → 27.75 − alto/2 ≈ 25
+                      · abajo   → 27.75 + alto/2 ≈ 29.9
+                    Si alguien cambia un `fontSize`, hay que recalcular ese
+                    radio o la palabra se vuelve a recargar a un anillo. */}
+                <path id="cert-arco-sup" d="M 25,50 A 25,25 0 0 1 75,50" />
+                <path id="cert-arco-inf" d="M 20.1,50 A 29.9,29.9 0 0 0 79.9,50" />
             </defs>
 
             {/* Listones: van detrás de la medalla para que se vean colgando. */}
