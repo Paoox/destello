@@ -24,6 +24,7 @@
     "npm": ">=10.0.0"
   },
   "dependencies": {
-    "firebase": "^12.12.1"
+    "firebase": "^12.12.1",
+    "qrcode-generator": "^2.0.4"
   }
 }
