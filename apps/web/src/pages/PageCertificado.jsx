@@ -139,10 +139,9 @@ export default function PageCertificado() {
 
                 {/* ── Pie ──────────────────────────────────────────────── */}
                 <p style={sPie}>
-                    Los certificados de Destello se emiten por{' '}
+                    Se emiten por{' '}
                     <strong style={{ color: 'var(--text-secondary)' }}>asistencia comprobada</strong>{' '}
-                    al taller en vivo.{' '}
-                    <Link to="/bienvenida" className="cert-enlace">Conoce Destello</Link>
+                    al taller en vivo. <Link to="/bienvenida" className="cert-enlace">Conoce Destello</Link>
                 </p>
             </main>
         </div>
@@ -156,9 +155,9 @@ export default function PageCertificado() {
 
 function Cargando({ folio }) {
     return (
-        <div style={{ textAlign: 'center', padding: '38px 0' }}>
+        <div style={{ textAlign: 'center', padding: '26px 0' }}>
             <div style={sSpinner} />
-            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 18 }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: 14 }}>
                 Comprobando el folio
             </p>
             <p style={sFolioChip}>{String(folio ?? '').toUpperCase()}</p>
@@ -172,15 +171,14 @@ function Valido({ cert }) {
         <>
             <div style={{ textAlign: 'center' }}>
                 <div className="cert-sello cert-bueno" style={sSello}>
-                    <SealCheck size={46} weight="fill" />
+                    <SealCheck size={34} weight="fill" />
                 </div>
 
                 <h1 className="cert-titulo cert-bueno" style={sVeredictoTitulo}>
                     Certificado válido
                 </h1>
-                <p style={{ ...sVeredictoTexto, marginBottom: 26 }}>
-                    Destello confirma que este certificado fue emitido por nosotros
-                    y que sigue vigente.
+                <p style={{ ...sVeredictoTexto, marginBottom: 16 }}>
+                    Emitido por Destello y vigente.
                 </p>
             </div>
 
@@ -195,16 +193,14 @@ function Valido({ cert }) {
                 {cert.instructor && (
                     <Dato icon={User} etiqueta="Instructor" valor={cert.instructor} />
                 )}
-                <Dato icon={CalendarBlank} etiqueta="Fecha del taller"
-                      valor={fmtFechaLarga(cert.fecha)} />
-                <Dato icon={Clock} etiqueta="Duración"
-                      valor={`${cert.duracionHoras ?? 4} horas`} />
-                <Dato icon={Hash} etiqueta="Folio" valor={cert.folio} mono />
+                {/* Fecha y duración comparten renglón: son dos datos cortos y
+                    separarlos costaba una línea entera en celular, que es donde
+                    la página tiene que caber sin scroll. */}
+                <Dato icon={CalendarBlank} etiqueta="Impartido"
+                      valor={`${fmtFechaLarga(cert.fecha)} · ${cert.duracionHoras ?? 4} horas`} />
+                <Dato icon={Hash} etiqueta="Folio" valor={cert.folio} mono
+                      pie={cert.emitido ? `emitido el ${fmtFechaLarga(cert.emitido)}` : null} />
             </dl>
-
-            {cert.emitido && (
-                <p style={sEmitido}>Emitido el {fmtFechaLarga(cert.emitido)}</p>
-            )}
         </>
     )
 }
@@ -227,19 +223,21 @@ function Veredicto({ icon: Icono, tono, titulo, texto, folio, accion }) {
     )
 }
 
-function Dato({ icon: Icono, etiqueta, valor, mono }) {
+function Dato({ icon: Icono, etiqueta, valor, mono, pie }) {
     return (
         <div style={sFila}>
             <dt className="cert-etiqueta" style={sFilaEtiqueta}>
-                <Icono size={15} weight="bold" />
+                <Icono size={13} weight="bold" style={{ flexShrink: 0 }} />
                 <span>{etiqueta}</span>
             </dt>
-            <dd style={{
-                ...sFilaValor,
-                fontFamily: mono ? 'ui-monospace, SFMono-Regular, monospace' : undefined,
-                letterSpacing: mono ? '.06em' : undefined,
-            }}>
-                {valor || '—'}
+            <dd style={sFilaValor}>
+                <span style={{
+                    fontFamily: mono ? 'ui-monospace, SFMono-Regular, monospace' : undefined,
+                    letterSpacing: mono ? '.06em' : undefined,
+                }}>
+                    {valor || '—'}
+                </span>
+                {pie && <span style={sFilaPie}>{pie}</span>}
             </dd>
         </div>
     )
@@ -298,107 +296,119 @@ const CSS_VERIFICACION = `
    Estilos
    ═══════════════════════════════════════════════════════════════════════════ */
 
+// La tarjeta se centra en la pantalla en vez de colgar de arriba: la página
+// está hecha para caber de una sola vista, y con `flex-start` una pantalla alta
+// dejaba todo el hueco abajo, como si faltara algo por cargar.
 const sPagina = {
     minHeight: '100vh',
     background: 'var(--bg-dark)',
-    display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-    padding: 'clamp(16px, 5vw, 56px) 16px',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: 'clamp(10px, 3vw, 32px) 12px',
+    boxSizing: 'border-box',
 }
 
 const sHoja = {
-    width: '100%', maxWidth: 520,
+    width: '100%', maxWidth: 460,
     background: 'var(--bg-surface)',
     border: '1px solid var(--border-subtle)',
     borderRadius: 'var(--radius-xl)',
-    padding: 'clamp(22px, 6vw, 38px)',
+    padding: 'clamp(16px, 4.5vw, 28px)',
     boxSizing: 'border-box',
     boxShadow: 'var(--shadow-md)',
 }
 
 const sMembrete = {
-    display: 'flex', alignItems: 'center', gap: 12,
-    paddingBottom: 20, marginBottom: 26,
+    display: 'flex', alignItems: 'center', gap: 10,
+    paddingBottom: 12, marginBottom: 16,
     borderBottom: '1px solid var(--border-subtle)',
 }
 
 const sMarca = {
-    fontSize: 'var(--text-lg)', fontWeight: 700,
+    fontSize: 'var(--text-base, 15px)', fontWeight: 700,
     color: 'var(--text-primary)', lineHeight: 1.15,
 }
 
 const sMembreteSub = {
-    fontSize: 11, color: 'var(--text-muted)',
+    fontSize: 10, color: 'var(--text-muted)',
     textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600,
 }
 
 const sSello = {
-    width: 84, height: 84, margin: '0 auto 18px',
+    width: 62, height: 62, margin: '0 auto 12px',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     borderRadius: '50%', boxSizing: 'border-box',
 }
 
 const sVeredictoTitulo = {
-    fontSize: 'clamp(22px, 5vw, 27px)', fontWeight: 700,
-    margin: '0 0 10px', lineHeight: 1.25,
+    fontSize: 'clamp(19px, 4.4vw, 23px)', fontWeight: 700,
+    margin: '0 0 6px', lineHeight: 1.25,
 }
 
 const sVeredictoTexto = {
-    color: 'var(--text-muted)', fontSize: 'var(--text-sm)',
-    lineHeight: 1.6, margin: '0 auto', maxWidth: 380,
+    color: 'var(--text-muted)', fontSize: 'var(--text-xs, 12px)',
+    lineHeight: 1.55, margin: '0 auto', maxWidth: 340,
 }
 
 const sProtagonista = {
     textAlign: 'center',
-    padding: '20px 16px', marginBottom: 22,
+    padding: '13px 14px', marginBottom: 14,
     background: 'rgba(13,115,119,.10)',
     border: '1px solid rgba(142,200,200,.22)',
     borderRadius: 'var(--radius-lg)',
 }
 
 const sEtiquetaChica = {
-    fontSize: 10, color: 'var(--text-muted)', fontWeight: 700,
-    textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 8,
+    fontSize: 9, color: 'var(--text-muted)', fontWeight: 700,
+    textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 5,
 }
 
 const sNombre = {
     fontFamily: 'Georgia, "Times New Roman", serif',
     fontStyle: 'italic',
-    fontSize: 'clamp(24px, 6vw, 32px)',
-    lineHeight: 1.25,
+    fontSize: 'clamp(21px, 5.4vw, 28px)',
+    lineHeight: 1.2,
     wordBreak: 'break-word',
 }
 
 const sDatos = { margin: 0, display: 'flex', flexDirection: 'column' }
 
+// ⚠️ Rejilla y NO flex con `wrap`: en celular la etiqueta se iba a su propia
+// línea y cada dato costaba dos renglones. Con dos columnas fijas, etiqueta y
+// valor siempre comparten renglón y la página cabe sin scroll.
 const sFila = {
-    display: 'flex', alignItems: 'baseline', gap: 14,
-    padding: '11px 2px',
+    display: 'grid',
+    gridTemplateColumns: 'clamp(96px, 26%, 112px) 1fr',
+    gap: 10, alignItems: 'baseline',
+    padding: '8px 2px',
     borderTop: '1px solid var(--border-subtle)',
-    flexWrap: 'wrap',
 }
 
+// ⚠️ El ancho mínimo (96px) lo manda la etiqueta más larga, INSTRUCTOR: con
+// menos, el ícono se comprimía a cero y esa fila era la única sin ícono.
 const sFilaEtiqueta = {
-    display: 'flex', alignItems: 'center', gap: 7,
-    width: 140, flexShrink: 0,
-    fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
-    textTransform: 'uppercase', letterSpacing: '.05em',
+    display: 'flex', alignItems: 'center', gap: 6, minWidth: 0,
+    fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
+    textTransform: 'uppercase', letterSpacing: '.04em',
 }
 
 const sFilaValor = {
-    margin: 0, flex: 1, minWidth: 160,
+    margin: 0, minWidth: 0,
+    display: 'flex', flexDirection: 'column', gap: 2,
     fontSize: 'var(--text-sm)', fontWeight: 600,
+    lineHeight: 1.4,
     color: 'var(--text-primary)',
     wordBreak: 'break-word',
 }
 
-const sEmitido = {
-    marginTop: 18, textAlign: 'center',
-    fontSize: 11, color: 'var(--text-disabled)',
+/** Dato secundario que cuelga de otro — la fecha de emisión bajo el folio. */
+const sFilaPie = {
+    fontSize: 10, fontWeight: 500, color: 'var(--text-disabled)',
+    letterSpacing: 0, textTransform: 'none',
 }
 
 const sFolioChip = {
-    display: 'inline-block', marginTop: 16,
-    padding: '6px 14px',
+    display: 'inline-block', marginTop: 14,
+    padding: '5px 13px',
     fontFamily: 'ui-monospace, SFMono-Regular, monospace',
     fontSize: 13, letterSpacing: '.08em',
     color: 'var(--text-secondary)',
@@ -409,9 +419,9 @@ const sFolioChip = {
 }
 
 const sPie = {
-    marginTop: 30, paddingTop: 18,
+    marginTop: 16, paddingTop: 12, marginBottom: 0,
     borderTop: '1px solid var(--border-subtle)',
-    fontSize: 11, lineHeight: 1.7, textAlign: 'center',
+    fontSize: 10, lineHeight: 1.6, textAlign: 'center',
     color: 'var(--text-muted)',
 }
 
@@ -423,7 +433,7 @@ const sBtn = {
 }
 
 const sSpinner = {
-    width: 34, height: 34, margin: '0 auto',
+    width: 30, height: 30, margin: '0 auto',
     border: '3px solid var(--border-subtle)',
     borderTopColor: 'var(--color-jade-400)',
     borderRadius: '50%',
