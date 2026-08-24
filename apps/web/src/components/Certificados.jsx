@@ -39,16 +39,8 @@ const PAPEL = '#fdfbf5'
 const GRIS  = '#6b7a74'
 const SERIF = 'Georgia, "Iowan Old Style", "Times New Roman", serif'
 
-/** Hoy todos los talleres duran lo mismo. Si un día dejan de durarlo, el dato
- *  de `talleres.duracion_horas` manda y esto solo es el respaldo. */
-const HORAS_POR_DEFECTO = 4
-
 const PRINT_CSS = `
 @media print {
-    /* Sin esto el PDF sale con el fondo oscuro de la app alrededor del
-       diploma: en pantalla no se nota, pero impreso es una plancha de tinta
-       negra. La app es oscura; el papel no. */
-    html, body { background: #ffffff !important; }
     body * { visibility: hidden !important; }
     .cert-hoja, .cert-hoja * { visibility: visible !important; }
     .cert-hoja {
@@ -58,9 +50,6 @@ const PRINT_CSS = `
         box-sizing: border-box !important;
         width: 100%; margin: 0;
         box-shadow: none !important;
-        /* El papel se imprime aunque el navegador tenga apagados los gráficos
-           de fondo: el degradado es un adorno, no puede ser un requisito. */
-        background: #ffffff !important;
     }
     .cert-no-print { display: none !important; }
     @page { size: landscape; margin: 10mm; }
@@ -77,142 +66,69 @@ function fmtFecha(v) {
    Piezas del diploma
    ══════════════════════════════════════════════════════════════════════════ */
 
-/**
- * Filigrana de esquina.
- *
- * Va dibujada en SVG y no como imagen por dos razones: imprime nítida a
- * cualquier tamaño, y no depende de que el navegador tenga activados los
- * "gráficos de fondo" — una imagen de fondo desaparecería justo al exportar el
- * PDF, que es cuando más importa.
- *
- * `voltearX` / `voltearY` reusan el mismo dibujo en las cuatro esquinas.
- *
- * ⚠️ El SVG NO se posiciona solo: lo coloca la envoltura. Cuando el SVG también
- * era `absolute` las cuatro esquinas se apilaban en una sola.
- */
-function Filigrana({ tam = 118, voltearX = false, voltearY = false }) {
+/** Rombo de las esquinas y de los separadores. */
+function Rombo({ tam = 7, color = ORO }) {
     return (
-        <svg width={tam} height={tam} viewBox="0 0 120 120" aria-hidden="true"
-             style={{
-                 display: 'block', pointerEvents: 'none',
-                 transform: `scale(${voltearX ? -1 : 1}, ${voltearY ? -1 : 1})`,
-                 transformOrigin: 'center',
-             }}>
-            <g fill="none" stroke={ORO} strokeLinecap="round">
-                {/* Escuadra doble: la línea gruesa marca el marco, la fina lo
-                    acompaña. El aire entre las dos es lo que se ve "caro". */}
-                <path d="M 10,112 L 10,26 Q 10,10 26,10 L 112,10" strokeWidth="2" />
-                <path d="M 17,112 L 17,29 Q 17,17 29,17 L 112,17" strokeWidth="0.9" opacity=".7" />
-
-                {/* Voluta interior: el rizo es lo que convierte una escuadra en
-                    un ornamento. */}
-                <path d="M 26,58 C 26,38 38,26 58,26" strokeWidth="1.5" />
-                <path d="M 26,58 C 26,70 34,78 46,78 C 55,78 60,72 60,64
-                         C 60,57 55,53 49,54 C 44,55 42,59 44,63"
-                      strokeWidth="1.4" />
-                <path d="M 58,26 C 70,26 78,34 78,46 C 78,55 72,60 64,60
-                         C 57,60 53,55 54,49 C 55,44 59,42 63,44"
-                      strokeWidth="1.4" />
-
-                {/* Hojas: rompen la simetría dura de las curvas. */}
-                <path d="M 33,40 C 40,33 50,31 56,34 C 50,41 40,44 33,40 Z"
-                      fill={ORO} stroke="none" opacity=".55" />
-                <path d="M 22,86 C 27,80 34,78 39,80 C 34,86 27,89 22,86 Z"
-                      fill={ORO} stroke="none" opacity=".4" />
-                <path d="M 86,22 C 92,27 94,34 92,39 C 86,34 83,27 86,22 Z"
-                      fill={ORO} stroke="none" opacity=".4" />
-            </g>
-        </svg>
+        <span style={{
+            display: 'inline-block', width: tam, height: tam,
+            background: color, transform: 'rotate(45deg)', flexShrink: 0,
+        }} />
     )
 }
 
-/** Regla con rombo al centro: separa sin cortar. */
-function Filete({ ancho = 260 }) {
+/** Regla con un rombo al centro: separa sin cortar. */
+function Filete({ ancho = 240 }) {
     return (
         <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 10, margin: '12px auto 0', width: ancho, maxWidth: '78%',
+            gap: 10, margin: '14px auto 0', width: ancho, maxWidth: '80%',
         }}>
             <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, transparent, ${ORO})` }} />
-            <span style={{
-                width: 6, height: 6, background: ORO,
-                transform: 'rotate(45deg)', flexShrink: 0,
-            }} />
+            <Rombo tam={6} />
             <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${ORO}, transparent)` }} />
         </div>
     )
 }
 
-/** Borde festoneado del sello, calculado: 24 ondas exactas y simétricas. */
-function pathFestoneado(cx, cy, r, ondas) {
-    const paso = (Math.PI * 2) / ondas
-    let d = ''
-    for (let i = 0; i < ondas; i++) {
-        const a0 = i * paso
-        const a1 = (i + 1) * paso
-        const am = a0 + paso / 2
-        const x0 = cx + r * Math.cos(a0),        y0 = cy + r * Math.sin(a0)
-        const x1 = cx + r * Math.cos(a1),        y1 = cy + r * Math.sin(a1)
-        const xm = cx + (r + 3.6) * Math.cos(am), ym = cy + (r + 3.6) * Math.sin(am)
-        d += (i === 0 ? `M ${x0.toFixed(2)},${y0.toFixed(2)} ` : '')
-           + `Q ${xm.toFixed(2)},${ym.toFixed(2)} ${x1.toFixed(2)},${y1.toFixed(2)} `
-    }
-    return `${d}Z`
-}
-
 /**
- * Sello con listones.
+ * Sello circular con el texto curvado.
  *
- * Mismo criterio que la filigrana: SVG, no imagen. El texto va en dos arcos
- * separados y no en un aro cerrado, porque en un círculo completo la mitad de
- * abajo sale de cabeza y a este tamaño no se lee.
+ * Va en SVG y no en imagen para que imprima nítido a cualquier tamaño y no
+ * dependa de que el navegador tenga activados los gráficos de fondo.
  */
-function Sello({ tam = 118 }) {
+function Sello({ tam = 92 }) {
     return (
-        <svg width={tam} height={tam * 1.34} viewBox="0 0 100 134" aria-hidden="true"
-             style={{ flexShrink: 0, display: 'block' }}>
+        <svg width={tam} height={tam} viewBox="0 0 100 100" aria-hidden="true"
+             style={{ flexShrink: 0 }}>
             <defs>
-                <linearGradient id="cert-oro" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%"   stopColor="#e8c76a" />
-                    <stop offset="45%"  stopColor="#c9a227" />
-                    <stop offset="100%" stopColor="#9c7112" />
-                </linearGradient>
-                <path id="cert-arco-sup" d="M 17,50 A 33,33 0 0 1 83,50" />
-                <path id="cert-arco-inf" d="M 22,50 A 28,28 0 0 0 78,50" />
+                {/* Dos arcos en vez de un aro completo: en un círculo cerrado
+                    la mitad de abajo sale de cabeza y a este tamaño no se lee. */}
+                <path id="cert-arco-sup" d="M 14,50 A 36,36 0 0 1 86,50" />
+                <path id="cert-arco-inf" d="M 18,50 A 32,32 0 0 0 82,50" />
             </defs>
-
-            {/* Listones: van detrás de la medalla para que se vean colgando. */}
-            <path d="M 33,72 L 24,128 L 39,118 L 50,127 L 50,72 Z"
-                  fill="#0f6b57" />
-            <path d="M 67,72 L 76,128 L 61,118 L 50,127 L 50,72 Z"
-                  fill="#0c5545" />
-
-            <path d={pathFestoneado(50, 50, 40, 24)} fill="url(#cert-oro)" />
-            <circle cx="50" cy="50" r="37"   fill={PAPEL} />
-            <circle cx="50" cy="50" r="34.5" fill="none" stroke={ORO} strokeWidth="1.2" />
-            <circle cx="50" cy="50" r="21"   fill="none" stroke={ORO} strokeWidth="0.8" opacity=".5" />
-
-            <text fill={ORO} fontSize="7.6" letterSpacing="1.8"
+            <circle cx="50" cy="50" r="47" fill="none" stroke={ORO} strokeWidth="1.6" />
+            <circle cx="50" cy="50" r="42.5" fill="none" stroke={ORO} strokeWidth="0.7" opacity=".7" />
+            <circle cx="50" cy="50" r="28" fill="none" stroke={ORO} strokeWidth="0.7" opacity=".45" />
+            <text fill={ORO} fontSize="8.4" letterSpacing="1.9"
                   fontFamily={SERIF} fontWeight="700">
                 <textPath href="#cert-arco-sup" startOffset="50%" textAnchor="middle">
                     DESTELLO
                 </textPath>
             </text>
-            <text fill={ORO} fontSize="6" letterSpacing="1.3"
+            <text fill={ORO} fontSize="6.6" letterSpacing="1.5"
                   fontFamily={SERIF} fontWeight="700">
                 <textPath href="#cert-arco-inf" startOffset="50%" textAnchor="middle">
                     CONSTANCIA
                 </textPath>
             </text>
-
             {/* La chispa de la marca, dibujada: no depende de ninguna fuente. */}
             <g stroke={VERDE} strokeLinecap="round">
-                <line x1="50" y1="41" x2="50" y2="59" strokeWidth="2.2" />
-                <line x1="41" y1="50" x2="59" y2="50" strokeWidth="2.2" />
-                <line x1="43.6" y1="43.6" x2="56.4" y2="56.4" strokeWidth="1.3" />
-                <line x1="56.4" y1="43.6" x2="43.6" y2="56.4" strokeWidth="1.3" />
+                <line x1="50" y1="38" x2="50" y2="62" strokeWidth="2.1" />
+                <line x1="38" y1="50" x2="62" y2="50" strokeWidth="2.1" />
+                <line x1="41.5" y1="41.5" x2="58.5" y2="58.5" strokeWidth="1.3" />
+                <line x1="58.5" y1="41.5" x2="41.5" y2="58.5" strokeWidth="1.3" />
             </g>
-            <circle cx="50" cy="50" r="4" fill={ORO} />
+            <circle cx="50" cy="50" r="4.6" fill={ORO} />
         </svg>
     )
 }
@@ -224,71 +140,69 @@ function Sello({ tam = 118 }) {
    y en papel un fondo oscuro se vuelve un rectángulo de tinta. */
 
 function Diploma({ cert }) {
-    // Todos los talleres duran 4 h; si el dato falta, no hay razón para callarlo.
-    const horas = Number(cert.duracion_horas) || HORAS_POR_DEFECTO
+    const esquina = (pos) => (
+        <span style={{ position: 'absolute', ...pos, lineHeight: 0 }}>
+            <Rombo tam={9} />
+        </span>
+    )
 
     return (
         <div className="cert-hoja" style={{
             position: 'relative',
             boxSizing: 'border-box',
-            background: `radial-gradient(120% 90% at 50% 0%, #ffffff 0%, ${PAPEL} 55%, #f6f0e2 100%)`,
+            // Un degradado muy suave: el papel plano se ve barato.
+            background: `radial-gradient(120% 90% at 50% 0%, #ffffff 0%, ${PAPEL} 55%, #f5efe1 100%)`,
             color: TINTA,
             fontFamily: SERIF,
-            borderRadius: 4,
-            padding: 'clamp(30px, 5vw, 62px)',
-            border: `1px solid ${ORO}`,
+            borderRadius: 6,
+            padding: 'clamp(26px, 4.2vw, 52px)',
+            // Marco exterior grueso en oro: es lo que lo hace leer como diploma.
+            border: `3px solid ${ORO}`,
             boxShadow: '0 22px 60px rgba(0,0,0,.42)',
             overflow: 'hidden',
         }}>
-            {/* Las cuatro esquinas con el mismo dibujo, volteado. */}
-            <span style={{ position: 'absolute', top: 6,  left: 6, lineHeight: 0 }}>
-                <Filigrana />
-            </span>
-            <span style={{ position: 'absolute', top: 6,  right: 6, lineHeight: 0 }}>
-                <Filigrana voltearX />
-            </span>
-            <span style={{ position: 'absolute', bottom: 6, left: 6, lineHeight: 0 }}>
-                <Filigrana voltearY />
-            </span>
-            <span style={{ position: 'absolute', bottom: 6, right: 6, lineHeight: 0 }}>
-                <Filigrana voltearX voltearY />
-            </span>
+            {/* Marco interior fino. El aire entre las dos líneas es lo que da
+                el aire formal; pegarlas lo arruina. */}
+            <div style={{
+                position: 'absolute', inset: 9,
+                border: `1px solid ${ORO}`, opacity: .5,
+                borderRadius: 3, pointerEvents: 'none',
+            }} />
+
+            {esquina({ top: 5, left: 5 })}
+            {esquina({ top: 5, right: 5 })}
+            {esquina({ bottom: 5, left: 5 })}
+            {esquina({ bottom: 5, right: 5 })}
 
             <div style={{ position: 'relative', textAlign: 'center' }}>
 
                 {/* ── Marca ── */}
-                <img src={logoDestello} alt="" width={48} height={48}
-                     style={{ display: 'block', margin: '0 auto 6px' }} />
+                <img src={logoDestello} alt="" width={54} height={54}
+                     style={{ display: 'block', margin: '0 auto 8px' }} />
                 <div style={{
-                    fontFamily: SERIF, fontSize: 13, fontWeight: 700,
-                    letterSpacing: '.44em', textIndent: '.44em',
+                    fontFamily: SERIF, fontSize: 15, fontWeight: 700,
+                    letterSpacing: '.42em', textIndent: '.42em',
                     color: VERDE, textTransform: 'uppercase',
                 }}>
                     Destello
                 </div>
 
+                <Filete ancho={200} />
+
                 {/* ── Título ── En <div>, no en <h2>: el CSS global de la app le
                     pone degradado a los encabezados y salía fantasma. */}
                 <div style={{
-                    marginTop: 16, fontFamily: SERIF, fontWeight: 700,
-                    fontSize: 'clamp(30px, 5.6vw, 54px)',
-                    letterSpacing: '.16em', textIndent: '.16em',
-                    lineHeight: 1, color: TINTA,
+                    marginTop: 18,
+                    fontFamily: SERIF, fontStyle: 'italic',
+                    fontSize: 'clamp(26px, 4.2vw, 40px)',
+                    fontWeight: 400, lineHeight: 1.1, color: TINTA,
                 }}>
-                    CERTIFICADO
-                </div>
-                <div style={{
-                    marginTop: 8, fontFamily: SERIF, fontStyle: 'italic',
-                    fontSize: 'clamp(14px, 2vw, 19px)', color: GRIS,
-                }}>
-                    de participación
+                    Constancia de participación
                 </div>
 
-                <Filete ancho={230} />
-
                 <div style={{
-                    marginTop: 20, fontSize: 10.5, letterSpacing: '.32em',
-                    textIndent: '.32em', textTransform: 'uppercase',
+                    marginTop: 22, fontSize: 11, letterSpacing: '.3em',
+                    textIndent: '.3em', textTransform: 'uppercase',
                     color: GRIS, fontFamily: SERIF,
                 }}>
                     Se otorga a
@@ -296,73 +210,70 @@ function Diploma({ cert }) {
 
                 {/* ── El nombre ── Lo más grande de la hoja: el logro es suyo. */}
                 <div style={{
-                    margin: '8px auto 0', maxWidth: '92%',
-                    fontFamily: SERIF, fontStyle: 'italic', fontWeight: 700,
-                    fontSize: 'clamp(30px, 5.8vw, 56px)',
-                    lineHeight: 1.1, color: VERDE,
+                    margin: '10px auto 0', maxWidth: '92%',
+                    fontFamily: SERIF, fontWeight: 700,
+                    fontSize: 'clamp(28px, 5.4vw, 52px)',
+                    lineHeight: 1.12, color: VERDE,
                 }}>
                     {cert.nombre}
                 </div>
-                <Filete ancho={400} />
+                <Filete ancho={340} />
 
                 <div style={{
-                    margin: '20px auto 0', maxWidth: 620,
-                    fontFamily: SERIF, fontSize: 14.5, lineHeight: 1.7, color: '#33443e',
+                    margin: '22px auto 0', maxWidth: 640,
+                    fontFamily: SERIF, fontSize: 15, lineHeight: 1.75, color: '#33443e',
                 }}>
                     por haber concluido satisfactoriamente el taller
-                    <div style={{ fontWeight: 700, color: TINTA, fontSize: 16.5, margin: '5px 0' }}>
+                    <div style={{ fontWeight: 700, color: TINTA, fontSize: 17, margin: '6px 0' }}>
                         {cert.taller_nombre}
                     </div>
-                    con una duración de <strong style={{ color: TINTA }}>{horas} horas</strong>
-                    {cert.fecha_taller ? <>, impartido el {fmtFecha(cert.fecha_taller)}</> : null}.
+                    {cert.duracion_horas
+                        ? <>con una duración de <strong style={{ color: TINTA }}>
+                              {Number(cert.duracion_horas)} horas</strong>{cert.fecha_taller ? ', ' : '.'}</>
+                        : null}
+                    {cert.fecha_taller
+                        ? <>impartido el {fmtFecha(cert.fecha_taller)}.</>
+                        : null}
                 </div>
 
-                {/* ── Firma · sello · folio ──
-                    Agrupados al centro y no pegados a los bordes: separados se
-                    leían como tres cosas sueltas en vez de un pie de documento. */}
+                {/* ── Firma · sello · folio ── */}
                 <div style={{
-                    display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-                    gap: 'clamp(14px, 3vw, 38px)',
-                    margin: 'clamp(18px, 3vw, 34px) auto 0',
-                    maxWidth: 660, flexWrap: 'wrap',
+                    display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+                    gap: 20, marginTop: 'clamp(24px, 4.5vw, 46px)', flexWrap: 'wrap',
                 }}>
-                    <div style={{ width: 190, maxWidth: '45%', textAlign: 'center' }}>
+                    <div style={{ width: 220, maxWidth: '100%', textAlign: 'center' }}>
                         {/* TODO(Paola): aquí va la imagen de la firma cuando la
                             mandes. Mientras, la línea sola no miente. */}
-                        <div style={{ height: 26 }} />
-                        <div style={{ borderTop: `1px solid ${TINTA}`, paddingTop: 6 }}>
-                            <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 12.5, color: TINTA }}>
+                        <div style={{ height: 30 }} />
+                        <div style={{ borderTop: `1px solid ${TINTA}`, paddingTop: 7 }}>
+                            <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 13, color: TINTA }}>
                                 {cert.instructor || 'Destello'}
                             </div>
-                            <div style={{ fontSize: 9.5, letterSpacing: '.2em', textIndent: '.2em',
+                            <div style={{ fontSize: 10, letterSpacing: '.22em', textIndent: '.22em',
                                           textTransform: 'uppercase', color: GRIS, marginTop: 2 }}>
                                 Instructor
                             </div>
                         </div>
                     </div>
 
-                    <Sello tam={104} />
+                    <Sello tam={92} />
 
-                    <div style={{ width: 190, maxWidth: '45%', textAlign: 'center' }}>
-                        <div style={{ height: 26 }} />
-                        <div style={{ borderTop: `1px solid ${TINTA}`, paddingTop: 6 }}>
-                            <div style={{
-                                fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
-                                fontSize: 13, fontWeight: 700, color: TINTA,
-                                letterSpacing: '.06em',
-                            }}>
-                                {cert.folio}
-                            </div>
-                            <div style={{ fontSize: 9.5, letterSpacing: '.2em', textIndent: '.2em',
-                                          textTransform: 'uppercase', color: GRIS, marginTop: 2 }}>
-                                Folio
-                            </div>
+                    <div style={{ width: 220, maxWidth: '100%', textAlign: 'right' }}>
+                        <div style={{ fontSize: 10, letterSpacing: '.22em', textIndent: '.22em',
+                                      textTransform: 'uppercase', color: ORO, fontWeight: 700 }}>
+                            Folio
+                        </div>
+                        <div style={{
+                            fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+                            fontSize: 14, fontWeight: 700, color: TINTA,
+                            letterSpacing: '.07em', margin: '3px 0 4px',
+                        }}>
+                            {cert.folio}
+                        </div>
+                        <div style={{ fontSize: 10, color: GRIS, fontFamily: SERIF }}>
+                            Verifica en destello.courses/certificado
                         </div>
                     </div>
-                </div>
-
-                <div style={{ marginTop: 14, fontSize: 9.5, color: GRIS, fontFamily: SERIF }}>
-                    Verifica este certificado en destello.courses/certificado
                 </div>
             </div>
         </div>
