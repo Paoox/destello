@@ -1,12 +1,12 @@
 /**
  * Destello Admin — PageAdmin
  * Dashboard de administración con tabs:
- *   ✦ Accesos | Talleres | Lista de espera | Reportes | Métricas
+ *   ✦ Accesos | Talleres | Lista de espera | Reportes | Asistencia | Usuarios | Métricas
  * Protegida por AdminAuthOverlay hasta que el admin se autentique.
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate }                       from 'react-router-dom'
-import { ArrowClockwise, SignOut, Sparkle, BookOpen, ClockCounterClockwise, Tray, ChartLineUp, Certificate } from '@phosphor-icons/react'
+import { ArrowClockwise, SignOut, Sparkle, BookOpen, ClockCounterClockwise, Tray, ChartLineUp, Certificate, UsersThree } from '@phosphor-icons/react'
 import { useAdminSession }                   from '@hooks/useAdminSession.js'
 import AdminAuthOverlay                      from '@components/admin/AdminAuthOverlay.jsx'
 import AccesosPanel                          from '@components/admin/AccesosPanel.jsx'
@@ -15,6 +15,7 @@ import ListaEsperaAdmin                      from '@components/admin/ListaEspera
 import ReportesPanel                         from '@components/admin/ReportesPanel.jsx'
 import MetricasPanel                         from '@components/admin/MetricasPanel.jsx'
 import AsistenciaPanel                       from '@components/admin/AsistenciaPanel.jsx'
+import UsuariosPanel                          from '@components/admin/UsuariosPanel.jsx'
 
 const TABS = [
     { id: 'accesos',      label: 'Accesos',         Icon: Sparkle },
@@ -22,6 +23,7 @@ const TABS = [
     { id: 'lista-espera', label: 'Lista de espera',  Icon: ClockCounterClockwise },
     { id: 'reportes',     label: 'Reportes',        Icon: Tray },
     { id: 'asistencia',   label: 'Asistencia',      Icon: Certificate },
+    { id: 'usuarios',     label: 'Usuarios',        Icon: UsersThree },
     { id: 'metricas',     label: 'Métricas',        Icon: ChartLineUp },
 ]
 
@@ -180,6 +182,11 @@ export default function PageAdmin() {
                 {/* Tab: Asistencia — quién estuvo en clase y sus certificados */}
                 {activeTab === 'asistencia' && isAuthenticated && (
                     <AsistenciaPanel adminToken={adminToken} />
+                )}
+
+                {/* Tab: Usuarios — bloquear acceso y compras sin borrar a nadie */}
+                {activeTab === 'usuarios' && isAuthenticated && (
+                    <UsuariosPanel adminToken={adminToken} />
                 )}
 
                 {/* Tab: Métricas — el embudo, el dinero y lo que necesita atención */}

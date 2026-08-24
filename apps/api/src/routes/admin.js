@@ -17,6 +17,10 @@
  * PATCH  /admin/lista-espera/:id   → actualiza estado (admin)
  *
  * POST   /admin/send-wa            → envía WA desde el bot (admin)
+ *
+ * GET    /admin/usuarios                  → lista con estado de bloqueo (admin)
+ * GET    /admin/usuarios/:email/historial → bitácora de bloqueos (admin)
+ * PATCH  /admin/usuarios/:email/bloqueo   → bloquea/desbloquea acceso o compras
  */
 import { Router }            from 'express'
 import { adminLogin, getTalleresStats } from '../controllers/adminController.js'
@@ -33,6 +37,7 @@ import { activarAlumno }    from '../services/inscripcionService.js'
 import metricasRouter     from './metricas.js'
 import * as asistenciaService  from '../services/asistenciaService.js'
 import * as certificadoService from '../services/certificadoService.js'
+import * as bloqueoService      from '../services/bloqueoService.js'
 import crypto                from 'node:crypto'
 
 const router = Router()
@@ -810,6 +815,69 @@ router.delete('/certificados/:folio', async (req, res, next) => {
         })
         if (!cert) throw new AppError('Certificado no encontrado o ya anulado', 404, 'NOT_FOUND')
         res.json({ status: 'ok', certificado: cert })
+    } catch (err) { next(err) }
+})
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Usuarios — bloquear sin borrar
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Dos interruptores por cuenta, los dos reversibles:
+//   · acceso  → no entra a la plataforma, ni por la web ni por el bot
+//   · compras → entra y usa lo que ya tiene, pero no aparta lugar en nada nuevo
+//
+// Aquí no hay ningún DELETE, a propósito. Borrar una cuenta se lleva por
+// delante su historial, sus certificados y las métricas del negocio; y sobre
+// todo, no se puede deshacer el día que resulte que el bloqueo estuvo mal.
+
+/** GET /admin/usuarios?filtro=todos|bloqueados|activos&busca=texto */
+router.get('/usuarios', async (req, res, next) => {
+    try {
+        const [usuarios, resumen] = await Promise.all([
+            bloqueoService.listar({ filtro: req.query.filtro, busca: req.query.busca }),
+            bloqueoService.stats(),
+        ])
+        res.json({ status: 'ok', usuarios, stats: resumen })
+    } catch (err) { next(err) }
+})
+
+/** GET /admin/usuarios/:email/historial → cada bloqueo y desbloqueo, con motivo. */
+router.get('/usuarios/:email/historial', async (req, res, next) => {
+    try {
+        res.json({
+            status:    'ok',
+            historial: await bloqueoService.historialDe(req.params.email),
+        })
+    } catch (err) { next(err) }
+})
+
+/**
+ * PATCH /admin/usuarios/:email/bloqueo
+ * Body: { tipo: 'acceso'|'compras', bloquear: true|false, motivo }
+ *
+ * El motivo es obligatorio al bloquear. Es lo único que va a existir dentro de
+ * tres meses, cuando alguien reclame y haya que explicar por qué.
+ */
+router.patch('/usuarios/:email/bloqueo', async (req, res, next) => {
+    try {
+        const { tipo, bloquear, motivo } = req.body ?? {}
+        const r = await bloqueoService.cambiar({
+            email:    req.params.email,
+            tipo,
+            bloquear: bloquear === true,
+            motivo,
+            hechoPor: req.admin?.email ?? 'admin',
+        })
+        if (!r.ok) {
+            const msg = {
+                TIPO_INVALIDO:    'tipo debe ser "acceso" o "compras"',
+                MOTIVO_REQUERIDO: 'Escribe el motivo del bloqueo',
+                USER_NOT_FOUND:   'No encontramos esa cuenta',
+            }[r.reason] ?? 'No se pudo aplicar el cambio'
+            throw new AppError(msg, r.reason === 'USER_NOT_FOUND' ? 404 : 400, r.reason)
+        }
+        res.json({ status: 'ok', usuario: r.usuario })
     } catch (err) { next(err) }
 })
 

@@ -4,6 +4,7 @@
 import * as tallerService      from '../services/tallerService.js'
 import * as listaEsperaService from '../services/listaEsperaService.js'
 import { AppError }            from '../middleware/errorHandler.js'
+import { MENSAJE_COMPRAS }     from '../services/bloqueoService.js'
 
 /** GET /tallers — landing page: activo + próximamente + lleno */
 export async function listTallers(_req, res, next) {
@@ -42,6 +43,17 @@ export async function joinTaller(req, res, next) {
       // Este es el modal del Habitat en la web, no el bot de WhatsApp.
       origen: 'web',
     })
+
+    // Compras bloqueadas: no se le dice "no hay lugar" ni se finge que sí
+    // quedó registrada. Se le da el motivo real y por dónde reclamar.
+    if (resultado.bloqueado) {
+      return res.status(403).json({
+        status:    'error',
+        code:      'COMPRAS_BLOQUEADAS',
+        bloqueado: true,
+        message:   MENSAJE_COMPRAS,
+      })
+    }
 
     // Taller lleno: 409 y un mensaje que la persona pueda entender. No es un
     // error del sistema, es una respuesta legítima — por eso lleva su propio

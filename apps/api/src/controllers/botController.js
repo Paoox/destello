@@ -36,7 +36,15 @@ export async function buscarUsuario(req, res, next) {
     try {
         const usuario = await findByEmail(req.params.email)
         if (!usuario) return res.json({ status: 'ok', existe: false })
-        res.json({ status: 'ok', existe: true, usuario })
+        // Los bloqueos salen a la superficie para que Faro no tenga que
+        // conocer cómo se llaman las columnas de la base.
+        res.json({
+            status:            'ok',
+            existe:            true,
+            usuario,
+            bloqueado:         usuario.acceso_bloqueado   === true,
+            comprasBloqueadas: usuario.compras_bloqueadas === true,
+        })
     } catch (err) {
         next(err)
     }

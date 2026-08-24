@@ -12,6 +12,7 @@ import * as resplandorService     from '../services/resplandorService.js'
 import * as referralService       from '../services/referralService.js'
 import { query }                  from '../db/db.js'
 import { verifyFirebaseToken }    from '../services/firebaseAdmin.js'
+import * as bloqueoService        from '../services/bloqueoService.js'
 
 function signToken(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, {
@@ -46,6 +47,15 @@ export async function loginWithCode(req, res, next) {
         throw new AppError('Correo o contraseña incorrectos', 401, 'INVALID_CREDENTIALS')
       }
 
+      // Cuenta suspendida: se le dice, no se le miente con "contraseña
+      // incorrecta". Un error genérico protege un poco más contra quien
+      // defrauda a propósito, pero deja a ciegas a quien fue bloqueado por
+      // error — y ese caso va a existir. La comprobación va DESPUÉS de la
+      // contraseña, para no revelarle a un extraño que esa cuenta existe.
+      if (usuario.acceso_bloqueado === true) {
+        throw new AppError(bloqueoService.MENSAJE_ACCESO, 403, 'CUENTA_BLOQUEADA')
+      }
+
       const token = signToken({ userId: usuario.id, role: 'alumno' })
       return res.json({
         status: 'ok',
@@ -76,6 +86,16 @@ export async function loginWithCode(req, res, next) {
           401,
           result.reason,
       )
+    }
+
+    // La chispa es un camino de entrada distinto al del correo y la
+    // contraseña, así que necesita su propia revisión: si no, bloquear una
+    // cuenta no serviría de nada mientras la persona conserve un código.
+    if (result.record?.usuario_email) {
+      const bloqueo = await bloqueoService.estadoDe(result.record.usuario_email)
+      if (bloqueo.acceso) {
+        throw new AppError(bloqueoService.MENSAJE_ACCESO, 403, 'CUENTA_BLOQUEADA')
+      }
     }
 
     const user  = { id: result.record.id, role: 'alumno', tallerId: result.record.taller_id }
@@ -123,7 +143,8 @@ export async function loginWithSocial(req, res, next) {
 
     // 2. Buscar usuario en la BD
     const { rows } = await query(
-        `SELECT id, email, nombre, apellido, whatsapp, estado FROM usuarios WHERE email = $1`,
+        `SELECT id, email, nombre, apellido, whatsapp, estado, acceso_bloqueado
+           FROM usuarios WHERE email = $1`,
         [emailNorm]
     )
 
@@ -136,6 +157,10 @@ export async function loginWithSocial(req, res, next) {
     }
 
     const usuario = rows[0]
+
+    if (usuario.acceso_bloqueado === true) {
+      throw new AppError(bloqueoService.MENSAJE_ACCESO, 403, 'CUENTA_BLOQUEADA')
+    }
 
     if (usuario.estado !== 'activo') {
       throw new AppError('Tu cuenta no está activa. Contacta a soporte.', 403, 'ACCOUNT_INACTIVE')

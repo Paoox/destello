@@ -39,6 +39,11 @@ export async function diagnosticar(email) {
         usuario,
         talleres,
         listas,
+        // Bloqueos, explícitos y arriba: el bot ramifica con esto sin tener
+        // que saber cómo se llaman las columnas de la base.
+        bloqueado:         usuario.acceso_bloqueado   === true,
+        comprasBloqueadas: usuario.compras_bloqueadas === true,
+        motivoBloqueo:     usuario.bloqueo_motivo ?? null,
         // Le falta el número → no podría entrar por WhatsApp OTP
         faltaWhatsapp: !usuario.whatsapp,
         // Lugar que Paola ya confirmó pero sigue sin pagarse

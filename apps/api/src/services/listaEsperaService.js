@@ -3,6 +3,7 @@
  */
 import { query } from '../db/db.js'
 import { hayCupo, sincronizarEstadoCupo } from './cupoService.js'
+import { estadoDe as bloqueoDe } from './bloqueoService.js'
 
 export async function listTodas() {
     const { rows } = await query(
@@ -41,6 +42,20 @@ export async function listPorTaller(tallerId) {
  */
 export async function registrarEnLista({ email, tallerId, nombre, whatsapp, origen = null }) {
     const emailNorm = email.toLowerCase().trim()
+
+    // ── ¿Tiene las compras bloqueadas? ──────────────────────────────────────
+    //
+    // Va PRIMERO, antes de cualquier otra cosa. Y va aquí, en el servicio, por
+    // la misma razón que el cupo: el modal del Habitat, el bot y el panel
+    // entran todos por esta puerta. Ponerlo en cada endpoint sería garantizar
+    // que algún día uno se quede sin la revisión.
+    //
+    // Bloquear compras NO toca lo que la persona ya tenía apartado: sus
+    // chispas y sus lugares siguen vivos. Esto solo impide apartar de nuevo.
+    const bloqueo = await bloqueoDe(emailNorm)
+    if (bloqueo.acceso || bloqueo.compras) {
+        return { nuevo: false, bloqueado: true, motivoBloqueo: bloqueo.motivo, registro: null }
+    }
 
     // ── Un lugar por persona y por taller ───────────────────────────────────
     //

@@ -17,6 +17,7 @@ import * as otp     from '../services/otpService.js'
 import { sendWhatsapp, normalizarWhatsapp } from '../services/botService.js'
 import { asegurarWhatsappLibre } from '../services/usuarioService.js'
 import { registrarLogin } from '../services/eventoService.js'
+import { MENSAJE_ACCESO } from '../services/bloqueoService.js'
 
 function signToken(payload) {
     return jwt.sign(payload, process.env.JWT_SECRET, {
@@ -104,7 +105,7 @@ export async function verifyCode(req, res, next) {
         // negar el acceso y avisar. El índice único de la BD debería hacer que
         // esto nunca ocurra; esto es el cinturón de seguridad.
         const { rows: candidatos } = await query(
-            `SELECT id, email, nombre, apellido, whatsapp, estado
+            `SELECT id, email, nombre, apellido, whatsapp, estado, acceso_bloqueado
              FROM usuarios
              WHERE whatsapp = $1
              ORDER BY id`,
@@ -122,6 +123,13 @@ export async function verifyCode(req, res, next) {
                 409,
                 'WA_DUPLICADO',
             )
+        }
+
+        // El login por número es la tercera puerta (además de correo+contraseña
+        // y Google). Bloquear el acceso tiene que cerrar las tres o no cierra
+        // ninguna.
+        if (candidatos.some(c => c.acceso_bloqueado === true)) {
+            throw new AppError(MENSAJE_ACCESO, 403, 'CUENTA_BLOQUEADA')
         }
 
         const activos = candidatos.filter(c => c.estado === 'activo')
