@@ -184,8 +184,8 @@ export default function AsistenciaPanel({ adminToken }) {
                         display: 'grid', gap: 'var(--space-3)',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                     }}>
-                        <Tile icon={UserCheck} label="Inscritos" valor={fmtNum(r.inscritos)}
-                              sub="pagaron o traían cortesía" />
+                        <Tile icon={UserCheck} label="En este taller" valor={fmtNum(r.inscritos)}
+                              sub="inscritos, asistentes o certificados" />
                         <Tile icon={Clock} label="Entraron al aula" valor={fmtNum(r.entraron)}
                               sub={r.inscritos ? `${Math.round((r.entraron / r.inscritos) * 100)}% de los inscritos` : '—'}
                               color={SERIE.dos} />
@@ -230,6 +230,13 @@ export default function AsistenciaPanel({ adminToken }) {
                                                     )}
                                                 </div>
                                                 <div style={{ color: 'var(--text-muted)' }}>{p.usuario_email}</div>
+                                                {/* Aparece aunque no esté en la lista de espera: si tiene
+                                                    certificado o asistencia, tiene que poder verse y anularse. */}
+                                                {!p.estado && (
+                                                    <div style={{ color: 'var(--text-disabled)', fontSize: 10 }}>
+                                                        sin inscripción registrada
+                                                    </div>
+                                                )}
                                                 {!p.nombre_certificado && (
                                                     <div style={{ color: ESTADO.atencion, fontSize: 10 }}>
                                                         no ha dicho su nombre para el certificado
@@ -258,6 +265,17 @@ export default function AsistenciaPanel({ adminToken }) {
                                             </>,
                                             ocupado === p.usuario_email
                                                 ? <span style={{ color: ESTADO.atencion }}>emitiendo…</span>
+                                                : p.certificado_anulado
+                                                ? <>
+                                                      <div style={{ color: ESTADO.atencion, fontWeight: 700, fontSize: 11 }}>
+                                                          ANULADO
+                                                      </div>
+                                                      <div style={{
+                                                          fontFamily: 'ui-monospace, monospace',
+                                                          fontSize: 11, color: 'var(--text-disabled)',
+                                                          textDecoration: 'line-through',
+                                                      }}>{p.certificado_folio}</div>
+                                                  </>
                                                 : p.tiene_certificado
                                                     ? <>
                                                           <div style={{
