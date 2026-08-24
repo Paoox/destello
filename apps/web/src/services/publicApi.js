@@ -91,3 +91,22 @@ export async function apiUnirseListaEspera(tallerId, datos) {
     })
     return handleResponse(res)
 }
+// ── Certificados ──────────────────────────────────────────────────────────────
+
+/**
+ * Verifica un certificado por su folio. Es el endpoint al que lleva el QR
+ * impreso en el diploma, y es público a propósito: quien recibe un certificado
+ * tiene que poder comprobarlo sin tener cuenta en Destello.
+ *
+ * Devuelve `{ valido: true, certificado }`, o `{ valido: false }` si está
+ * anulado. Si el folio no existe la API responde 404 y `handleResponse` lanza
+ * un error con `.status = 404` — la pantalla lo distingue de una falla real:
+ * "no existe" es una respuesta, "no se pudo consultar" es un problema, y
+ * confundirlos haría pasar por falso un certificado bueno.
+ *
+ * ⚠️ Nunca devuelve el correo del alumno.
+ */
+export async function apiVerificarCertificado(folio) {
+    const res = await fetch(`${BASE}/certificados/${encodeURIComponent(String(folio ?? '').trim())}`)
+    return handleResponse(res)
+}

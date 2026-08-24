@@ -733,17 +733,40 @@ router.get('/talleres/:id/asistencia', async (req, res, next) => {
 
 /**
  * POST /admin/talleres/:id/certificados
- * Body: { minMinutos? }
- * Emite en bloque para todos los que asistieron lo suficiente.
+ * Body: { emails?: string[], motivo?, minMinutos? }
  *
- * Devuelve también a quién NO se le emitió y por qué: una emisión que deja
- * gente fuera en silencio se lee como "ya está todo" cuando no lo está.
+ * Un solo botón para dos formas de emitir:
+ *
+ *   · **sin `emails`** → a todos los que califican por asistencia. Es el
+ *     "emitir todos" de después de cada taller.
+ *   · **con `emails`** → exactamente a ésos, ni uno más. Es el "emitir sólo
+ *     éstos" de palomear renglones en el panel; a quien no llegó a los minutos
+ *     se le registra la asistencia a mano con su motivo, porque escogerlo a
+ *     mano ya fue la decisión pero tiene que quedar por escrito.
+ *
+ * En los dos casos se devuelve a quién NO se le emitió y por qué: una emisión
+ * que deja gente fuera en silencio se lee como "ya está todo" cuando no lo está.
  */
 router.post('/talleres/:id/certificados', async (req, res, next) => {
     try {
+        const { emails, motivo, minMinutos } = req.body ?? {}
+        const actor = req.admin?.email ?? 'admin'
+        const min   = minMinutos != null ? Number(minMinutos) : undefined
+
+        // `emails: []` (un arreglo vacío) NO es lo mismo que no mandar nada:
+        // significa "no seleccionaste a nadie". Emitirle a todo el taller en
+        // ese caso sería justo lo contrario de lo que se pidió.
+        if (Array.isArray(emails)) {
+            if (emails.length === 0) {
+                throw new AppError('No seleccionaste a nadie', 400, 'BAD_REQUEST')
+            }
+            const resultado = await certificadoService.emitirSeleccion(
+                req.params.id, emails, { actor, motivo, minMinutos: min })
+            return res.json({ status: 'ok', ...resultado })
+        }
+
         const resultado = await certificadoService.emitirTaller(req.params.id, {
-            minMinutos: req.body?.minMinutos != null ? Number(req.body.minMinutos) : undefined,
-            actor:      req.admin?.email ?? 'admin',
+            minMinutos: min, actor,
         })
         res.json({ status: 'ok', ...resultado })
     } catch (err) { next(err) }

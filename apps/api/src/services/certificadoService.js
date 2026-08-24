@@ -17,6 +17,8 @@
 
 import { randomBytes } from 'node:crypto'
 import { query, withTransaction } from '../db/db.js'
+// `asistenciaService` NO importa este archivo, así que no hay ciclo.
+import { agregarManual } from './asistenciaService.js'
 
 /**
  * Minutos con el aula abierta a partir de los cuales se considera que la
@@ -131,6 +133,72 @@ export async function emitirTaller(tallerId, { minMinutos = MINUTOS_PARA_CERTIFI
     }
 
     return { emitidos, omitidos, minMinutos }
+}
+
+/**
+ * Emite a una lista concreta de personas de un taller.
+ *
+ * Es el caso de "estas sí, esas no": Paola palomea renglones en el panel y
+ * emite los que escogió de un solo botón. Distinto de `emitirTaller`, que
+ * decide por asistencia.
+ *
+ * ── Por qué NO revisa el umbral de minutos ──────────────────────────────────
+ * Escoger un renglón a mano ES la decisión. Si además se pidiera que califique
+ * por asistencia, seleccionar a alguien que se quedó sin internet no serviría
+ * de nada — y ése es justo el caso para el que existe seleccionar. Lo que sí
+ * hace es dejar rastro: a quien no alcanzó los minutos se le registra la
+ * asistencia a mano con un motivo, para que dentro de tres meses la lista no
+ * diga "no entró" junto a un certificado emitido sin nada que lo explique.
+ *
+ * Sigue sin poder emitir dos veces: `emitir` es idempotente y devuelve el que
+ * ya existía.
+ */
+export async function emitirSeleccion(tallerId, emails, {
+    actor  = 'admin',
+    motivo = null,
+    minMinutos = MINUTOS_PARA_CERTIFICAR,
+} = {}) {
+    const pedidos = [...new Set(
+        (emails ?? []).map(e => String(e ?? '').trim().toLowerCase()).filter(Boolean)
+    )]
+
+    const { rows } = await query(
+        `SELECT usuario_email, minutos, entro, tiene_certificado
+           FROM v_asistencia_taller
+          WHERE taller_id = $1`,
+        [tallerId])
+    const porEmail = new Map(rows.map(r => [String(r.usuario_email).toLowerCase(), r]))
+
+    const emitidos = []
+    const omitidos = []
+
+    for (const correo of pedidos) {
+        const p = porEmail.get(correo) ?? { usuario_email: correo, minutos: 0, entro: false }
+
+        if (p.tiene_certificado) { omitidos.push({ ...p, motivo: 'ya tenía' }); continue }
+
+        try {
+            // No llegó al umbral (o ni entró) pero fue escogido a mano: se deja
+            // constancia de por qué antes de emitir.
+            const alcanza = p.entro && Number(p.minutos) >= minMinutos
+            if (!alcanza) {
+                await agregarManual(correo, tallerId, {
+                    actor,
+                    nota: motivo || 'seleccionado a mano para certificado',
+                })
+            }
+
+            const { certificado } = await emitir(correo, tallerId, {
+                actor,
+                minutos: p.entro ? p.minutos : null,
+            })
+            emitidos.push(certificado)
+        } catch (e) {
+            omitidos.push({ ...p, motivo: e.message })
+        }
+    }
+
+    return { emitidos, omitidos, minMinutos, seleccionados: pedidos.length }
 }
 
 /** Anular. No se borra: el folio ya pudo haber circulado. */

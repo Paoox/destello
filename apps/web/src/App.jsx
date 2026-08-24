@@ -23,6 +23,7 @@ const PageAula     = lazy(() => import('@pages/PageAula.jsx'))
 const PagePerfil   = lazy(() => import('@pages/PagePerfil.jsx'))
 const Page404      = lazy(() => import('@pages/Page404.jsx'))
 const PageAdmin    = lazy(() => import('@pages/PageAdmin.jsx'))
+const PageCertificado = lazy(() => import('@pages/PageCertificado.jsx'))
 
 
 // Loading fallback mientras carga la página
@@ -54,6 +55,14 @@ export default function App() {
 
                 {/* ── Rutas públicas (sin layout) ───────────────── */}
                 <Route path="/intro"  element={<PageIntro />} />
+
+                {/* ── Verificación pública de certificados ──────────
+                    Es a donde lleva el QR impreso en el diploma. Va SIN layout
+                    a propósito: quien la abre es quien recibió el certificado
+                    (una escuela, un empleador), no tiene cuenta en Destello y
+                    no debe ver la barra lateral de la plataforma ni que se le
+                    pida entrar antes de responderle. */}
+                <Route path="/certificado/:folio" element={<PageCertificado />} />
 
                 {/* ── Rutas de auth ─────────────────────────────── */}
                 <Route element={<AuthLayout />}>
