@@ -27,7 +27,7 @@ import Avatar from './Avatar.jsx'
 import Sello from './Sello.jsx'
 import BandejaSellos from './BandejaSellos.jsx'
 import { MARCA_DESTELLO } from './contrato.js'
-import { SELLOS, REACCIONES, selloPorId, SELLOS_VISIBLES_EN_PIZARRON } from './catalogo.js'
+import { SELLOS, REACCIONES, selloPorId, reaccionPorId, SELLOS_VISIBLES_EN_PIZARRON } from './catalogo.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Barra de arriba
@@ -159,7 +159,7 @@ function Semaforo({ activo, size = 8 }) {
    Ventana izquierda — el video
    ══════════════════════════════════════════════════════════════════════════ */
 
-function VentanaVideo({ sesion, onAbrirChat, chatAbierto, onMicro }) {
+function VentanaVideo({ sesion, onAbrirChat, chatAbierto, onMicro, onReaccionar }) {
     const { rol, taller, personas, yo } = sesion
     const esProfe = rol === 'profe'
 
@@ -231,6 +231,7 @@ function VentanaVideo({ sesion, onAbrirChat, chatAbierto, onMicro }) {
                 sesion={sesion}
                 onAbrirChat={onAbrirChat}
                 chatAbierto={chatAbierto}
+                onReaccionar={onReaccionar}
             />
         </section>
     )
@@ -247,7 +248,8 @@ function VentanaVideo({ sesion, onAbrirChat, chatAbierto, onMicro }) {
 function FichaPersona({ persona, esProfe, soyYo, onMicro }) {
     const { nombre, manoArriba, reaccion, micro, silenciadoPorProfe } = persona
     const puedeAbrirMicro = esProfe && !soyYo
-    const abierto = micro && !silenciadoPorProfe
+    const tienePalabra = !silenciadoPorProfe
+    const abierto = micro && tienePalabra
 
     const senales = (
         <>
@@ -260,30 +262,26 @@ function FichaPersona({ persona, esProfe, soyYo, onMicro }) {
                       title="Levantó la mano">✋</span>
             )}
             {reaccion && !manoArriba && (
-                <span style={{ position: 'absolute', top: -4, right: 2, fontSize: 15 }}>
-                    {reaccion}
+                <span style={{ position: 'absolute', top: -4, right: 2 }}>
+                    <Sello sello={reaccionPorId(reaccion)} size={16} />
                 </span>
             )}
 
-            {/* El estado del micrófono, siempre visible. Rojo tachado = la
-                profe la silenció; verde = está hablando; nada = micro cerrado
-                por decisión propia, que no es lo mismo y no hay que marcarlo
-                como si fuera un castigo. */}
-            {silenciadoPorProfe && (
+            {/* ── Solo se marca a quien TIENE la palabra ──────────────────
+                Como todos entran silenciados (ENTRAN_SILENCIADOS), estar
+                callado es el estado normal y marcarlo no informa nada: serían
+                veinte iconos rojos que la profe aprende a ignorar en dos
+                minutos, y que además hacen ver la clase como si algo anduviera
+                mal.
+                Lo que sí es noticia es lo contrario — quién puede hablar
+                ahorita. Eso son uno o dos, y por eso se ven. */}
+            {tienePalabra && (
                 <span style={{
                     position: 'absolute', bottom: 16, right: 0,
-                    color: 'var(--color-error)', background: 'var(--bg-dark)',
+                    color: abierto ? 'var(--color-success)' : 'var(--color-amber-500)',
+                    background: 'var(--bg-dark)',
                     borderRadius: '50%', display: 'flex', padding: 1,
-                }} title="La tienes silenciada">
-                    <MicrophoneSlash size={11} weight="fill" />
-                </span>
-            )}
-            {abierto && (
-                <span style={{
-                    position: 'absolute', bottom: 16, right: 0,
-                    color: 'var(--color-success)', background: 'var(--bg-dark)',
-                    borderRadius: '50%', display: 'flex', padding: 1,
-                }} title="Tiene el micrófono abierto">
+                }} title={abierto ? 'Está hablando' : 'Tiene la palabra, aún no prende'}>
                     <Microphone size={11} weight="fill" />
                 </span>
             )}
@@ -322,7 +320,7 @@ function FichaPersona({ persona, esProfe, soyYo, onMicro }) {
 }
 
 /** Los botones de abajo. Cambian según de qué lado estés. */
-function BarraControles({ sesion, onAbrirChat, chatAbierto }) {
+function BarraControles({ sesion, onAbrirChat, chatAbierto, onReaccionar }) {
     const { rol, yo } = sesion
     const esProfe = rol === 'profe'
     const [micro,  setMicro]  = useState(false)
@@ -365,11 +363,23 @@ function BarraControles({ sesion, onAbrirChat, chatAbierto }) {
 
             {!esProfe && (
                 <div style={{ display: 'flex', gap: 2, marginLeft: 4 }}>
-                    {REACCIONES.map(e => (
-                        <button key={e} title={`Reaccionar ${e}`} style={{
-                            background: 'transparent', border: 'none', cursor: 'pointer',
-                            fontSize: 16, padding: '2px 3px', lineHeight: 1,
-                        }}>{e}</button>
+                    {/* Ojo: las reacciones son OBJETOS del catálogo, no
+                        emojis sueltos. Pintarlas con {r} en vez de <Sello>
+                        tumba la pantalla entera con "Objects are not valid as
+                        a React child". Pasó el 25 ago 2026. */}
+                    {REACCIONES.map(r => (
+                        <button
+                            key={r.id}
+                            title={r.nombre}
+                            onClick={() => onReaccionar?.(r.id)}
+                            style={{
+                                display: 'flex', alignItems: 'center',
+                                background: 'transparent', border: 'none',
+                                cursor: 'pointer', padding: '2px 3px', lineHeight: 1,
+                            }}
+                        >
+                            <Sello sello={r} size={22} />
+                        </button>
                     ))}
                 </div>
             )}
@@ -772,6 +782,17 @@ export default function Aula({ sesion }) {
     }
 
     /**
+     * El alumno manda una reacción. Se borra sola a los 4 segundos.
+     *
+     * Que se borre importa: una carita pegada al avatar toda la clase deja de
+     * ser una reacción y se vuelve un adorno que la profe aprende a ignorar.
+     */
+    const reaccionar = (reaccionId) => {
+        setYo(a => ({ ...a, reaccion: reaccionId }))
+        setTimeout(() => setYo(a => a.reaccion === reaccionId ? { ...a, reaccion: null } : a), 4000)
+    }
+
+    /**
      * Silenciar a una persona, o devolverle la palabra.
      *
      * ⚠️ LÍMITE QUE NO ES NUESTRO, ES DEL NAVEGADOR ⚠️
@@ -822,6 +843,7 @@ export default function Aula({ sesion }) {
                         chatAbierto={chatAbierto}
                         onAbrirChat={() => setChatAbierto(v => !v)}
                         onMicro={alternarMicro}
+                        onReaccionar={reaccionar}
                     />
                     {/* El chat empuja hacia arriba en lugar de taparlo todo */}
                     {chatAbierto && <Chat onCerrar={() => setChatAbierto(false)} />}

@@ -41,6 +41,8 @@
  * @property {boolean} silenciadoPorProfe  El silencio de la profe gana: si
  *                               esto es `true`, la persona no puede hablar
  *                               aunque le dé a su botón.
+ *                               ⚠️ Entra en `true` para TODOS al empezar la
+ *                               clase — ver ENTRAN_SILENCIADOS abajo.
  * @property {boolean} manoArriba
  * @property {string?} reaccion  Emoji que acaba de mandar, o null
  * @property {boolean} interactuando  El semáforo: ¿tocó el pizarrón en los
@@ -85,3 +87,20 @@ export const MARCA_DESTELLO = {
  */
 
 export const MINUTOS_SIN_TOCAR = 3
+
+/**
+ * Todos entran a la clase SILENCIADOS.
+ *
+ * Decisión de Paola (25 ago 2026), y es de las que definen cómo se siente el
+ * salón: *"no quiero que la gente interrumpa nomás porque sí"*.
+ *
+ * Con 20 personas conectadas desde su casa, el micrófono abierto por defecto no
+ * es participación: es el perro del vecino, la tele de al lado y alguien que se
+ * olvidó de que estaba en vivo. El costo de eso lo paga toda la clase.
+ *
+ * Así que el silencio no es castigo, es el estado normal. Hablar es algo que
+ * se pide —levantando la mano— y que la profe concede. Igual que en un salón.
+ *
+ * Quien tenga la palabra la conserva hasta que la profe se la quite.
+ */
+export const ENTRAN_SILENCIADOS = true

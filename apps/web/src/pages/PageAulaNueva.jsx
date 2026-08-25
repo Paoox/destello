@@ -35,10 +35,12 @@ const PERSONAS = NOMBRES.map((nombre, i) => ({
     nombre,
     avatarUrl: null,
     camara:   false,
+    // Todos entran silenciados (ENTRAN_SILENCIADOS). Solo Diana tiene la
+    // palabra ahora mismo: levantó la mano y la profe se la dio.
     micro:    i === 3,
-    silenciadoPorProfe: i === 7,
+    silenciadoPorProfe: i !== 3,
     manoArriba:    i === 2 || i === 11,
-    reaccion:      i === 5 ? '👏' : i === 14 ? '🤔' : null,
+    reaccion:      i === 5 ? 'aplauso' : i === 14 ? 'duda' : null,
     interactuando: i % 4 !== 1,
     avance:   (i * 17) % 100,
     insignias: i % 5 === 0 ? ['trabajadora'] : i % 7 === 0 ? ['pensativo', 'excelente'] : [],
@@ -54,7 +56,7 @@ export default function PageAulaNueva() {
             micro: true, silenciadoPorProfe: false, manoArriba: false,
             reaccion: null, interactuando: true, avance: 0, insignias: [] }
         : { id: 'yo', nombre: 'Paola Arreola', avatarUrl: null, camara: false,
-            micro: false, silenciadoPorProfe: false, manoArriba: false,
+            micro: false, silenciadoPorProfe: true, manoArriba: false,
             reaccion: null, interactuando: true, avance: 42,
             insignias: ['trabajadora', 'excelente'] }
 
