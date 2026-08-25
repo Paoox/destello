@@ -26,8 +26,10 @@ import {
 import Avatar from './Avatar.jsx'
 import Sello from './Sello.jsx'
 import BandejaSellos from './BandejaSellos.jsx'
-import { MARCA_DESTELLO } from './contrato.js'
+import { MARCA_DESTELLO, MINUTOS_SIN_TOCAR } from './contrato.js'
 import { SELLOS, REACCIONES, selloPorId, reaccionPorId, SELLOS_VISIBLES_EN_PIZARRON } from './catalogo.js'
+import { tipoDe, resumenDe } from './actividades/registro.js'
+import { ESTADO_INICIAL } from './actividades/contrato.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Barra de arriba
@@ -409,7 +411,7 @@ function BarraControles({ sesion, onAbrirChat, chatAbierto, onReaccionar }) {
    Ventana derecha — el pizarrón
    ══════════════════════════════════════════════════════════════════════════ */
 
-function VentanaPizarron({ sesion, onSellar, onSellarATodos }) {
+function VentanaPizarron({ sesion, onSellar, onSellarATodos, onElegirActividad, onAvanzar }) {
     const { rol, personas, yo, pizarron } = sesion
     const esProfe = rol === 'profe'
     const [liberado, setLiberado] = useState(pizarron.liberado)
@@ -417,6 +419,18 @@ function VentanaPizarron({ sesion, onSellar, onSellarATodos }) {
     const [abierta, setAbierta] = useState(null)   // pizarrón de quién estoy viendo
     const [bandeja, setBandeja] = useState(false)  // ¿está abierta la bandeja de sellos?
     const [cargado, setCargado] = useState(null)   // el sello que trae en la mano
+    const [menu, setMenu] = useState(false)        // el menú de qué se muestra
+
+    // ── Qué actividad se monta y con el estado de quién ──────────────────
+    //
+    // Normalmente cada quien ve su propio avance. Pero cuando la profe abre el
+    // pizarrón de una alumna, monta la MISMA actividad con el estado de ELLA —
+    // por eso puede interactuar con su modelo, que es justo lo que pidió Paola.
+    const actividadActiva = sesion.pizarron.actividad ?? null
+    const tipo = tipoDe(actividadActiva)
+    const Actividad = tipo?.Componente ?? null
+    const quienTrabaja = abierta?.id ?? yo.id
+    const estadoVisible = (abierta ?? yo).estadoActividad ?? ESTADO_INICIAL
 
     // Al plantar un sello, la persona se ve actualizada al instante. Si además
     // estaba abierto su pizarrón en grande, se refresca ahí también.
@@ -445,14 +459,44 @@ function VentanaPizarron({ sesion, onSellar, onSellarATodos }) {
                 flex: '1 1 auto', minHeight: 170, position: 'relative',
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center', gap: 8,
-                background: 'var(--bg-dark)',
+                background: 'var(--bg-dark)', overflowY: 'auto',
             }}>
-                <div style={{ fontSize: 44, opacity: .5 }}>🧩</div>
-                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-                    {abierta ? `Pizarrón de ${abierta.nombre}` : 'Aquí va la actividad'}
-                </div>
+                {/* ── Aquí vive la actividad ──────────────────────────────
+                    El pizarrón NO sabe si es un quiz, un memorama o un modelo
+                    3D: pregunta al registro cuál componente toca y lo monta.
+                    Agregar una actividad nueva no cambia una línea de aquí. */}
+                {Actividad ? (
+                    <Actividad
+                        contenido={actividadActiva.contenido}
+                        estado={estadoVisible}
+                        onCambio={(nuevo) => onAvanzar?.(quienTrabaja, nuevo)}
+                        liberado={esProfe ? true : liberado}
+                        esProfe={esProfe}
+                    />
+                ) : (
+                    <>
+                        <div style={{ fontSize: 44, opacity: .5 }}>🧩</div>
+                        <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                            {esProfe
+                                ? 'Elige una actividad para empezar'
+                                : 'Espera, ya viene la actividad'}
+                        </div>
+                    </>
+                )}
+
+                {abierta && (
+                    <div style={{
+                        position: 'absolute', top: 10, left: 44,
+                        fontSize: 'var(--text-xs)', color: 'var(--color-jade-400)',
+                        fontWeight: 600,
+                    }}>
+                        Pizarrón de {abierta.nombre}
+                    </div>
+                )}
+
                 {!liberado && !esProfe && (
                     <div style={{
+                        position: 'absolute', bottom: 10, left: 12,
                         fontSize: 'var(--text-xs)', color: 'var(--color-amber-500)',
                         display: 'flex', alignItems: 'center', gap: 5,
                     }}>
@@ -506,7 +550,13 @@ function VentanaPizarron({ sesion, onSellar, onSellarATodos }) {
                         >
                             {liberado ? <LockOpen size={16} /> : <Lock size={16} />}
                         </BotonIcono>
-                        <BotonIcono titulo="Elegir qué se muestra"><Stack size={16} /></BotonIcono>
+                        <BotonIcono
+                            titulo="Elegir qué se muestra"
+                            activo={menu}
+                            onClick={() => setMenu(m => !m)}
+                        >
+                            <Stack size={16} />
+                        </BotonIcono>
                         <BotonIcono
                             titulo="Sellos"
                             activo={bandeja}
@@ -514,6 +564,54 @@ function VentanaPizarron({ sesion, onSellar, onSellarATodos }) {
                         >
                             <Sparkle size={16} weight={bandeja ? 'fill' : 'regular'} />
                         </BotonIcono>
+                    </div>
+                )}
+
+                {/* El menú de materiales precargados del taller.
+                    Salen de la PLANTILLA, no están escritos aquí. */}
+                {esProfe && menu && (
+                    <div style={{
+                        position: 'absolute', top: 52, right: 52, zIndex: 5,
+                        width: 230, padding: 'var(--space-2)',
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--border-default)',
+                        borderRadius: 'var(--radius-lg)',
+                        boxShadow: 'var(--shadow-lg)',
+                    }}>
+                        <p style={{
+                            margin: '2px 6px 6px', fontSize: 10,
+                            letterSpacing: '.08em', textTransform: 'uppercase',
+                            color: 'var(--text-muted)',
+                        }}>
+                            Material de esta clase
+                        </p>
+                        {(sesion.pizarron.materiales ?? []).map(m => {
+                            const puesta = actividadActiva?.id === m.id
+                            return (
+                                <button
+                                    key={m.id}
+                                    onClick={() => { onElegirActividad?.(m.id); setMenu(false) }}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 8,
+                                        width: '100%', padding: '8px 10px', textAlign: 'left',
+                                        background: puesta ? 'rgba(13,115,119,0.14)' : 'transparent',
+                                        border: 'none', borderRadius: 'var(--radius-md)',
+                                        color: puesta ? 'var(--color-jade-400)' : 'var(--text-secondary)',
+                                        fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+                                        fontWeight: puesta ? 700 : 400, cursor: 'pointer',
+                                    }}
+                                >
+                                    <Stack size={13} />
+                                    <span style={{ flex: 1 }}>{m.nombre}</span>
+                                    {puesta && <span style={{ fontSize: 9 }}>en el pizarrón</span>}
+                                </button>
+                            )
+                        })}
+                        {!(sesion.pizarron.materiales ?? []).length && (
+                            <p style={{ margin: 6, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                                Este taller todavía no tiene material cargado.
+                            </p>
+                        )}
                     </div>
                 )}
 
@@ -566,6 +664,7 @@ function VentanaPizarron({ sesion, onSellar, onSellarATodos }) {
                                 key={p.id}
                                 persona={p}
                                 sellando={cargado}
+                                resumen={resumenDe(actividadActiva, p.estadoActividad)}
                                 onClick={() => cargado ? plantar(p.id) : setAbierta(p)}
                             />
                         ))}
@@ -603,8 +702,10 @@ function VentanaPizarron({ sesion, onSellar, onSellarATodos }) {
  * Es lo que hace que 30 o 40 personas se sigan viendo. Con miniaturas-imagen el
  * techo eran unas 14.
  */
-function MiniPizarron({ persona, onClick, sellando = null }) {
-    const { nombre, interactuando, avance = 0, manoArriba, insignias = [] } = persona
+function MiniPizarron({ persona, onClick, sellando = null, resumen = null }) {
+    const { nombre, interactuando, manoArriba, insignias = [] } = persona
+    // El avance sale de la actividad de verdad, no de un número inventado.
+    const avance = resumen?.avance ?? 0
     const necesitaAyuda = !interactuando || manoArriba
 
     // Con un sello en la mano, TODA la rejilla cambia de significado: deja de
@@ -638,6 +739,7 @@ function MiniPizarron({ persona, onClick, sellando = null }) {
                 }}>
                     {nombre.split(' ')[0]}
                 </span>
+                {resumen?.terminado && <span style={{ fontSize: 10 }} title="Ya terminó">✓</span>}
                 {manoArriba && <span style={{ fontSize: 11 }}>✋</span>}
             </div>
 
@@ -763,6 +865,7 @@ export default function Aula({ sesion }) {
     // por eso se construye así desde ahora.
     const [personas, setPersonas] = useState(sesion.personas)
     const [yo, setYo] = useState(sesion.yo)
+    const [actividadId, setActividadId] = useState(sesion.pizarron.actividadId ?? null)
 
     /** Le pone un sello a una persona. Sin repetir el mismo dos veces. */
     const sellar = (personaId, selloId) => {
@@ -779,6 +882,28 @@ export default function Aula({ sesion }) {
             ? p
             : { ...p, insignias: [...(p.insignias ?? []), selloId] }
         setPersonas(lista => lista.map(agregar))
+    }
+
+    /**
+     * La profe elige qué se muestra. Se actualiza para ella y para todos —
+     * es lo que hace que sea un pizarrón compartido y no una pantalla suelta.
+     */
+    const elegirActividad = (id) => setActividadId(id)
+
+    /**
+     * Alguien avanzó en la actividad.
+     *
+     * Aquí se guarda su estado Y **se recalcula el semáforo**: si su último
+     * movimiento fue hace menos de MINUTOS_SIN_TOCAR, está trabajando.
+     *
+     * Los dos juntos, en la misma función, a propósito: son lo mismo visto de
+     * dos maneras, y separarlos es garantizar que un día alguien guarde el
+     * avance y se le olvide el semáforo.
+     */
+    const avanzar = (personaId, estadoNuevo) => {
+        const aplicar = (p) => ({ ...p, estadoActividad: estadoNuevo, interactuando: true })
+        setPersonas(lista => lista.map(p => p.id === personaId ? aplicar(p) : p))
+        setYo(a => a.id === personaId ? aplicar(a) : a)
     }
 
     /**
@@ -823,7 +948,34 @@ export default function Aula({ sesion }) {
         }))
     }
 
-    const s = { ...sesion, marca: sesion.marca ?? MARCA_DESTELLO, personas, yo }
+    // ── El semáforo se apaga solo ─────────────────────────────────────────
+    //
+    // Cada 20 s se revisa quién no ha tocado nada en los últimos
+    // MINUTOS_SIN_TOCAR y se pinta de rojo. Si el rojo solo se pusiera al
+    // recibir un evento, nunca se pondría: quien se distrajo justamente dejó de
+    // mandar eventos. El paso del tiempo tiene que revisarse aparte.
+    useEffect(() => {
+        const tope = MINUTOS_SIN_TOCAR * 60 * 1000
+        const reloj = setInterval(() => {
+            const ahora = Date.now()
+            const evaluar = (p) => {
+                const ultimo = p.estadoActividad?.ultimoCambio
+                if (!ultimo) return p
+                const activo = ahora - ultimo < tope
+                return p.interactuando === activo ? p : { ...p, interactuando: activo }
+            }
+            setPersonas(lista => lista.map(evaluar))
+        }, 20_000)
+        return () => clearInterval(reloj)
+    }, [])
+
+    const actividad = (sesion.pizarron.materiales ?? []).find(m => m.id === actividadId) ?? null
+    const s = {
+        ...sesion,
+        marca: sesion.marca ?? MARCA_DESTELLO,
+        personas, yo,
+        pizarron: { ...sesion.pizarron, actividadId, actividad },
+    }
 
     return (
         <div style={{
@@ -853,6 +1005,8 @@ export default function Aula({ sesion }) {
                     sesion={s}
                     onSellar={sellar}
                     onSellarATodos={sellarATodos}
+                    onElegirActividad={elegirActividad}
+                    onAvanzar={avanzar}
                 />
             </main>
 

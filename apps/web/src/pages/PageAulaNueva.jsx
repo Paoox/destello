@@ -44,6 +44,11 @@ const PERSONAS = NOMBRES.map((nombre, i) => ({
     interactuando: i % 4 !== 1,
     avance:   (i * 17) % 100,
     insignias: i % 5 === 0 ? ['trabajadora'] : i % 7 === 0 ? ['pensativo', 'excelente'] : [],
+    // Cada quien va por donde va. `ultimoCambio` alimenta el semáforo.
+    estadoActividad: {
+        pasos: i % 3 === 0 ? { q1: 'a' } : i % 3 === 1 ? {} : { q1: 'a', q2: 'b' },
+        ultimoCambio: i % 4 === 1 ? Date.now() - 9 * 60_000 : Date.now(),
+    },
 }))
 
 export default function PageAulaNueva() {
@@ -60,6 +65,55 @@ export default function PageAulaNueva() {
             reaccion: null, interactuando: true, avance: 42,
             insignias: ['trabajadora', 'excelente'] }
 
+    // ── El material precargado de la clase ────────────────────────────────
+    //
+    // Esto es lo que un día va a venir de la PLANTILLA del taller, cargada
+    // desde la API. Hoy está aquí para poder ver el aula funcionando.
+    //
+    // ⚠️ Las preguntas son de EJEMPLO y son de anatomía básica del oído — no de
+    // tratamiento. El contenido real lo escribe y lo valida la profesora; el
+    // código nunca inventa material de clase.
+    const MATERIALES = [
+        {
+            id:     'quiz-oreja',
+            tipo:   'quiz',
+            nombre: 'Quiz · partes del oído',
+            contenido: {
+                preguntas: [
+                    {
+                        id: 'q1',
+                        texto: '¿Cómo se llama el borde curvo que rodea la parte de arriba de la oreja?',
+                        opciones: [
+                            { id: 'a', texto: 'Hélix', correcta: true },
+                            { id: 'b', texto: 'Lóbulo' },
+                            { id: 'c', texto: 'Trago' },
+                        ],
+                    },
+                    {
+                        id: 'q2',
+                        texto: '¿Qué parte de la oreja no tiene cartílago?',
+                        opciones: [
+                            { id: 'a', texto: 'El trago' },
+                            { id: 'b', texto: 'El lóbulo', correcta: true },
+                            { id: 'c', texto: 'La concha' },
+                        ],
+                    },
+                    {
+                        id: 'q3',
+                        texto: '¿Cómo se llama la pequeña prominencia que está junto al conducto auditivo?',
+                        opciones: [
+                            { id: 'a', texto: 'Antihélix' },
+                            { id: 'b', texto: 'Hélix' },
+                            { id: 'c', texto: 'Trago', correcta: true },
+                        ],
+                    },
+                ],
+            },
+        },
+        { id: 'modelo-oreja', tipo: 'modelo3d', nombre: 'Modelo 3D · oreja', contenido: {} },
+        { id: 'memorama-1',   tipo: 'memorama', nombre: 'Memorama · puntos',  contenido: {} },
+    ]
+
     const sesion = {
         marca: MARCA_DESTELLO,
         taller: {
@@ -72,7 +126,11 @@ export default function PageAulaNueva() {
         yo,
         // La profe se ve a sí misma en la lista; el alumno no se duplica.
         personas: rol === 'profe' ? PERSONAS : PERSONAS.slice(1),
-        pizarron: { actividadId: null, liberado: false },
+        pizarron: {
+            materiales:  MATERIALES,
+            actividadId: 'quiz-oreja',   // la profe ya la puso en el pizarrón
+            liberado:    true,           // y ya los dejó trabajar
+        },
     }
 
     return <Aula sesion={sesion} key={`${id}-${rol}`} />
