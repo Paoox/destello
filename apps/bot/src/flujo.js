@@ -209,6 +209,23 @@ async function buscarUsuario(email) {
     } catch { return { existe: false } }
 }
 
+/**
+ * ¿Esta cuenta está bloqueada? Usa el GET, que la API nunca cierra justo para
+ * esto: el bot necesita poder preguntar aunque la persona esté suspendida.
+ *
+ * Ante cualquier falla devuelve todo en `false`. Un error de red no debe
+ * dejar a nadie fuera por accidente; el bloqueo de verdad lo aplica la API en
+ * cada acción, esto solo sirve para contestar bonito.
+ */
+async function estadoBloqueo(email) {
+    if (!email) return { acceso: false, compras: false }
+    try {
+        const res  = await fetch(`${API_URL}/bot/usuario/${encodeURIComponent(email)}`)
+        const data = await res.json()
+        return { acceso: data.bloqueado === true, compras: data.comprasBloqueadas === true }
+    } catch { return { acceso: false, compras: false } }
+}
+
 async function registrarUsuario({ email, nombre, apellido, whatsapp }) {
     try {
         const res = await fetch(`${API_URL}/bot/registrar`, {
@@ -315,6 +332,29 @@ const VER_TALLERES_PIE =
     '─────────────────────\n' +
     '👉 Escribe el *número* del taller que te interesa y te apunto a la lista de espera.\n\n' +
     '_O escribe *menu* para volver · *salir* para terminar._'
+
+// ── Cuentas bloqueadas ────────────────────────────────────────
+//
+// Paola puede suspender una cuenta desde el panel (pestaña Usuarios). Casi
+// todo el flujo de Destello pasa por aquí y no por el navegador, así que si
+// Faro no lo dijera, el bloqueo sería de adorno.
+//
+// El texto NO dice "escríbenos por WhatsApp" como el de la web: la persona YA
+// está escribiendo por WhatsApp. Mandarla al canal en el que ya está sería
+// burlarse de ella. Se le dice que cuente aquí qué pasó y que lo ve una
+// persona — y es cierto: Paola lee estas conversaciones desde el panel.
+const BLOQUEO_ACCESO_TEXTO =
+    '🔒 Tu cuenta está *temporalmente suspendida*, así que por ahora no puedo ' +
+    'hacer movimientos con ella.\n\n' +
+    'Esto no lo puedo resolver yo. Cuéntame aquí qué pasó y una persona del ' +
+    'equipo lo revisa en cuanto pueda.\n\n' +
+    '_— Faro_'
+
+const BLOQUEO_COMPRAS_TEXTO =
+    '🔒 Por ahora no puedo apartarte lugar en talleres nuevos.\n\n' +
+    'Lo que ya tienes sigue funcionando igual. Cuéntame aquí qué pasó y una ' +
+    'persona del equipo lo revisa.\n\n' +
+    '_— Faro_'
 
 const ADIOS_TEXTO =
     '¡Hasta pronto! 👋✨\n\n' +
@@ -462,6 +502,15 @@ async function inscribirEnTaller(jid, conv, taller) {
     // después de inscribirse el bot olvidaba quién era y le volvía a pedir el
     // correo en el siguiente flujo — a alguien que se lo acababa de dar.
     conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION, completada: true })
+
+    // La API rechazó por bloqueo. Se revisa ANTES del error genérico: un 403
+    // por cuenta suspendida también llega con status 'error', y "tuvimos un
+    // problema, intenta de nuevo" sería mentirle y hacerla reintentar en vano.
+    if (resultado.bloqueado) {
+        return (resultado.code === 'CUENTA_BLOQUEADA'
+            ? BLOQUEO_ACCESO_TEXTO
+            : BLOQUEO_COMPRAS_TEXTO) + '\n\n' + POST_ACCION_TEXTO
+    }
 
     if (resultado.status === 'error') {
         return (
@@ -642,6 +691,18 @@ async function resolverAcceso(jid, conv, correo, waDelJid) {
         )
     }
 
+    // ── A-bis. Existe, pero está suspendida ───────────────────
+    //
+    // Va ANTES de revisar si está activa: alguien bloqueado puede seguir
+    // teniendo estado 'activo' en la base, y sin esto el bot le contestaría
+    // alegremente "tu cuenta ya funciona" a quien no puede entrar. Es
+    // exactamente la pregunta que va a hacer alguien recién bloqueado, así
+    // que es donde más importa contestar bien.
+    if (d.bloqueado) {
+        registrarEvento('bot_cuenta_bloqueada', { email: correo })
+        return cerrar(BLOQUEO_ACCESO_TEXTO)
+    }
+
     // ── B. Ya tiene permiso de entrar ─────────────────────────
     if (d.activo) {
         // Sin número guardado no puede entrar por WhatsApp. Lo completamos en
@@ -752,6 +813,23 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
     if (['salir', 'adiós', 'adios', 'bye', 'chao', 'hasta luego'].includes(msg.toLowerCase())) {
         conversaciones.delete(jid)
         return ADIOS_TEXTO
+    }
+
+    // ── Cuenta suspendida ─────────────────────────────────────
+    //
+    // Va aquí arriba, en cuanto sabemos de quién se trata, para no llevarla por
+    // medio menú y rechazarla hasta el final. Después de "menu" y "salir" a
+    // propósito: despedirse siempre debe funcionar.
+    //
+    // La conversación NO se borra: la persona puede seguir escribiendo y su
+    // mensaje queda guardado para que Paola lo lea desde el panel. Eso es lo
+    // único que el bot le puede ofrecer, y es real.
+    if (conv.correo) {
+        const bloqueo = await estadoBloqueo(conv.correo)
+        if (bloqueo.acceso) {
+            registrarEvento('bot_cuenta_bloqueada', { email: conv.correo })
+            return BLOQUEO_ACCESO_TEXTO
+        }
     }
 
     // ── MENÚ PRINCIPAL ────────────────────────────────────────
@@ -1150,7 +1228,7 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
         const sinFolio = ['no', 'ninguno', 'nel', 'no tengo', '-'].includes(msg.toLowerCase().trim())
         const pago = { ...conv.pago, folio: sinFolio ? null : msg.trim() }
 
-        await reportarPago({
+        const r = await reportarPago({
             email:    conv.correo,
             nombre:   nombreCompleto(conv),
             whatsapp: conv.whatsapp || waDelJid,
@@ -1159,6 +1237,10 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
         })
 
         conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
+        // Si la cuenta está suspendida, el reporte NO se guardó. Decirle
+        // "recibimos tu pago" sería dejarla esperando una activación que nunca
+        // va a llegar.
+        if (r?.bloqueado) return BLOQUEO_ACCESO_TEXTO + '\n\n' + POST_ACCION_TEXTO
         return PAGO_RECIBIDO_TEXTO
     }
 
@@ -1208,7 +1290,7 @@ export function esperaComprobante(jid) {
 export async function registrarComprobante(jid, caption = null, imagen = null, mimetype = null) {
     const conv = conversaciones.get(jid) || {}
 
-    await reportarPago({
+    const r = await reportarPago({
         email:    conv.correo,
         nombre:   nombreCompleto(conv),
         whatsapp: conv.whatsapp || extractWhatsapp(jid),
@@ -1221,6 +1303,13 @@ export async function registrarComprobante(jid, caption = null, imagen = null, m
     })
 
     conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
+
+    // Cuenta suspendida: el comprobante no se guardó, así que tampoco se le
+    // avisa a Paola por WhatsApp de un pago que no entró. Ella ya sabe que
+    // bloqueó esta cuenta; el mensaje de la persona sí le queda en el panel.
+    if (r?.bloqueado) {
+        return { texto: BLOQUEO_ACCESO_TEXTO + '\n\n' + POST_ACCION_TEXTO, avisoAdmin: null }
+    }
 
     const avisoAdmin =
         '💰 *Comprobante de pago recibido*\n\n' +

@@ -240,7 +240,13 @@ async function conectar() {
                     // Se reenvía a la admin ANTES de confirmarle al alumno: si el
                     // reenvío falla, preferimos enterarnos en los logs y no haberle
                     // prometido a la persona que ya llegó.
-                    if (ADMIN_JID) {
+                    //
+                    // `avisoAdmin` llega en null cuando la cuenta está
+                    // suspendida: ese comprobante no se guardó en el panel, así
+                    // que reenviarlo solo sería ruido en el WhatsApp de Paola.
+                    if (!avisoAdmin) {
+                        console.log('[bot] Comprobante de una cuenta bloqueada — no se reenvía')
+                    } else if (ADMIN_JID) {
                         await sock.sendMessage(ADMIN_JID, { image: buffer, caption: avisoAdmin })
                         console.log(`📤 Comprobante reenviado a la admin`)
                     } else {
