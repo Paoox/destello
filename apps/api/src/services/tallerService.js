@@ -89,6 +89,73 @@ export async function getTallerById(id) {
     return rows[0] ?? null
 }
 
+// ── El horario: un solo dato, no dos ────────────────────────────────────────
+//
+// EL BUG (25 ago 2026): un taller tiene DOS formas de decir a qué hora es.
+//
+//   · `horario`     → texto libre, "5:00 PM – 10:00 PM". Es lo que se lee en el
+//                     panel, en el Habitat y en el bot.
+//   · `hora_inicio` / `hora_fin` → columnas TIME. Es lo que mira la API para
+//                     decidir CUÁNDO SE ABRE EL AULA.
+//
+// El panel de admin guardaba **solo el texto**. Así que Paola puso su taller de
+// 5 a 10 PM, el panel lo mostraba bien, y por dentro `hora_inicio` seguía en
+// 12:00 — el aula habría abierto a las 11:30 de la mañana y a las 5 de la tarde
+// el botón ya no estaría. Ella lo vio: el badge decía "Hoy · 12:00 PM".
+//
+// Dos campos para el mismo hecho siempre se separan; es cuestión de tiempo. La
+// solución no es acordarse de llenar los dos, es que **el texto mande** y las
+// columnas se deriven de él aquí, en el único lugar por donde pasan todos los
+// que guardan un taller.
+
+/** '5:00 PM' → '17:00:00'. `null` si no se entiende. */
+export function horaDesdeTexto(txt) {
+    if (!txt) return null
+    const m = String(txt).trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?$/i)
+    if (!m) return null
+
+    let h = Number(m[1])
+    const min = m[2] ?? '00'
+    const sufijo = m[3]?.toLowerCase().replace(/\./g, '')
+
+    if (h < 0 || h > 23) return null
+    if (sufijo === 'pm' && h < 12) h += 12
+    if (sufijo === 'am' && h === 12) h = 0
+    // Sin sufijo se toma tal cual: ya viene en 24 h.
+    return `${String(h).padStart(2, '0')}:${min}:00`
+}
+
+/**
+ * Parte "5:00 PM – 10:00 PM" en sus dos horas.
+ *
+ * Acepta el guion largo (–) que pone el panel y también el corto (-) o " a ",
+ * porque el texto se ha escrito a mano más de una vez.
+ */
+export function horasDesdeHorario(horario) {
+    if (!horario) return { inicio: null, fin: null }
+    const partes = String(horario).split(/\s*(?:–|—|-|\ba\b)\s*/i)
+    return {
+        inicio: horaDesdeTexto(partes[0]),
+        fin:    horaDesdeTexto(partes[1]),
+    }
+}
+
+/**
+ * Decide qué hora guardar.
+ *
+ * Gana lo que venga explícito en `hora_inicio`/`hora_fin` (por si algún día se
+ * captura aparte o llega de una importación); si no vino, se deriva del texto.
+ * Nunca se inventa: si el texto no se entiende, se deja `null` y el cálculo del
+ * aula cae a la regla por día, que es el comportamiento seguro.
+ */
+function resolverHoras({ horario, hora_inicio, hora_fin }) {
+    const der = horasDesdeHorario(horario)
+    return {
+        hora_inicio: hora_inicio || der.inicio || null,
+        hora_fin:    hora_fin    || der.fin    || null,
+    }
+}
+
 /**
  * Crea un taller nuevo.
  * Si no se pasa `id`, se genera automáticamente desde el nombre.
@@ -100,8 +167,6 @@ export async function crearTaller(data) {
         descripcion  = null,
         precio       = 0,
         horario      = null,
-        hora_inicio  = null,
-        hora_fin     = null,
         fecha_inicio = null,
         fecha_fin    = null,
         cupo_maximo  = null,
@@ -111,6 +176,8 @@ export async function crearTaller(data) {
     } = data
 
     const slug = id?.trim() || toSlug(nombre)
+    // Las horas se derivan del texto: ver el comentario de `resolverHoras`.
+    const { hora_inicio, hora_fin } = resolverHoras(data)
 
     const { rows } = await query(
         `INSERT INTO talleres
@@ -135,8 +202,6 @@ export async function actualizarTaller(id, data) {
         descripcion,
         precio,
         horario,
-        hora_inicio,
-        hora_fin,
         fecha_inicio,
         fecha_fin,
         cupo_maximo,
@@ -144,6 +209,12 @@ export async function actualizarTaller(id, data) {
         estado,
         categoria,
     } = data
+
+    // ⚠️ Cuando llega un `horario` nuevo, las horas SIEMPRE se recalculan de él.
+    // Si se dejaran al COALESCE de abajo, editar el horario en el panel cambiaría
+    // el texto y las columnas TIME se quedarían con la hora vieja — que es
+    // exactamente el bug que esto viene a cerrar.
+    const { hora_inicio, hora_fin } = resolverHoras(data)
 
     const { rows } = await query(
         `UPDATE talleres
