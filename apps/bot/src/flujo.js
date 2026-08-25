@@ -72,6 +72,9 @@ const PASO = {
     PAGO_FOLIO:   'PAGO_FOLIO',
     // Después de completar cualquier flujo
     POST_ACCION:  'POST_ACCION',
+    // Cuenta suspendida — sub-flujo propio, ver manejarBloqueada()
+    BLOQ_ESCUCHA: 'BLOQ_ESCUCHA', // esperando que cuente qué pasó
+    BLOQ_LISTO:   'BLOQ_LISTO',   // ya lo registramos, ofreciendo 1/2
 }
 
 /**
@@ -343,12 +346,42 @@ const VER_TALLERES_PIE =
 // está escribiendo por WhatsApp. Mandarla al canal en el que ya está sería
 // burlarse de ella. Se le dice que cuente aquí qué pasó y que lo ve una
 // persona — y es cierto: Paola lee estas conversaciones desde el panel.
+// Primer contacto: se le explica y se le PIDE que cuente. Faro no entiende
+// texto libre (va por menús), así que no puede responderle al contenido — pero
+// sí puede recibirlo, guardarlo y decírselo. Eso es lo que la persona necesita
+// oír: que alguien lo va a leer.
 const BLOQUEO_ACCESO_TEXTO =
     '🔒 Tu cuenta está *temporalmente suspendida*, así que por ahora no puedo ' +
     'hacer movimientos con ella.\n\n' +
-    'Esto no lo puedo resolver yo. Cuéntame aquí qué pasó y una persona del ' +
-    'equipo lo revisa en cuanto pueda.\n\n' +
-    '_— Faro_'
+    'Esto no lo puedo resolver yo, pero sí puedo pasar tu mensaje.\n\n' +
+    '👉 *Cuéntame en un mensaje qué pasó* y se lo hago llegar al equipo.\n\n' +
+    '_O escribe *salir* si prefieres dejarlo para después._'
+
+/**
+ * Ya recibimos su explicación. Se le repite lo que escribió (recortado) para
+ * que vea que quedó registrado de verdad, y se le da salida.
+ *
+ * REPETIR SU MENSAJE no es adorno: es la única señal de que del otro lado
+ * alguien leyó. Sin eso, "lo registré" se siente igual de vacío que el muro
+ * que este cambio vino a quitar.
+ */
+const BLOQUEO_RECIBIDO_TEXTO = (mensaje) =>
+    '✅ Listo, ya quedó registrado:\n\n' +
+    `_"${mensaje.length > 180 ? mensaje.slice(0, 180) + '…' : mensaje}"_\n\n` +
+    'Una persona del equipo lo revisa y *te escribe por aquí mismo*. No hace ' +
+    'falta que hagas nada más.\n\n' +
+    '1️⃣  Agregar algo más\n' +
+    '2️⃣  Salir'
+
+// Cuando sigue contando después del primer mensaje. Cambia el encabezado, no
+// el mecanismo: se le sigue devolviendo lo que escribió. Repetirle SUS
+// palabras nunca se siente una pared; repetirle las mías, sí.
+const BLOQUEO_TAMBIEN_TEXTO = (mensaje) =>
+    '📝 También anoté esto:\n\n' +
+    `_"${mensaje.length > 180 ? mensaje.slice(0, 180) + '…' : mensaje}"_\n\n` +
+    'Todo va junto para la persona que revise tu caso.\n\n' +
+    '1️⃣  Agregar algo más\n' +
+    '2️⃣  Salir'
 
 const BLOQUEO_COMPRAS_TEXTO =
     '🔒 Por ahora no puedo apartarte lugar en talleres nuevos.\n\n' +
@@ -625,6 +658,24 @@ async function inscribirEnTaller(jid, conv, taller) {
  *   - si no → mostrar la lista para que elija
  */
 async function continuarTrasDatos(jid, conv, encabezado) {
+    // El guardia de arriba usa `conv.correo`, que en el mensaje donde la
+    // persona ESCRIBE su correo todavía no existía. Sin esto, alguien
+    // suspendido alcanzaría a ver la lista de talleres y elegir uno antes de
+    // que se le diga que no — hacerle recorrer un camino que ya sabemos que no
+    // lleva a ningún lado.
+    if (conv.correo) {
+        const bloqueo = await estadoBloqueo(conv.correo)
+        if (bloqueo.acceso) {
+            registrarEvento('bot_cuenta_bloqueada', { email: conv.correo })
+            conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.BLOQ_ESCUCHA })
+            return BLOQUEO_ACCESO_TEXTO
+        }
+        if (bloqueo.compras) {
+            conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
+            return BLOQUEO_COMPRAS_TEXTO + '\n\n' + POST_ACCION_TEXTO
+        }
+    }
+
     if (conv.tallerPre) {
         return `${encabezado}\n\n` + await inscribirEnTaller(jid, conv, conv.tallerPre)
     }
@@ -659,6 +710,87 @@ async function continuarTrasDatos(jid, conv, encabezado) {
  *     sin ese dato el login por número no funciona.
  *   - El bot NUNCA activa un taller ni registra un pago. Solo reporta.
  */
+/**
+ * Sub-flujo de una cuenta suspendida.
+ *
+ * POR QUÉ EXISTE (24 ago 2026): la primera versión contestaba el mismo párrafo
+ * a cada mensaje. La persona escribía "es una prueba" y recibía otra vez el
+ * muro completo, y otra, y otra. Eso no es un bloqueo: es un bot roto que
+ * además te ignora justo cuando más necesitas que te escuchen.
+ *
+ * Faro no entiende texto libre — va por menús, no interpreta lo que le
+ * escriben. Así que no puede responderle AL CONTENIDO. Lo que sí puede, y es
+ * lo único honesto, es: recibirlo, guardarlo donde Paola lo vea, confirmárselo
+ * repitiéndoselo, y dejar de repetirse.
+ *
+ * Tres estados:
+ *   1º mensaje  → explica y pide que cuente qué pasó
+ *   2º mensaje  → lo registra como reporte y se lo confirma con sus palabras
+ *   después     → respuesta corta con salida, sin volver al párrafo largo
+ */
+async function manejarBloqueada(jid, conv, msg, waDelJid) {
+    const datos = { ...datosUsuario(conv), whatsapp: conv.whatsapp || waDelJid }
+    const guardar = (paso, extra = {}) =>
+        conversaciones.set(jid, { ...datos, paso, ...extra })
+
+    // ── Ya registramos su mensaje: solo 1 (agregar) o 2 (salir) ──
+    if (conv.paso === PASO.BLOQ_LISTO) {
+        const resp = msg.toLowerCase().trim()
+        if (['1', 'agregar', 'mas', 'más', 'otro'].includes(resp)) {
+            guardar(PASO.BLOQ_ESCUCHA, { yaReporto: true })
+            return 'Te escucho 👂 — escríbeme lo que quieras agregar.'
+        }
+        if (['2', 'salir', 'no', 'adios', 'adiós', 'gracias'].includes(resp)) {
+            conversaciones.delete(jid)
+            return ADIOS_TEXTO
+        }
+        // Cualquier otra cosa es que siguió contando. No se le regaña con un
+        // "no reconocí esa opción": se toma como lo que es, más contexto. Y va
+        // con yaReporto=true — su reporte ya existe, no se duplica.
+        return await registrarQueja(jid, datos, msg, true)
+    }
+
+    // ── Nos está contando qué pasó ──
+    if (conv.paso === PASO.BLOQ_ESCUCHA) {
+        return await registrarQueja(jid, datos, msg, conv.yaReporto === true)
+    }
+
+    // ── Primer contacto ──
+    registrarEvento('bot_cuenta_bloqueada', { email: conv.correo })
+    guardar(PASO.BLOQ_ESCUCHA)
+    return BLOQUEO_ACCESO_TEXTO
+}
+
+/**
+ * Guarda lo que escribió como reporte de acceso, para que aparezca en la
+ * bandeja de Reportes del panel junto a todo lo demás que hay que atender.
+ *
+ * `yaReporto` evita llenarle la bandeja a Paola con cinco renglones de la
+ * misma persona: el primero levanta el reporte, y de ahí en adelante la
+ * conversación completa ya queda guardada por `persistir()` — que es donde de
+ * verdad se lee lo que la gente dice.
+ */
+async function registrarQueja(jid, datos, mensaje, yaReporto = false) {
+    const texto = mensaje.trim()
+
+    if (!yaReporto) {
+        await reportarAcceso({
+            email:    datos.correo,
+            nombre:   nombreCompleto(datos),
+            whatsapp: datos.whatsapp,
+            motivo:   'sin_acceso_plataforma',
+            detalle:  `CUENTA SUSPENDIDA — dice: "${texto}"`,
+        })
+        registrarEvento('bot_bloqueada_reporto', { email: datos.correo })
+    }
+
+    conversaciones.set(jid, { ...datos, paso: PASO.BLOQ_LISTO, yaReporto: true })
+    // Siempre se le devuelve LO QUE ESCRIBIÓ. Lo único que cambia es el
+    // encabezado, según sea la primera vez o algo que agregó después.
+    return yaReporto ? BLOQUEO_TAMBIEN_TEXTO(texto) : BLOQUEO_RECIBIDO_TEXTO(texto)
+}
+
+
 async function resolverAcceso(jid, conv, correo, waDelJid) {
     const d = await getDiagnostico(correo)
 
@@ -698,9 +830,16 @@ async function resolverAcceso(jid, conv, correo, waDelJid) {
     // alegremente "tu cuenta ya funciona" a quien no puede entrar. Es
     // exactamente la pregunta que va a hacer alguien recién bloqueado, así
     // que es donde más importa contestar bien.
+    //
+    // NO se usa `cerrar()`: eso le pondría abajo el "¿puedo ayudarte con algo
+    // más? 1 menú / 2 salir", que aquí no viene al caso y además dejaría la
+    // conversación en POST_ACCION — con lo que su siguiente mensaje volvería a
+    // recibir este mismo párrafo. Se entra al sub-flujo de bloqueo, que sabe
+    // escuchar.
     if (d.bloqueado) {
         registrarEvento('bot_cuenta_bloqueada', { email: correo })
-        return cerrar(BLOQUEO_ACCESO_TEXTO)
+        conversaciones.set(jid, { ...datos, paso: PASO.BLOQ_ESCUCHA })
+        return BLOQUEO_ACCESO_TEXTO
     }
 
     // ── B. Ya tiene permiso de entrar ─────────────────────────
@@ -820,16 +959,9 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
     // Va aquí arriba, en cuanto sabemos de quién se trata, para no llevarla por
     // medio menú y rechazarla hasta el final. Después de "menu" y "salir" a
     // propósito: despedirse siempre debe funcionar.
-    //
-    // La conversación NO se borra: la persona puede seguir escribiendo y su
-    // mensaje queda guardado para que Paola lo lea desde el panel. Eso es lo
-    // único que el bot le puede ofrecer, y es real.
     if (conv.correo) {
         const bloqueo = await estadoBloqueo(conv.correo)
-        if (bloqueo.acceso) {
-            registrarEvento('bot_cuenta_bloqueada', { email: conv.correo })
-            return BLOQUEO_ACCESO_TEXTO
-        }
+        if (bloqueo.acceso) return await manejarBloqueada(jid, conv, msg, waDelJid)
     }
 
     // ── MENÚ PRINCIPAL ────────────────────────────────────────

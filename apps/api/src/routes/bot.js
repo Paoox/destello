@@ -37,8 +37,17 @@ router.get('/listas/:email',         listasDeUsuario)
 router.get('/pendientes/:email',     pendientesDeUsuario)
 router.get('/diagnostico/:email',    diagnosticoDeAcceso)
 router.post('/completar-whatsapp',   rechazarBloqueados, completarWhatsappDeUsuario)
-router.post('/reporte-acceso',       rechazarBloqueados, reportarAcceso)
 router.post('/reporte-pago',         rechazarBloqueados, reportarPago)
+
+// ⚠️ `/reporte-acceso` queda ABIERTO a propósito, incluso para cuentas
+// bloqueadas. Es el único camino que tiene una persona suspendida para decir
+// "creo que esto es un error" y que quede por escrito en la bandeja de Paola.
+// Cerrarlo sería bloquear también el derecho a reclamar — y si el bloqueo
+// estuvo mal puesto, esa es justo la persona a la que hay que escuchar.
+//
+// No abre nada: un reporte no activa cuentas, no libera talleres y no toca
+// dinero. Solo deja un renglón que alguien tiene que leer.
+router.post('/reporte-acceso',       reportarAcceso)
 
 // ── Conversaciones y bitácora ─────────────────────────────────
 // Hacen que la conversación sobreviva a un reinicio del bot y que el embudo
