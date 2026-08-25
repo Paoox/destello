@@ -24,6 +24,7 @@ const PagePerfil   = lazy(() => import('@pages/PagePerfil.jsx'))
 const Page404      = lazy(() => import('@pages/Page404.jsx'))
 const PageAdmin    = lazy(() => import('@pages/PageAdmin.jsx'))
 const PageCertificado = lazy(() => import('@pages/PageCertificado.jsx'))
+const PageAulaNueva   = lazy(() => import('@pages/PageAulaNueva.jsx'))
 
 
 // Loading fallback mientras carga la página
@@ -80,6 +81,13 @@ export default function App() {
                     {/* Admin integrado en el shell — link visible solo para cuentas admin */}
                     <Route path="/admin"         element={<PageAdmin />} />
                 </Route>
+
+                {/* ── El aula nueva, en construcción ─────────────
+                    Va SIN layout y con ruta propia: ocupa la pantalla completa
+                    y así el `/aula/:id` de siempre sigue intacto mientras esta
+                    se construye. `?rol=profe` la muestra del lado de la
+                    maestra. Se borra esta ruta cuando reemplace a la vieja. */}
+                <Route path="/aula-nueva/:id" element={<PageAulaNueva />} />
 
                 {/* ── Redirects ─────────────────────────────────── */}
                 <Route path="/"   element={<Navigate to="/intro" replace />} />
