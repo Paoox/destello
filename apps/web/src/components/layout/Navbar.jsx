@@ -8,7 +8,6 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   House,
   GlobeHemisphereWest,
-  VideoCamera,
   User,
   Bell,
   Gear,
@@ -25,16 +24,21 @@ import logoDestello from '../../Images/destello-logo-512.png'
 const NAV_ITEMS = [
   { label: 'Inicio',    path: '/home',    Icon: House },
   { label: 'Habitat',   path: '/habitat', Icon: GlobeHemisphereWest },
-  // Antes esto apuntaba a `/aula/1` escrito a mano — un taller que no existe,
-  // así que SIEMPRE caía en "bloqueado". Ahora lleva a Inicio, donde están sus
-  // talleres y desde donde se entra al que toca.
   //
-  // ⚠️ Decisión de producto pendiente: esto duplica "Inicio". Un aula no es un
-  // lugar fijo, es un taller a una hora — como no existe "mi clase" en
-  // abstracto, existe la clase de las 4. Habría que quitarlo, o hacerlo llevar
-  // directo al taller que está en curso. Se dejó apuntando a Inicio para que
-  // deje de fallar, sin decidir por Paola.
-  { label: 'Mi Aula',   path: '/home',    Icon: VideoCamera },
+  // ⚠️ NO devolver "Mi Aula" aquí. Decisión de Paola, 25 ago 2026.
+  //
+  // Antes apuntaba a `/aula/1` escrito a mano —un taller inexistente— así que
+  // siempre caía en "bloqueado". Y ponerlo a apuntar a Inicio solo duplicaba
+  // Inicio.
+  //
+  // El fondo es que **un aula no es un lugar fijo, es un taller a una hora.**
+  // No existe "mi clase" en abstracto: existe la clase de las 4. Quien no tiene
+  // taller activo no tiene a qué entrar, y un menú que siempre está ahí promete
+  // un lugar que la mayoría de los días está vacío.
+  //
+  // Al aula se entra desde su taller, en Inicio: la tarjeta muestra
+  // "Entrar a clase" **solo cuando la clase está abierta** (el backend lo
+  // calcula con la hora de inicio y su margen, ver `estadoTaller`).
   { label: 'Perfil',    path: '/perfil',  Icon: User },
 ]
 
