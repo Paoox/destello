@@ -1,140 +1,30 @@
 /**
- * PageAula — El aula de clase
- * Es la pantalla principal de aprendizaje: video en vivo + visualizador 3D.
- * Por ahora muestra el layout base con placeholders.
- * El 3D viewer y el video real se integran en la siguiente fase.
+ * Destello — PageAula: el adaptador entre Destello y el aula
+ *
+ * ⚠️ ESTE ARCHIVO ES LA FRONTERA ⚠️
+ *
+ * El aula (`src/aula/`) es un producto aparte que un día se le va a rentar a
+ * otras escuelas, y por eso **no consulta la API de Destello**. Este archivo es
+ * el único que sí: pide los datos, arma el objeto `sesion` que describe
+ * `aula/contrato.js`, y se lo pasa.
+ *
+ * Cuando otra escuela monte el aula, escribe su propia versión de ESTE archivo
+ * y nada más. Todo lo de `src/aula/` le sirve tal cual.
+ *
+ * ── Lo que NO se puede perder de aquí ────────────────────────────────────
+ *
+ * Los **latidos de asistencia**. De ahí sale el certificado: certifica quien
+ * asistió, no quien pagó. Ya funcionaban antes de que existiera el aula nueva y
+ * siguen funcionando igual — el aula ni se entera de que existen.
  */
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@store/useAuthStore.js'
-import {
-  ArrowLeft,
-  VideoCamera,
-  Cube,
-  ChalkboardTeacher,
-  Users,
-  MicrophoneSlash,
-  CameraSlash,
-  Phone,
-  Chat,
-  LockSimple,
-  CircleNotch,
-} from '@phosphor-icons/react'
+import { isAdminEmail } from '@/constants.js'
+import { ArrowLeft, LockSimple, CircleNotch } from '@phosphor-icons/react'
+import Aula from '../aula/Aula.jsx'
+import { MARCA_DESTELLO } from '../aula/contrato.js'
 
-// ── Subcomponente: placeholder del video ──────────────────
-function VideoPlaceholder({ label, icon: Icon, color }) {
-  return (
-    <div style={{
-      background: '#020D0C',
-      border: '1px solid var(--border-subtle)',
-      borderRadius: 'var(--radius-xl)',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 'var(--space-3)',
-      padding: 'var(--space-8)',
-      minHeight: 220,
-    }}>
-      <div style={{
-        width: 56, height: 56,
-        borderRadius: 'var(--radius-xl)',
-        background: `${color}15`,
-        border: `1px solid ${color}30`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Icon size={28} color={color} weight="fill" />
-      </div>
-      <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center' }}>
-        {label}
-      </p>
-      <div style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        background: 'rgba(217,119,6,0.1)',
-        border: '1px solid rgba(217,119,6,0.3)',
-        borderRadius: 'var(--radius-full)',
-        padding: '4px 12px',
-        fontSize: 'var(--text-xs)',
-        color: 'var(--color-amber-600)',
-        fontWeight: 500,
-      }}>
-        ⚡ Próximamente
-      </div>
-    </div>
-  )
-}
-
-// ── Subcomponente: controles del aula ─────────────────────
-function ControlesAula({ onSalir }) {
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 'var(--space-3)',
-      padding: 'var(--space-4)',
-      background: 'var(--bg-card)',
-      borderTop: '1px solid var(--border-subtle)',
-    }}>
-      {/* Botón micrófono */}
-      <button style={{
-        width: 48, height: 48,
-        borderRadius: '50%',
-        background: 'rgba(255,255,255,0.05)',
-        border: '1px solid var(--border-default)',
-        color: 'var(--text-muted)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer',
-      }}>
-        <MicrophoneSlash size={20} />
-      </button>
-
-      {/* Botón cámara */}
-      <button style={{
-        width: 48, height: 48,
-        borderRadius: '50%',
-        background: 'rgba(255,255,255,0.05)',
-        border: '1px solid var(--border-default)',
-        color: 'var(--text-muted)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer',
-      }}>
-        <CameraSlash size={20} />
-      </button>
-
-      {/* Botón chat */}
-      <button style={{
-        width: 48, height: 48,
-        borderRadius: '50%',
-        background: 'rgba(13,115,119,0.15)',
-        border: '1px solid rgba(13,115,119,0.4)',
-        color: 'var(--color-jade-500)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer',
-      }}>
-        <Chat size={20} />
-      </button>
-
-      {/* Botón salir (rojo) */}
-      <button
-        onClick={onSalir}
-        style={{
-          width: 48, height: 48,
-          borderRadius: '50%',
-          background: 'rgba(239,68,68,0.15)',
-          border: '1px solid rgba(239,68,68,0.4)',
-          color: '#EF4444',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer',
-        }}
-      >
-        <Phone size={20} style={{ transform: 'rotate(135deg)' }} />
-      </button>
-    </div>
-  )
-}
-
-// ── Pantalla de acceso denegado / verificando ──────────────
 function AccesoGate({ estado, navigate }) {
   const verificando = estado === 'checking'
   return (
@@ -177,23 +67,43 @@ function AccesoGate({ estado, navigate }) {
   )
 }
 
+/**
+ * Cuántos minutos faltan para que acabe la clase.
+ *
+ * Sale de `hora_fin` del taller. Si no está puesta, devuelve null y la barra
+ * simplemente no muestra contador — mejor que inventar una hora.
+ */
+function minutosRestantes(taller) {
+  const fin = taller?.hora_fin
+  if (!fin) return null
+  const [h, m] = String(fin).split(':').map(Number)
+  if (Number.isNaN(h)) return null
+  const ahora = new Date()
+  const cierre = new Date(ahora)
+  cierre.setHours(h, m || 0, 0, 0)
+  const min = Math.round((cierre - ahora) / 60000)
+  return min > 0 ? min : 0
+}
+
 // ── Página principal ───────────────────────────────────────
 export default function PageAula() {
-  // useParams() lee el :id de la URL, ej: /aula/taller-xxx → id = "taller-xxx"
   const { id } = useParams()
   const navigate = useNavigate()
   const token = useAuthStore((s) => s.token)
+  const user  = useAuthStore((s) => s.user)
 
   // Control de acceso: solo entra quien tiene chispa canjeada para este taller.
   const [acceso, setAcceso] = useState('checking') // checking | allowed | denied
+  const [taller, setTaller] = useState(null)
 
   useEffect(() => {
     if (!token) { setAcceso('denied'); return }
     fetch('/api/users/me/talleres', { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
       .then((res) => {
-        const tiene = (res?.talleres || []).some((t) => t.tallerId === id)
-        setAcceso(tiene ? 'allowed' : 'denied')
+        const suyo = (res?.talleres || []).find((t) => t.tallerId === id)
+        setTaller(suyo ?? null)
+        setAcceso(suyo ? 'allowed' : 'denied')
       })
       .catch(() => setAcceso('denied'))
   }, [token, id])
@@ -241,87 +151,70 @@ export default function PageAula() {
     return <AccesoGate estado={acceso} navigate={navigate} />
   }
 
+  // ── Se arma la sesión que el aula va a recibir ─────────────────────────
+  //
+  // Quién es profe: por ahora, quien sea admin. Es un atajo consciente —
+  // todavía no existe una tabla de profesores (hace falta también para el
+  // nombre en los diplomas). Cuando exista, se cambia esta línea y nada más.
+  const esProfe = isAdminEmail(user?.email)
+
+  const sesion = {
+    marca: MARCA_DESTELLO,
+    taller: {
+      nombre:     taller?.nombre ?? 'Tu taller',
+      instructor: taller?.instructor ?? 'Destello',
+      tema:       null,
+      terminaEn:  minutosRestantes(taller),
+    },
+    rol: esProfe ? 'profe' : 'alumno',
+    yo: {
+      id:       user?.id ? String(user.id) : 'yo',
+      nombre:   [user?.nombre, user?.apellido].filter(Boolean).join(' ') || user?.email || 'Tú',
+      avatarUrl: null,
+      camara: false,
+      micro:  false,
+      // Todos entran silenciados. Ver ENTRAN_SILENCIADOS en aula/contrato.js.
+      silenciadoPorProfe: !esProfe,
+      manoArriba: false,
+      reaccion: null,
+      interactuando: true,
+      insignias: [],
+      estadoActividad: null,
+    },
+    // ⚠️ Vacío a propósito: las demás personas de la clase salen del servidor
+    // de video, que todavía no está conectado. Hasta entonces, cada quien se ve
+    // a sí mismo. Es preferible a inventar compañeros que no existen.
+    personas: [],
+    pizarron: {
+      // Igual: el material de la clase va a venir de la plantilla del taller.
+      materiales:  [],
+      actividadId: null,
+      liberado:    false,
+    },
+  }
+
   return (
-    <div style={{
-      height: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      background: 'var(--bg-dark)',
-    }}>
+    <div style={{ position: 'relative' }}>
+      <Aula sesion={sesion} />
 
-      {/* ── Barra superior del aula ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-4)',
-        padding: 'var(--space-3) var(--space-6)',
-        background: 'var(--bg-card)',
-        borderBottom: '1px solid var(--border-subtle)',
-        flexWrap: 'wrap',
-      }}>
-        {/* Botón volver */}
-        <button
-          onClick={() => navigate('/habitat')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: 'none', border: 'none',
-            color: 'var(--text-muted)', cursor: 'pointer',
-            fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)',
-          }}
-        >
-          <ArrowLeft size={18} /> Salir
-        </button>
-
-        <div style={{ flex: 1, textAlign: 'center' }}>
-          <h1 style={{ fontSize: 'var(--text-base)', fontWeight: 600 }}>
-            Aula: {id || 'General'}
-          </h1>
-        </div>
-
-        {/* Participantes */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-          <Users size={16} />
-          <span>3 participantes</span>
-        </div>
-      </div>
-
-      {/* ── Contenido del aula (layout de 3 columnas en desktop) ── */}
-      <div style={{
-        flex: 1,
-        display: 'grid',
-        // En móvil: una columna. En desktop: 2 columnas iguales + sidebar
-        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: 'var(--space-4)',
-        padding: 'var(--space-4)',
-        overflow: 'auto',
-      }}>
-
-        {/* Área de video en vivo */}
-        <VideoPlaceholder
-          label="Video en vivo — clase con el profesor"
-          icon={VideoCamera}
-          color="var(--color-jade-500)"
-        />
-
-        {/* Visualizador 3D */}
-        <VideoPlaceholder
-          label="Visualizador 3D inmersivo"
-          icon={Cube}
-          color="#8B5CF6"
-        />
-
-        {/* Pizarrón interactivo */}
-        <VideoPlaceholder
-          label="Pizarrón interactivo colaborativo"
-          icon={ChalkboardTeacher}
-          color="var(--color-amber-600)"
-        />
-
-      </div>
-
-      {/* ── Controles inferiores ── */}
-      <ControlesAula onSalir={() => navigate('/habitat')} />
-
+      {/* Salir. Va encima porque el aula ocupa la pantalla completa y no
+          conoce las rutas de Destello — ni tiene por qué. */}
+      <button
+        onClick={() => navigate('/home')}
+        title="Salir del aula"
+        style={{
+          position: 'fixed', bottom: 14, left: 14, zIndex: 50,
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '7px 14px',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-default)',
+          borderRadius: 'var(--radius-full)',
+          color: 'var(--text-muted)', cursor: 'pointer',
+          fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+        }}
+      >
+        <ArrowLeft size={14} /> Salir
+      </button>
     </div>
   )
 }

@@ -25,7 +25,16 @@ import logoDestello from '../../Images/destello-logo-512.png'
 const NAV_ITEMS = [
   { label: 'Inicio',    path: '/home',    Icon: House },
   { label: 'Habitat',   path: '/habitat', Icon: GlobeHemisphereWest },
-  { label: 'Mi Aula',   path: '/aula/1',  Icon: VideoCamera },
+  // Antes esto apuntaba a `/aula/1` escrito a mano — un taller que no existe,
+  // así que SIEMPRE caía en "bloqueado". Ahora lleva a Inicio, donde están sus
+  // talleres y desde donde se entra al que toca.
+  //
+  // ⚠️ Decisión de producto pendiente: esto duplica "Inicio". Un aula no es un
+  // lugar fijo, es un taller a una hora — como no existe "mi clase" en
+  // abstracto, existe la clase de las 4. Habría que quitarlo, o hacerlo llevar
+  // directo al taller que está en curso. Se dejó apuntando a Inicio para que
+  // deje de fallar, sin decidir por Paola.
+  { label: 'Mi Aula',   path: '/home',    Icon: VideoCamera },
   { label: 'Perfil',    path: '/perfil',  Icon: User },
 ]
 
