@@ -38,6 +38,7 @@ import metricasRouter     from './metricas.js'
 import * as asistenciaService  from '../services/asistenciaService.js'
 import * as certificadoService from '../services/certificadoService.js'
 import * as bloqueoService      from '../services/bloqueoService.js'
+import { sincronizarEstadoCupo } from '../services/cupoService.js'
 import crypto                from 'node:crypto'
 
 const router = Router()
@@ -93,6 +94,22 @@ router.put('/talleres/:id', async (req, res, next) => {
     try {
         const taller = await actualizarTaller(req.params.id, req.body)
         if (!taller) throw new AppError('Taller no encontrado', 404, 'NOT_FOUND')
+
+        // Subir o bajar el cupo cambia si el taller está lleno, y la etiqueta
+        // tiene que enterarse EN ESE MOMENTO.
+        //
+        // EL BUG (25 ago 2026): sin esto, subir el cupo de 20 a 23 para meter a
+        // alguien de último momento dejaba el taller marcado como 'lleno'. El
+        // Habitat seguía mostrando AGOTADO y el bot seguía diciendo que no hay
+        // lugar — aunque la API sí lo hubiera aceptado, porque el candado real
+        // lee la vista viva y no esa etiqueta. Resultado: tres lugares abiertos
+        // que nadie podía ver.
+        //
+        // Va antes de responder para que el panel reciba ya el estado correcto
+        // y no tenga que recargar para enterarse.
+        const sync = await sincronizarEstadoCupo(req.params.id)
+        if (sync) taller.estado = sync.estado
+
         res.json({ status: 'ok', taller })
     } catch (err) { next(err) }
 })
@@ -363,11 +380,16 @@ router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
         if (waDestino) {
             try {
                 const primerNombre = (usuario.nombre ?? registro.nombre ?? '').split(' ')[0]
+                // DE QUÉ TALLER. Antes el mensaje solo decía "tu pago quedó
+                // confirmado" — y quien está apuntado a dos talleres no tenía
+                // forma de saber cuál le confirmamos. El nombre viene en el
+                // registro (`activarAlumno` lo trae con JOIN a talleres).
+                const deTaller = registro.taller_nombre ? ` de *${registro.taller_nombre}*` : ''
                 // NO se habla de "crear cuenta": la cuenta ya existe desde que el
                 // bot tomó sus datos. Aquí solo se le dice que ya puede entrar.
                 const msg =
                     `✦ *Destello*\n\n` +
-                    `¡Hola ${primerNombre}! Tu pago quedó *confirmado* y tu lugar está apartado. 🎉\n\n` +
+                    `¡Hola ${primerNombre}! Tu pago${deTaller} quedó *confirmado* y tu lugar está apartado. 🎉\n\n` +
                     `Ya puedes entrar aquí:\n` +
                     `https://destello.courses/login\n\n` +
                     `Entra con Google o con tu número. ¡Nos vemos dentro! 🌟`

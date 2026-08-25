@@ -77,8 +77,21 @@ export async function registrarEnLista({ email, tallerId, nombre, whatsapp, orig
         `SELECT * FROM lista_espera WHERE LOWER(email) = $1 AND taller_id = $2`,
         [emailNorm, tallerId]
     )
-    if (existe.length > 0) return { nuevo: false, registro: existe[0] }
 
+    // ── ¿Su acceso sigue VIVO? ──────────────────────────────────────────────
+    //
+    // EL BUG (25 ago 2026): esto se calculaba DESPUÉS de devolver el registro,
+    // así que quien tenía un renglón viejo con estado 'pagado' recibía del bot
+    // un "tu pago ya está confirmado" **aunque su chispa hubiera vencido**.
+    //
+    // Le pasó a Paola probando: se reinscribió a un taller que reprogramó, el
+    // bot le dijo que ya estaba pagado, y el taller no le aparecía en la
+    // plataforma. Es el peor mensaje posible — la persona se queda tranquila
+    // creyendo que va, y el día de la clase no puede entrar.
+    //
+    // La etiqueta de `lista_espera` dice lo que pasó ALGUNA VEZ. Lo que importa
+    // para contestarle a alguien hoy es si **puede entrar hoy**, y eso solo lo
+    // dice la chispa. Por eso ahora se calcula antes y viaja con la respuesta.
     const { rows: conAcceso } = await query(
         `SELECT code, is_demo FROM chispas
           WHERE LOWER(usuario_email) = $1
@@ -88,10 +101,24 @@ export async function registrarEnLista({ email, tallerId, nombre, whatsapp, orig
           LIMIT 1`,
         [emailNorm, tallerId]
     )
-    if (conAcceso.length > 0) {
+    const accesoVivo = conAcceso.length > 0
+
+    if (existe.length > 0) {
+        return {
+            nuevo:      false,
+            registro:   existe[0],
+            // El dato que faltaba. Quien conteste debe mirar ESTO antes que el
+            // estado del renglón.
+            accesoVivo,
+            esCortesia: accesoVivo ? !!conAcceso[0].is_demo : false,
+        }
+    }
+
+    if (accesoVivo) {
         return {
             nuevo:         false,
             yaTieneAcceso: true,
+            accesoVivo:    true,
             esCortesia:    !!conAcceso[0].is_demo,
             registro:      null,
         }

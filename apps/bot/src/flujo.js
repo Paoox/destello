@@ -590,12 +590,46 @@ async function inscribirEnTaller(jid, conv, taller) {
     if (!resultado.nuevo) {
         const estado = resultado.registro?.estado
 
+        // ── 'pagado' ────────────────────────────────────────────────────────
+        //
+        // EL BUG (25 ago 2026): esto miraba SOLO la etiqueta del renglón. La
+        // etiqueta dice lo que pasó alguna vez; no dice si la persona puede
+        // entrar HOY. Alguien con un renglón viejo en 'pagado' y la chispa ya
+        // vencida recibía "tu pago ya está confirmado" — y luego no le aparecía
+        // el taller en la plataforma. Es el peor mensaje posible: se queda
+        // tranquila y el día de la clase no puede entrar.
+        //
+        // Ahora manda `accesoVivo`, que viene del servicio y sí mira la chispa.
         if (estado === 'pagado') {
+            if (resultado.accesoVivo) {
+                return (
+                    `✅ *${primerNombre}*, tu pago de *${taller.nombre}* ya está confirmado.\n\n` +
+                    'No tienes que hacer nada más: entra a la plataforma y ahí lo encuentras.\n\n' +
+                    '👉 https://destello.courses/login\n\n' +
+                    '_Entra con Google o con tu número._\n\n' +
+                    POST_ACCION_TEXTO
+                )
+            }
+
+            // Pago registrado pero sin acceso vivo. No se le miente ni se le
+            // manda a la plataforma a chocar con una pared. Se le dice la
+            // verdad y se levanta el reporte para que alguien lo resuelva.
+            await reportarAcceso({
+                email:    correo,
+                nombre,
+                whatsapp: conv.whatsapp || null,
+                motivo:   'sin_acceso_plataforma',
+                detalle:  `PAGO REGISTRADO SIN ACCESO VIVO — taller: ${taller.nombre} ` +
+                          `(id ${taller.id}). Quiso reinscribirse por el bot.`,
+            })
+            registrarEvento('bot_pagado_sin_acceso', { email: correo, tallerId: taller.id })
+
             return (
-                `✅ *${primerNombre}*, tu pago de *${taller.nombre}* ya está confirmado.\n\n` +
-                'No tienes que hacer nada más: entra a la plataforma y ahí lo encuentras.\n\n' +
-                '👉 https://destello.courses/login\n\n' +
-                '_Entra con Google o con tu número._\n\n' +
+                `🔎 *${primerNombre}*, tu pago de *${taller.nombre}* sí está registrado, ` +
+                'pero tu acceso no aparece activo en este momento.\n\n' +
+                'Puede ser que la fecha se haya reprogramado o que tu acceso venciera.\n\n' +
+                '✅ Ya lo reporté al equipo con tus datos. *Alguien te escribe por aquí* ' +
+                'para dejártelo listo — no tienes que volver a pagar ni hacer nada más.\n\n' +
                 POST_ACCION_TEXTO
             )
         }
@@ -625,29 +659,48 @@ async function inscribirEnTaller(jid, conv, taller) {
             )
         }
 
-        // 'pendiente': está formada, todavía sin lugar confirmado.
+        // 'pendiente': ya estaba anotada y todavía no ha pagado. Se le repiten
+        // los medios de pago — es literalmente lo que vino a buscar al volver.
+        const precioPend = taller.precio > 0
+            ? `💰 *$${Number(taller.precio).toLocaleString('es-MX')} MXN*\n\n` + PAGO_TEXTO + '\n\n'
+            : 'Te avisaremos en cuanto haya un lugar disponible. 🙌\n\n'
+
         return (
-            `ℹ️ *${primerNombre}*, ya estás en la lista de espera de *${taller.nombre}*.\n\n` +
-            'Te avisaremos en cuanto haya un lugar disponible. 🙌\n\n' +
+            `ℹ️ *${primerNombre}*, ya estás inscrito/a en *${taller.nombre}*.\n\n` +
+            precioPend +
             POST_ACCION_TEXTO
         )
     }
 
+    // ── Registro nuevo ──────────────────────────────────────────────────────
+    //
+    // Aquí es donde antes se le decía "te avisamos" y se acababa la
+    // conversación. Pero si llegó hasta acá es porque HAY lugar (el servicio ya
+    // revisó el cupo antes de guardarla), así que hacerla esperar un mensaje
+    // nuestro para saber cuánto cuesta y a dónde pagar es perder a la persona
+    // en el momento en que más ganas tenía. Se le da el precio y los medios de
+    // pago de una vez, y quien quiera pagar ya, puede.
+    const cuesta = taller.precio > 0
+        ? `💰 *$${Number(taller.precio).toLocaleString('es-MX')} MXN*\n\n`
+        : ''
+
+    const cierre = taller.precio > 0
+        ? cuesta + PAGO_TEXTO + '\n\n'
+        : '📬 Te avisamos por aquí y por correo en cuanto confirmemos tu lugar.\n\n'
+
     if (tienePerfil) {
         return (
-            '🎉 *¡Listo!* Quedaste registrado/a en la lista de espera de:\n\n' +
+            '🎉 *¡Listo!* Quedaste registrado/a en:\n\n' +
             `📚 *${taller.nombre}*\n\n` +
-            'Te notificaremos aquí y por correo cuando confirmemos tu cupo. ¡Estás muy cerca! ✨\n\n' +
+            cierre +
             POST_ACCION_TEXTO
         )
     }
 
     return (
         '🎉 *¡Registro completado!*\n\n' +
-        `Quedaste en la lista de espera de:\n📚 *${taller.nombre}*\n\n` +
-        '📬 Te avisamos por aquí y por correo en cuanto confirmemos tu lugar, ' +
-        'junto con los datos para completar tu inscripción.\n\n' +
-        '_¡Mantente pendiente!_ 🌟\n\n' +
+        `Quedaste inscrito/a en:\n📚 *${taller.nombre}*\n\n` +
+        cierre +
         POST_ACCION_TEXTO
     )
 }
