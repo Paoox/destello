@@ -75,30 +75,13 @@ export const MARCA_DESTELLO = {
 }
 
 /**
- * Sellos que la profe puede poner. Van aquí y no dentro de un componente
- * porque los quiere ver tanto ella (para elegir) como el alumno (en su
- * pizarrón), y una sola lista evita que se desincronicen.
+ * Los sellos y las reacciones NO viven aquí: viven en `catalogo.js`.
  *
- * Son de tinta, estilo kínder: motivan sin calificar con un número.
- */
-export const SELLOS = [
-    { id: 'abeja',   emoji: '🐝', label: 'Trabajadora' },
-    { id: 'oso',     emoji: '🧸', label: 'Pensativo' },
-    { id: 'estrella',emoji: '⭐', label: 'Excelente' },
-    { id: 'cohete',  emoji: '🚀', label: 'Va volando' },
-    { id: 'corazon', emoji: '💚', label: 'Con cariño' },
-    { id: 'foco',    emoji: '💡', label: 'Buena idea' },
-]
-
-/** Reacciones que un alumno puede mandar en clase. */
-export const REACCIONES = ['💚', '👏', '😮', '😄', '🤔', '👍']
-
-/**
- * Cuántos minutos sin tocar el pizarrón antes de que el semáforo se ponga rojo.
+ * Se movieron el 25 ago 2026 porque son **contenido**, no contrato. Paola va a
+ * mandar a hacer las ilustraciones y las va a querer cambiar sin tocar código,
+ * y cada uno necesita más que un emoji: nombre, mensaje, color e imagen.
  *
- * Va aquí, con nombre, para que el día que Paola diga "se me hace muy rápido"
- * se cambie UN número y no haya que buscarlo entre el código. Un quiz y un
- * modelo 3D tienen ritmos distintos, así que a futuro cada actividad podrá
- * traer el suyo.
+ * Tenerlos en dos lados sería garantizar que un día se desincronicen.
  */
+
 export const MINUTOS_SIN_TOCAR = 3

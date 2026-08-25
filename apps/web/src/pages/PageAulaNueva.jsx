@@ -41,7 +41,7 @@ const PERSONAS = NOMBRES.map((nombre, i) => ({
     reaccion:      i === 5 ? '👏' : i === 14 ? '🤔' : null,
     interactuando: i % 4 !== 1,
     avance:   (i * 17) % 100,
-    insignias: i % 5 === 0 ? ['abeja'] : i % 7 === 0 ? ['oso', 'estrella'] : [],
+    insignias: i % 5 === 0 ? ['trabajadora'] : i % 7 === 0 ? ['pensativo', 'excelente'] : [],
 }))
 
 export default function PageAulaNueva() {
@@ -56,7 +56,7 @@ export default function PageAulaNueva() {
         : { id: 'yo', nombre: 'Paola Arreola', avatarUrl: null, camara: false,
             micro: false, silenciadoPorProfe: false, manoArriba: false,
             reaccion: null, interactuando: true, avance: 42,
-            insignias: ['abeja', 'estrella'] }
+            insignias: ['trabajadora', 'excelente'] }
 
     const sesion = {
         marca: MARCA_DESTELLO,

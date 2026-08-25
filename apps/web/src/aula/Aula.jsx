@@ -21,10 +21,13 @@
 import { useState, useEffect, useRef } from 'react'
 import {
     Microphone, MicrophoneSlash, VideoCamera, VideoCameraSlash, Hand,
-    ChatCircleDots, Gear, Question, Lock, LockOpen, Stack, X,
+    ChatCircleDots, Gear, Question, Lock, LockOpen, Stack, X, Sparkle,
 } from '@phosphor-icons/react'
 import Avatar from './Avatar.jsx'
-import { MARCA_DESTELLO, SELLOS, REACCIONES } from './contrato.js'
+import Sello from './Sello.jsx'
+import BandejaSellos from './BandejaSellos.jsx'
+import { MARCA_DESTELLO } from './contrato.js'
+import { SELLOS, REACCIONES, selloPorId, SELLOS_VISIBLES_EN_PIZARRON } from './catalogo.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Barra de arriba
@@ -156,7 +159,7 @@ function Semaforo({ activo, size = 8 }) {
    Ventana izquierda — el video
    ══════════════════════════════════════════════════════════════════════════ */
 
-function VentanaVideo({ sesion, onAbrirChat, chatAbierto }) {
+function VentanaVideo({ sesion, onAbrirChat, chatAbierto, onMicro }) {
     const { rol, taller, personas, yo } = sesion
     const esProfe = rol === 'profe'
 
@@ -213,7 +216,13 @@ function VentanaVideo({ sesion, onAbrirChat, chatAbierto }) {
                 borderTop: '1px solid var(--border-subtle)',
             }}>
                 {[yo, ...personas].map(p => (
-                    <FichaPersona key={p.id} persona={p} esProfe={esProfe} soyYo={p.id === yo.id} />
+                    <FichaPersona
+                        key={p.id}
+                        persona={p}
+                        esProfe={esProfe}
+                        soyYo={p.id === yo.id}
+                        onMicro={onMicro}
+                    />
                 ))}
             </div>
 
@@ -227,39 +236,54 @@ function VentanaVideo({ sesion, onAbrirChat, chatAbierto }) {
     )
 }
 
-/** Una persona en la tira: avatar, nombre, y sus señales encima. */
-function FichaPersona({ persona, esProfe, soyYo }) {
+/**
+ * Una persona en la tira: avatar, nombre, y sus señales encima.
+ *
+ * Para la profe, además, es un botón: picarle **abre o cierra el micrófono de
+ * esa persona en particular**. Es lo que pidió Paola y es lo que de verdad pasa
+ * en una clase — alguien levanta la mano, le abres solo a ella, contesta, y se
+ * lo vuelves a cerrar. Silenciar a todos es el martillo; esto es la pinza.
+ */
+function FichaPersona({ persona, esProfe, soyYo, onMicro }) {
     const { nombre, manoArriba, reaccion, micro, silenciadoPorProfe } = persona
-    return (
-        <div style={{
-            position: 'relative', display: 'flex', flexDirection: 'column',
-            alignItems: 'center', gap: 3, flex: 'none', width: 52,
-        }}>
+    const puedeAbrirMicro = esProfe && !soyYo
+    const abierto = micro && !silenciadoPorProfe
+
+    const senales = (
+        <>
             <Avatar persona={persona} size={40} />
 
             {/* La mano y la reacción van ENCIMA del avatar: son cosas que la
-                profe tiene que cachar sin leer, de reojo. */}
+                profe tiene que cachar de reojo, sin ponerse a leer. */}
             {manoArriba && (
-                <span style={{ position: 'absolute', top: -4, right: 2, fontSize: 15 }} title="Levantó la mano">✋</span>
+                <span style={{ position: 'absolute', top: -4, right: 2, fontSize: 15 }}
+                      title="Levantó la mano">✋</span>
             )}
             {reaccion && !manoArriba && (
-                <span style={{ position: 'absolute', top: -4, right: 2, fontSize: 15 }}>{reaccion}</span>
+                <span style={{ position: 'absolute', top: -4, right: 2, fontSize: 15 }}>
+                    {reaccion}
+                </span>
             )}
+
+            {/* El estado del micrófono, siempre visible. Rojo tachado = la
+                profe la silenció; verde = está hablando; nada = micro cerrado
+                por decisión propia, que no es lo mismo y no hay que marcarlo
+                como si fuera un castigo. */}
             {silenciadoPorProfe && (
                 <span style={{
                     position: 'absolute', bottom: 16, right: 0,
                     color: 'var(--color-error)', background: 'var(--bg-dark)',
                     borderRadius: '50%', display: 'flex', padding: 1,
-                }} title="Silenciada por la profe">
+                }} title="La tienes silenciada">
                     <MicrophoneSlash size={11} weight="fill" />
                 </span>
             )}
-            {micro && !silenciadoPorProfe && (
+            {abierto && (
                 <span style={{
                     position: 'absolute', bottom: 16, right: 0,
                     color: 'var(--color-success)', background: 'var(--bg-dark)',
                     borderRadius: '50%', display: 'flex', padding: 1,
-                }} title="Hablando">
+                }} title="Tiene el micrófono abierto">
                     <Microphone size={11} weight="fill" />
                 </span>
             )}
@@ -271,7 +295,29 @@ function FichaPersona({ persona, esProfe, soyYo }) {
             }}>
                 {soyYo ? 'Tú' : nombre.split(' ')[0]}
             </span>
-        </div>
+        </>
+    )
+
+    const caja = {
+        position: 'relative', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', gap: 3, flex: 'none', width: 52,
+        padding: 0, background: 'transparent', border: 'none',
+        fontFamily: 'var(--font-sans)',
+    }
+
+    // Para el alumno es solo información. Para la profe es un botón.
+    if (!puedeAbrirMicro) return <div style={caja}>{senales}</div>
+
+    return (
+        <button
+            onClick={() => onMicro?.(persona.id)}
+            title={silenciadoPorProfe
+                ? `Darle la palabra a ${nombre.split(' ')[0]}`
+                : `Silenciar a ${nombre.split(' ')[0]}`}
+            style={{ ...caja, cursor: 'pointer' }}
+        >
+            {senales}
+        </button>
     )
 }
 
@@ -353,12 +399,21 @@ function BarraControles({ sesion, onAbrirChat, chatAbierto }) {
    Ventana derecha — el pizarrón
    ══════════════════════════════════════════════════════════════════════════ */
 
-function VentanaPizarron({ sesion }) {
+function VentanaPizarron({ sesion, onSellar, onSellarATodos }) {
     const { rol, personas, yo, pizarron } = sesion
     const esProfe = rol === 'profe'
     const [liberado, setLiberado] = useState(pizarron.liberado)
     const [soloLosQueNecesitan, setSoloLosQueNecesitan] = useState(false)
     const [abierta, setAbierta] = useState(null)   // pizarrón de quién estoy viendo
+    const [bandeja, setBandeja] = useState(false)  // ¿está abierta la bandeja de sellos?
+    const [cargado, setCargado] = useState(null)   // el sello que trae en la mano
+
+    // Al plantar un sello, la persona se ve actualizada al instante. Si además
+    // estaba abierto su pizarrón en grande, se refresca ahí también.
+    const plantar = (personaId) => {
+        if (!cargado) return
+        onSellar?.(personaId, cargado.id)
+    }
 
     // El filtro que hace que esto sirva igual con 20 que con 40: no se trata de
     // vigilar a todas, se trata de encontrar rápido a quien no le está saliendo.
@@ -398,10 +453,20 @@ function VentanaPizarron({ sesion }) {
                 {/* Las insignias viven arriba a la derecha y NO se van cuando
                     cambia el material: son de la persona, no del ejercicio. */}
                 {!esProfe && yo.insignias?.length > 0 && (
-                    <div style={{ position: 'absolute', top: 10, right: 12, display: 'flex', gap: 3 }}>
-                        {yo.insignias.map((s, i) => {
-                            const sello = SELLOS.find(x => x.id === s)
-                            return <span key={i} title={sello?.label} style={{ fontSize: 17 }}>{sello?.emoji ?? '⭐'}</span>
+                    <div style={{
+                        position: 'absolute', top: 10, right: 12,
+                        display: 'flex', gap: 4, flexWrap: 'wrap',
+                        justifyContent: 'flex-end', maxWidth: 160,
+                    }}>
+                        {/* Solo los últimos: el pizarrón es para trabajar. Los
+                            demás siguen contando en su perfil y en el Habitat,
+                            que es donde se van a ver bonitos de verdad. */}
+                        {yo.insignias.slice(-SELLOS_VISIBLES_EN_PIZARRON).map((id, i) => {
+                            const sello = selloPorId(id)
+                            return sello && (
+                                <Sello key={i} sello={sello} size={26} conFondo
+                                       title={`${sello.nombre} — ${sello.mensaje}`} />
+                            )
                         })}
                     </div>
                 )}
@@ -432,6 +497,13 @@ function VentanaPizarron({ sesion }) {
                             {liberado ? <LockOpen size={16} /> : <Lock size={16} />}
                         </BotonIcono>
                         <BotonIcono titulo="Elegir qué se muestra"><Stack size={16} /></BotonIcono>
+                        <BotonIcono
+                            titulo="Sellos"
+                            activo={bandeja}
+                            onClick={() => { setBandeja(b => !b); if (bandeja) setCargado(null) }}
+                        >
+                            <Sparkle size={16} weight={bandeja ? 'fill' : 'regular'} />
+                        </BotonIcono>
                     </div>
                 )}
 
@@ -480,7 +552,12 @@ function VentanaPizarron({ sesion }) {
                         gap: 6, maxHeight: 168, overflowY: 'auto',
                     }}>
                         {visibles.map(p => (
-                            <MiniPizarron key={p.id} persona={p} onClick={() => setAbierta(p)} />
+                            <MiniPizarron
+                                key={p.id}
+                                persona={p}
+                                sellando={cargado}
+                                onClick={() => cargado ? plantar(p.id) : setAbierta(p)}
+                            />
                         ))}
                         {visibles.length === 0 && (
                             <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success)', gridColumn: '1/-1' }}>
@@ -489,6 +566,17 @@ function VentanaPizarron({ sesion }) {
                         )}
                     </div>
                 </div>
+            )}
+
+            {esProfe && (
+                <BandejaSellos
+                    abierta={bandeja}
+                    cargado={cargado}
+                    onCargar={setCargado}
+                    onSoltar={() => setCargado(null)}
+                    onATodos={() => { onSellarATodos?.(cargado.id); setCargado(null) }}
+                    onCerrar={() => { setBandeja(false); setCargado(null) }}
+                />
             )}
         </section>
     )
@@ -505,21 +593,31 @@ function VentanaPizarron({ sesion }) {
  * Es lo que hace que 30 o 40 personas se sigan viendo. Con miniaturas-imagen el
  * techo eran unas 14.
  */
-function MiniPizarron({ persona, onClick }) {
+function MiniPizarron({ persona, onClick, sellando = null }) {
     const { nombre, interactuando, avance = 0, manoArriba, insignias = [] } = persona
     const necesitaAyuda = !interactuando || manoArriba
+
+    // Con un sello en la mano, TODA la rejilla cambia de significado: deja de
+    // ser "ábreme" y pasa a ser "plántamelo". Se marca con el color del sello
+    // para que no quede duda de qué va a pasar al picarle.
+    const borde = sellando ? sellando.color
+                : necesitaAyuda ? 'var(--color-error)'
+                : 'var(--border-subtle)'
 
     return (
         <button
             onClick={onClick}
-            title={`Abrir el pizarrón de ${nombre}`}
+            title={sellando
+                ? `Ponerle ${sellando.nombre} a ${nombre.split(' ')[0]}`
+                : `Abrir el pizarrón de ${nombre}`}
             style={{
                 display: 'flex', flexDirection: 'column', gap: 4,
                 padding: '7px 8px', textAlign: 'left',
-                background: 'var(--bg-surface)',
-                border: `1px solid ${necesitaAyuda ? 'var(--color-error)' : 'var(--border-subtle)'}`,
+                background: sellando ? `${sellando.color}12` : 'var(--bg-surface)',
+                border: `1px solid ${borde}`,
                 borderRadius: 'var(--radius-md)',
                 cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                transition: 'background .12s, border-color .12s',
             }}
         >
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%' }}>
@@ -545,11 +643,16 @@ function MiniPizarron({ persona, onClick }) {
             </div>
 
             {insignias.length > 0 && (
-                <div style={{ display: 'flex', gap: 1, fontSize: 10 }}>
-                    {insignias.slice(0, 4).map((s, i) => {
-                        const sello = SELLOS.find(x => x.id === s)
-                        return <span key={i}>{sello?.emoji ?? '⭐'}</span>
+                <div style={{ display: 'flex', gap: 1, minHeight: 14 }}>
+                    {insignias.slice(-4).map((id, i) => {
+                        const sello = selloPorId(id)
+                        return sello && <Sello key={i} sello={sello} size={14} />
                     })}
+                    {insignias.length > 4 && (
+                        <span style={{ fontSize: 9, color: 'var(--text-muted)', alignSelf: 'center' }}>
+                            +{insignias.length - 4}
+                        </span>
+                    )}
                 </div>
             )}
         </button>
@@ -637,7 +740,69 @@ function Chat({ onCerrar }) {
 
 export default function Aula({ sesion }) {
     const [chatAbierto, setChatAbierto] = useState(false)
-    const s = { ...sesion, marca: sesion.marca ?? MARCA_DESTELLO }
+
+    // ── El estado vivo de la clase ────────────────────────────────────────
+    //
+    // Vive aquí y no en cada pieza porque los sellos y los micrófonos los
+    // cambia la profe desde el pizarrón y se ven en la tira de video: si cada
+    // ventana guardara su propia copia, se desincronizarían.
+    //
+    // Hoy es estado local para poder probarlo. Cuando entre LiveKit, estas dos
+    // funciones dejan de tocar el estado directamente y mandan el cambio al
+    // servidor, que lo replica a todos. **La forma de los datos no cambia** —
+    // por eso se construye así desde ahora.
+    const [personas, setPersonas] = useState(sesion.personas)
+    const [yo, setYo] = useState(sesion.yo)
+
+    /** Le pone un sello a una persona. Sin repetir el mismo dos veces. */
+    const sellar = (personaId, selloId) => {
+        const agregar = (p) => p.insignias?.includes(selloId)
+            ? p
+            : { ...p, insignias: [...(p.insignias ?? []), selloId] }
+        setPersonas(lista => lista.map(p => p.id === personaId ? agregar(p) : p))
+        setYo(actual => actual.id === personaId ? agregar(actual) : actual)
+    }
+
+    /** El mismo sello para todo el grupo. */
+    const sellarATodos = (selloId) => {
+        const agregar = (p) => p.insignias?.includes(selloId)
+            ? p
+            : { ...p, insignias: [...(p.insignias ?? []), selloId] }
+        setPersonas(lista => lista.map(agregar))
+    }
+
+    /**
+     * Silenciar a una persona, o devolverle la palabra.
+     *
+     * ⚠️ LÍMITE QUE NO ES NUESTRO, ES DEL NAVEGADOR ⚠️
+     *
+     * Silenciar a alguien a distancia **sí se puede**: el servidor le apaga la
+     * pista y se acabó. Pero **prenderle el micrófono a distancia NO se puede**,
+     * y no es cosa de LiveKit ni de cómo lo programemos: ningún navegador deja
+     * que un servidor abra tu micrófono sin que tú lo confirmes. Lo más que se
+     * puede hacer es *invitarla* a hablar, y ella acepta.
+     *
+     * Y está bien que sea así. "Le abro el micro cuando lo crea prudente"
+     * suena inocente en un salón, pero en la práctica es encender el audio de
+     * la casa de alguien sin avisarle.
+     *
+     * Así que esto es un interruptor de **permiso**, no de micrófono:
+     *   · silenciar   → se le apaga el micro y no lo puede volver a abrir
+     *   · dar palabra → recupera el control y ella prende cuando quiera
+     *
+     * Con la mano levantada el flujo queda natural: levanta la mano, le das la
+     * palabra, prende, habla, y se la vuelves a quitar.
+     */
+    const alternarMicro = (personaId) => {
+        setPersonas(lista => lista.map(p => {
+            if (p.id !== personaId) return p
+            return p.silenciadoPorProfe
+                ? { ...p, silenciadoPorProfe: false }              // le das la palabra
+                : { ...p, silenciadoPorProfe: true, micro: false } // la silencias
+        }))
+    }
+
+    const s = { ...sesion, marca: sesion.marca ?? MARCA_DESTELLO, personas, yo }
 
     return (
         <div style={{
@@ -656,12 +821,17 @@ export default function Aula({ sesion }) {
                         sesion={s}
                         chatAbierto={chatAbierto}
                         onAbrirChat={() => setChatAbierto(v => !v)}
+                        onMicro={alternarMicro}
                     />
                     {/* El chat empuja hacia arriba en lugar de taparlo todo */}
                     {chatAbierto && <Chat onCerrar={() => setChatAbierto(false)} />}
                 </div>
 
-                <VentanaPizarron sesion={s} />
+                <VentanaPizarron
+                    sesion={s}
+                    onSellar={sellar}
+                    onSellarATodos={sellarATodos}
+                />
             </main>
 
             {/* En celular las dos ventanas se apilan y la pantalla hace scroll:
