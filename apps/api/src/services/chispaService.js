@@ -390,18 +390,73 @@ export async function canjearChispa(code, usuarioEmail) {
 const UN_DIA_MS = 86_400_000
 const MATERIAL_DIAS = 30
 
-/** Fecha (medianoche) desde un DATE/ISO, o null. */
-function soloFecha(v) {
+/**
+ * 'YYYY-MM-DD' desde lo que sea que traiga una columna DATE, o null.
+ *
+ * EL BUG (25 ago 2026) — por qué esto existe:
+ *
+ * El driver `pg` NO devuelve las columnas DATE como texto: devuelve un objeto
+ * `Date` puesto en la medianoche LOCAL del proceso. Y abajo se armaba la hora
+ * de la clase concatenando:
+ *
+ *     `${fecha_inicio}T${hora_inicio}-06:00`
+ *
+ * Con un objeto Date, ese template literal produce
+ * `"Tue Aug 25 2026 00:00:00 GMT+0000 (...)T17:00:00-06:00"` — basura. El
+ * `new Date()` de eso es **Invalid Date**, y toda comparación contra NaN da
+ * `false`. Resultado: `claseAccesibleHoy` era **siempre false** para cualquier
+ * taller con hora_inicio, en cualquier zona horaria. El botón "Entrar a clase"
+ * nunca iba a aparecer. Verificado contra Postgres 16 real con TZ=UTC y
+ * TZ=America/Mexico_City: Invalid Date en las dos.
+ *
+ * Se leen los componentes LOCALES (no `toISOString()`) justamente porque pg
+ * construyó ese Date en medianoche local: pasarlo por UTC lo correría un día
+ * en cualquier zona con offset positivo.
+ */
+function ymd(v) {
     if (!v) return null
-    const d = new Date(v)
+    if (typeof v === 'string') return v.slice(0, 10)
+    const d = v instanceof Date ? v : new Date(v)
     if (isNaN(d)) return null
-    d.setHours(0, 0, 0, 0)
-    return d
+    const mes = String(d.getMonth() + 1).padStart(2, '0')
+    const dia = String(d.getDate()).padStart(2, '0')
+    return `${d.getFullYear()}-${mes}-${dia}`
+}
+
+/**
+ * Fecha (medianoche local) desde un DATE/ISO, o null.
+ *
+ * Pasa por `ymd()` a propósito: `new Date('2026-08-25')` se interpreta como
+ * medianoche **UTC**, que en México es el día 24 a las 18:00 — y ese día
+ * perdido corría todas las fases. Partiendo de los tres números, el `Date` se
+ * construye en local y el día es el que dice la base.
+ */
+function soloFecha(v) {
+    const s = ymd(v)
+    if (!s) return null
+    const [a, m, d] = s.split('-').map(Number)
+    const fecha = new Date(a, m - 1, d)
+    return isNaN(fecha) ? null : fecha
 }
 
 // Offset fijo de CDMX: UTC−6 (México ya no usa horario de verano desde 2022).
 const TZ_CDMX = '-06:00'
+const CDMX_OFFSET_MS = 6 * 60 * 60 * 1000
 const MARGEN_CLASE_MS = 30 * 60 * 1000 // 30 min antes
+
+/**
+ * Qué día es HOY en la Ciudad de México, sin importar dónde corra el servidor.
+ *
+ * El contenedor de la API corre en UTC. `new Date()` a las 7 de la noche de
+ * CDMX ya es el día siguiente en UTC, así que el servidor daba por "concluido"
+ * un taller que apenas iba a la mitad. Las fechas de los talleres están en la
+ * cabeza de la gente en hora de México — el cálculo tiene que estarlo también.
+ */
+function hoyCDMX() {
+    const [a, m, d] = new Date(Date.now() - CDMX_OFFSET_MS)
+        .toISOString().slice(0, 10).split('-').map(Number)
+    return new Date(a, m - 1, d)
+}
 
 /**
  * Calcula el estado de un taller y de su material para el frontend.
@@ -414,7 +469,7 @@ const MARGEN_CLASE_MS = 30 * 60 * 1000 // 30 min antes
  *     hora CDMX). Sin hora_inicio, se valida a nivel de día.
  */
 function estadoTaller({ fecha_inicio, fecha_fin, hora_inicio, hora_fin }) {
-    const hoy    = soloFecha(new Date())
+    const hoy    = hoyCDMX()
     const inicio = soloFecha(fecha_inicio)
     const fin    = soloFecha(fecha_fin) || inicio
     const concluye = fin
@@ -428,16 +483,28 @@ function estadoTaller({ fecha_inicio, fecha_fin, hora_inicio, hora_fin }) {
         else if (hoy <= fin)   fase = 'en_curso'
         else                   fase = 'concluido'
 
-        if (hora_inicio && fecha_inicio) {
+        // ⚠️ `ymd()` NO es opcional aquí: sin él estas fechas son objetos Date
+        // y el template literal produce un string inválido. Ver el comentario
+        // de `ymd()` — es el bug que tenía el botón "Entrar a clase" muerto.
+        const diaInicio = ymd(fecha_inicio)
+        const diaFin    = ymd(fecha_fin) || diaInicio
+
+        if (hora_inicio && diaInicio) {
             // Validación precisa en UTC usando la hora local CDMX.
             // Fin: hora_fin si existe, si no el final del día del taller.
-            const finDia = fecha_fin || fecha_inicio
-            const ahora  = Date.now()
-            const start  = new Date(`${fecha_inicio}T${hora_inicio}${TZ_CDMX}`).getTime()
-            const end    = hora_fin
-                ? new Date(`${finDia}T${hora_fin}${TZ_CDMX}`).getTime()
-                : new Date(`${finDia}T23:59:59${TZ_CDMX}`).getTime()
-            claseAccesibleHoy = ahora >= (start - MARGEN_CLASE_MS) && ahora <= end
+            const ahora = Date.now()
+            const start = new Date(`${diaInicio}T${hora_inicio}${TZ_CDMX}`).getTime()
+            const end   = hora_fin
+                ? new Date(`${diaFin}T${hora_fin}${TZ_CDMX}`).getTime()
+                : new Date(`${diaFin}T23:59:59${TZ_CDMX}`).getTime()
+
+            // Si algo viniera mal formado, `start`/`end` son NaN y todas las
+            // comparaciones dan false — es decir, se cerraría la clase en
+            // silencio. Mejor caer a la regla por día, que al menos deja
+            // entrar el día correcto, que dejar a un grupo fuera sin aviso.
+            claseAccesibleHoy = (isNaN(start) || isNaN(end))
+                ? (hoy >= inicio && hoy <= fin)
+                : (ahora >= (start - MARGEN_CLASE_MS) && ahora <= end)
         } else {
             // Sin hora: acceso a nivel de día (hoy dentro del rango del taller).
             claseAccesibleHoy = hoy >= inicio && hoy <= fin

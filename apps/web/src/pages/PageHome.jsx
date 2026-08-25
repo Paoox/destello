@@ -112,6 +112,17 @@ function fmtFechaCorta(iso) {
   return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
 }
 
+/** '17:00:00' → '5:00 PM'. Para decirle a qué hora empieza lo de hoy. */
+function fmtHoraCorta(hora) {
+  if (!hora) return null
+  const [h, m] = String(hora).split(':')
+  const n = Number(h)
+  if (isNaN(n)) return null
+  const ampm = n >= 12 ? 'PM' : 'AM'
+  const h12  = n % 12 === 0 ? 12 : n % 12
+  return `${h12}:${m ?? '00'} ${ampm}`
+}
+
 /* ============================================================
    Estilos + responsive (media queries reales vía <style>).
    Los pseudo-selectores y breakpoints no se pueden expresar
@@ -352,12 +363,29 @@ function TallerCard({ taller, onMaterial, onClase }) {
   const { color, Icon } = estiloCategoria(taller.categoria)
   const mat = taller.material || {}
 
-  // Texto del badge según el estado más relevante.
-  let badge = 'Concluido'
-  if (taller.claseAccesibleHoy)          badge = 'En vivo hoy'
-  else if (taller.fase === 'proximo')    badge = fmtFechaCorta(taller.fechaInicio) || 'Próximo'
-  else if (mat.disponible)               badge = `Material · ${mat.diasRestantes}d`
-  else if (mat.estado === 'expirado')    badge = 'Finalizado'
+  // ── El badge ────────────────────────────────────────────────────────────
+  //
+  // EL BUG (25 ago 2026): esto arrancaba en `let badge = 'Concluido'` y las
+  // condiciones de abajo solo lo cambiaban en cuatro casos. **No había caso
+  // para `fase === 'en_curso'`**, así que un taller de HOY, mirado antes de que
+  // abriera la ventana de entrada (30 min antes), se caía al default y decía
+  // *Concluido*. Le pasó a Paola con un taller de las 5 PM, viéndolo a las 4.
+  //
+  // Un valor por defecto que afirma algo ("ya terminó") es una trampa: cada
+  // estado nuevo que se agregue hereda esa mentira en silencio. Ahora cada fase
+  // dice lo suyo y el default no afirma nada.
+  let badge
+  if (taller.claseAccesibleHoy)           badge = 'En vivo ahora'
+  else if (taller.fase === 'proximo')     badge = fmtFechaCorta(taller.fechaInicio) || 'Próximo'
+  // Es HOY pero todavía no abre. Se le dice la hora, que es justo lo que
+  // quiere saber quien mira su tarjeta el día de su taller.
+  else if (taller.fase === 'en_curso')    badge = fmtHoraCorta(taller.horaInicio)
+                                                    ? `Hoy · ${fmtHoraCorta(taller.horaInicio)}`
+                                                    : 'Hoy'
+  else if (mat.disponible)                badge = `Material · ${mat.diasRestantes}d`
+  else if (mat.estado === 'expirado')     badge = 'Finalizado'
+  else if (taller.fase === 'concluido')   badge = 'Concluido'
+  else                                    badge = 'Sin fecha'
 
   const materialTexto = mat.disponible
     ? `Material y modelos 3D · ${mat.diasRestantes} días`
@@ -487,6 +515,25 @@ export default function PageHome() {
       .finally(() => setLoadingTalleres(false))
   }
   useEffect(() => { cargarTalleres() }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── El día del taller, refrescar solo ─────────────────────────────────────
+  //
+  // `claseAccesibleHoy` lo calcula la API con la hora del servidor, y esto se
+  // pedía UNA sola vez al entrar. Quien abriera su tarjeta a las 4:50 para un
+  // taller de 5:00 se quedaba mirando una pantalla que nunca cambiaba: el botón
+  // "Entrar a clase" solo aparecía si recargaba. Nadie debería tener que
+  // adivinar que hay que apretar F5 para entrar a su clase.
+  //
+  // Se refresca cada 60 s y SOLO cuando hay un taller hoy que todavía no abre.
+  // Fuera de ese rato no se le pega a la API para nada.
+  const esperandoClase = misTalleres.some(
+    (t) => t.fase === 'en_curso' && !t.claseAccesibleHoy
+  )
+  useEffect(() => {
+    if (!token || !esperandoClase) return
+    const id = setInterval(cargarTalleres, 60_000)
+    return () => clearInterval(id)
+  }, [token, esperandoClase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Confirmaciones de asistencia pendientes ──
   // Se piden una sola vez al entrar. Si hay varias se muestran de una en una:
