@@ -473,6 +473,19 @@ function VentanaPizarron({ sesion, onSellar, onSellarATodos, onElegirActividad, 
                         liberado={esProfe ? true : liberado}
                         esProfe={esProfe}
                     />
+                ) : actividadActiva ? (
+                    // Sí eligió algo (existe en `materiales`), pero su tipo
+                    // todavía no está en el registro (memorama, armar, modelo3d).
+                    // Distinto de "nada elegido": ahí "elige una actividad" sería
+                    // mentira — ya lo hizo, solo que ese tipo no existe todavía.
+                    <>
+                        <div style={{ fontSize: 44, opacity: .5 }}>🚧</div>
+                        <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                            {esProfe
+                                ? `"${actividadActiva.nombre}" todavía no está listo — elige otra`
+                                : 'Tu profe está preparando esta actividad'}
+                        </div>
+                    </>
                 ) : (
                     <>
                         <div style={{ fontSize: 44, opacity: .5 }}>🧩</div>

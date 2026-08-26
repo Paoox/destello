@@ -385,7 +385,7 @@ Métodos de pago incluidos en templates:
 | `/home` | PageHome.jsx | ✅ |
 | `/habitat` | PageHabitat.jsx | ✅ — grid talleres reales desde BD, modal lista de espera |
 | `/aula/:id` | PageAula.jsx | ✅ — LA FRONTERA: única pieza que habla con la API de Destello. Arma la `sesion` del contrato y envuelve `src/aula/Aula.jsx` (el módulo del aula: sellos, contrato de actividades, Quiz, rejilla — no consulta la API a propósito, para poder rentarse a otras escuelas como producto aparte). Le suma los latidos de asistencia que el módulo del aula no puede tener |
-| `/aula-nueva/:id` | PageAulaNueva.jsx | ✅ — salón de ensayo con datos inventados (sin backend, sin video), para practicar el aula sin depender de un taller real. `?rol=profe` para verla del otro lado |
+| `/aula-nueva/:id` | PageAulaNueva.jsx | ✅ — salón de ensayo del profesor con datos inventados (sin backend, sin video). Entra como `profe` por defecto; `?rol=alumno` para verla del otro lado |
 | `/perfil` | PagePerfil.jsx | ✅ |
 | `/admin` | PageAdmin.jsx | ✅ — protegido con JWT admin, 7 tabs (ver arriba) |
 | `/` | PageLanding.jsx | 🔒 CONGELADO — NO modificar sin permiso explícito de Paola |
