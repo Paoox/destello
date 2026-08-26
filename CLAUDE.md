@@ -66,10 +66,14 @@ destello/
 │   ├── web/                          ← React + Three.js (Vercel)
 │   │   ├── src/
 │   │   │   ├── pages/                ← PageLanding, PageLogin, PageAcceso, PageAdmin,
-│   │   │   │                            PageHome, PageHabitat, PageAula, PagePerfil
+│   │   │   │                            PageHome, PageHabitat, PageAula, PageAulaNueva,
+│   │   │   │                            PageCertificado, PagePerfil
+│   │   │   ├── aula/                 ← El módulo del aula (Aula.jsx, Sello.jsx,
+│   │   │   │                            actividades/contrato.js + Quiz.jsx). NUNCA
+│   │   │   │                            llama a la API de Destello — ver "Reglas Críticas"
 │   │   │   ├── components/
 │   │   │   │   ├── admin/            ← AccesosPanel, ListaEsperaAdmin, TalleresPanel,
-│   │   │   │   │                        ResplandoresPanel, ChispaCreator, etc.
+│   │   │   │   │                        AsistenciaPanel, MetricasPanel, etc.
 │   │   │   │   └── layout/           ← MainLayout, Navbar, AuthLayout
 │   │   │   └── services/             ← publicApi.js, adminApi.js
 │   │   └── vercel.json               ← proxy /api/* + SPA rewrites
@@ -214,24 +218,61 @@ Ver `docs/flujo-acceso-bot.md` para el detalle del flujo actual.
 | cupo_maximo | INTEGER |
 | imagen_url | TEXT |
 | categoria | TEXT |
+| hora_inicio / hora_fin | TIME — derivadas del texto de `horario` en `tallerService.js`, no se editan directo |
+| duracion_horas | NUMERIC, default 4 |
+| instructor | TEXT — hoy vacío para casi todos los talleres (ver "Lo que Falta") |
+
+**Tablas agregadas por las migraciones 001-014** (`apps/api/src/db/migrations/`),
+no documentadas arriba en detalle — ver el `.sql` de cada una para columnas
+exactas: `pagos`, `eventos` (bitácora JSONB append-only), `bot_conversaciones`
+(persiste conversaciones del bot, sobrevive reinicios), `asistencias` y
+`certificados` (migración 010), `usuarios_bloqueos` (migración 013, append-only).
+
+⚠️ Hay una migración fuera de la carpeta numerada:
+`apps/api/src/migrations/002_create_resplandores.sql` (carpeta `src/migrations/`,
+singular — no confundir con `src/db/migrations/`). No es residuo: la tabla
+`resplandores` sigue activa. Antes de moverla a la secuencia numerada, confirmar
+si ya se corrió en Supabase.
 
 ---
 
 ## API — Endpoints
+
+⚠️ Esta lista no es exhaustiva — para el detalle completo de una ruta, leer el
+router correspondiente en `apps/api/src/routes/`.
 
 ### Públicos (sin auth)
 ```
 GET  /health                          → status check
 POST /auth/login                      → login JWT usuario
 POST /auth/resplandor/validate        → valida resplandor y crea cuenta
+POST /auth/social                     → login Google (Firebase)
+POST /auth/phone/send-code            → OTP por WhatsApp
+POST /auth/phone/verify               → verifica OTP, login o liga número
 POST /chispas/validate                → valida chispa sin consumir
 GET  /tallers                         → lista talleres activos
+GET  /supernovas                      → catálogo de premios canjeables
+GET  /certificados/:folio             → verificación pública de un certificado
+                                         (a donde lleva el QR impreso; sin auth)
 
 POST /bot/registrar                   → crea/actualiza usuario (desde bot)
 GET  /bot/usuario/:email              → verifica si email tiene cuenta
 POST /bot/lista-espera                → registra en lista de espera
 GET  /bot/listas/:email               → listas de espera del usuario
 GET  /bot/pendientes/:email           → chispas + resplandores sin usar
+GET  /bot/diagnostico/:email          → foto completa del acceso, para que el bot ramifique
+POST /bot/reporte-acceso              → levanta reporte (abierto incluso a cuentas bloqueadas)
+```
+
+### Protegidos con JWT de usuario (`/users`, vía `authenticate`)
+```
+GET  /users/me                          → perfil del usuario
+PUT  /users/me                          → actualiza nombre/apellido/whatsapp/nombre_certificado
+GET  /users/me/talleres                 → talleres del usuario (para Home)
+POST /users/me/canjear                  · POST /users/me/supernovas/:id/canjear
+GET  /users/me/confirmar-asistencia     · POST /users/me/confirmar-asistencia (demos)
+POST /users/me/aula/:tallerId/presencia → LATIDO de asistencia (cada 2 min desde el aula)
+GET  /users/me/certificados             → certificados ya emitidos al usuario
 ```
 
 ### Admin (JWT admin separado)
@@ -246,8 +287,18 @@ POST /admin/resplandores/:code/revoke → revocar resplandor
 GET  /admin/lista-espera              → con tiene_resplandor, precio, horario
 POST /admin/lista-espera/:id/confirmar-lugar → confirma + envía correo (Resend)
 POST /admin/lista-espera/:id/confirmar       → genera Chispa o Resplandor + correo
+POST /admin/lista-espera/:id/confirmar-pago  → activarAlumno() transaccional
 POST /admin/send-wa                   → envía mensaje WA directo desde bot Faro
 GET  /admin/talleres                  → CRUD de talleres
+GET  /admin/talleres/:id/asistencia   → asistencia registrada de un taller
+POST /admin/talleres/:id/certificados → emitir certificados (todos o selección, body {emails})
+POST /admin/certificados              → emitir certificado individual
+DELETE /admin/certificados/:folio     → anular certificado (con motivo)
+GET  /admin/metricas                  → resumen (embudo, talleres, actividad, ingresos…)
+GET  /admin/metricas/categorias · /alumnos · /financiero · /alumno/:email
+GET  /admin/usuarios                  → lista para el tab Usuarios (bloqueo)
+GET  /admin/usuarios/:email/historial → historial de bloqueos de una cuenta
+PATCH /admin/usuarios/:email/bloqueo  → bloquea/desbloquea acceso o compras (reversible, con motivo)
 ```
 
 ---
@@ -300,16 +351,26 @@ Métodos de pago incluidos en templates:
 
 ## Panel Admin `/admin`
 
-Tabs: **Accesos** | **Talleres** | **Lista de espera**
+7 tabs en `PageAdmin.jsx`: **Accesos** · **Talleres** · **Lista de espera** ·
+**Reportes** · **Asistencia** · **Usuarios** · **Métricas**.
 
 **Accesos (`AccesosPanel.jsx`)** — búsqueda por email, historial de resplandores + chispas, lógica visual: sin cuenta → card Resplandor activa / con cuenta → card Chispa activa
 
 **Lista de espera (`ListaEsperaAdmin.jsx`)** ✅ completo
 - Tabla con filtros por estado (pendiente / cupo_confirmado / pagado / rechazado)
+- Chip de filtro 🎁 Demo — las cortesías viven en la misma lista, no aparte
 - Botón WA (verde) → `POST /admin/send-wa` → manda desde bot Faro directamente
 - Botón correo (jade) → `POST /admin/lista-espera/:id/confirmar-lugar` → Resend
 
-**Talleres (`TalleresPanel.jsx`)** ✅ completo — CRUD con columnas reales de BD
+**Talleres (`TalleresPanel.jsx`)** ✅ completo — CRUD con columnas reales de BD, editor de cupo, fecha y horario (texto libre; `hora_inicio`/`hora_fin` se derivan del texto en el backend)
+
+**Reportes** — reportes de acceso (`reportes_acceso`), incluye los que manda una cuenta bloqueada (`POST /bot/reporte-acceso` sigue abierto a propósito)
+
+**Asistencia (`AsistenciaPanel.jsx`)** — asistencia real por latidos desde el aula, emisión de certificados en bloque o por selección (casillas + "los N que califican")
+
+**Usuarios** — bloquear/desbloquear acceso o compras por cuenta, reversible, con motivo obligatorio e historial (`usuarios_bloqueos`)
+
+**Métricas (`MetricasPanel.jsx`)** — sub-pestañas Resumen / Financiero / Ficha de alumno; gráficas en SVG/CSS a mano (sin Recharts ni pandas/numpy)
 
 ---
 
@@ -318,13 +379,15 @@ Tabs: **Accesos** | **Talleres** | **Lista de espera**
 | Ruta | Archivo | Estado |
 |------|---------|--------|
 | `/intro` | PageIntro.jsx | ✅ — splash animado, auto-navega a /login |
-| `/login` | PageLogin.jsx | ✅ — tabs login/registro, Google pendiente |
-| `/acceso` | PageAcceso.jsx | ✅ — valida Resplandor, crea cuenta |
+| `/login` | PageLogin.jsx | ✅ — Google + número/OTP |
+| `/acceso` | PageAcceso.jsx | ✅ funcional, pero sin link desde la UI (ver "Sistema de Accesos" arriba) |
+| `/certificado/:folio` | PageCertificado.jsx | ✅ — verificación pública del QR del diploma, sin layout |
 | `/home` | PageHome.jsx | ✅ |
 | `/habitat` | PageHabitat.jsx | ✅ — grid talleres reales desde BD, modal lista de espera |
-| `/aula/:id` | PageAula.jsx | ✅ — sala 3D |
+| `/aula/:id` | PageAula.jsx | ✅ — LA FRONTERA: única pieza que habla con la API de Destello. Arma la `sesion` del contrato y envuelve `src/aula/Aula.jsx` (el módulo del aula: sellos, contrato de actividades, Quiz, rejilla — no consulta la API a propósito, para poder rentarse a otras escuelas como producto aparte). Le suma los latidos de asistencia que el módulo del aula no puede tener |
+| `/aula-nueva/:id` | PageAulaNueva.jsx | ✅ — salón de ensayo con datos inventados (sin backend, sin video), para practicar el aula sin depender de un taller real. `?rol=profe` para verla del otro lado |
 | `/perfil` | PagePerfil.jsx | ✅ |
-| `/admin` | PageAdmin.jsx | ✅ — protegido con JWT admin |
+| `/admin` | PageAdmin.jsx | ✅ — protegido con JWT admin, 7 tabs (ver arriba) |
 | `/` | PageLanding.jsx | 🔒 CONGELADO — NO modificar sin permiso explícito de Paola |
 
 ---
@@ -338,24 +401,29 @@ Tabs: **Accesos** | **Talleres** | **Lista de espera**
 5. **Después de cualquier cambio en `apps/api/`** → reconstruir Docker: `docker compose up --build -d api`
 6. **Las tablas de PostgreSQL ya existen** (creadas en pgAdmin por Paola) — no usar scripts SQL de creación.
 7. **`VITE_API_URL` en Vercel** — si se marca como "Sensitive", Vite NO la embebe en el build.
+8. **Nada dentro de `apps/web/src/aula/` puede llamar a la API de Destello.**
+   Recibe una `sesion` (armada por `PageAula.jsx` o `PageAulaNueva.jsx`) y con eso
+   le basta. El día que un componente del aula haga `fetch('/api/...')`, el aula
+   deja de ser un producto rentable aparte a otras escuelas y deshacerlo cuesta
+   caro. Si falta un dato, se agrega al contrato (`src/aula/contrato.js` o
+   `src/aula/actividades/contrato.js`), nunca se pide directo.
 
 ---
 
 ## Lo que Falta (Próximas Sesiones)
 
-### 🔴 Prioridad — `usuarios.whatsapp` debe ser ÚNICO
-Detectado el 21 jul 2026. Hoy dos correos distintos pueden tener el mismo número.
-Como `phoneAuthController` busca la cuenta **por whatsapp** (`WHERE whatsapp = $1
-AND estado = 'activo'`), quien pida el OTP entra a la primera cuenta que aparezca
-— o sea puede acceder a la cuenta de otra persona.
-
-Para arreglarlo:
-1. Buscar duplicados antes de poner la constraint:
-   `SELECT whatsapp, COUNT(*) FROM usuarios WHERE whatsapp IS NOT NULL GROUP BY whatsapp HAVING COUNT(*) > 1;`
-2. `CREATE UNIQUE INDEX ... ON usuarios (whatsapp) WHERE whatsapp IS NOT NULL`
-   (índice parcial: permite varios NULL, un solo número repetido no)
-3. Manejar el error de duplicado en el bot y en `/admin` con un mensaje claro:
-   "ese número ya está ligado a otra cuenta".
+### 🔴 Bloquea el lanzamiento (meta: 11 sep 2026, capas 1-2 del aula)
+- **Video real en el aula.** Plan: primero probar OpenVidu (fork de LiveKit) en
+  local/1 a 1 para perfilar su comportamiento; recién después se contrata el VPS
+  (Hostinger KVM 2, Phoenix) y se monta ahí. Hoy el aula dice "Sin video todavía".
+- **Actividades reales.** Existe el contrato (`src/aula/actividades/contrato.js`)
+  y el Quiz funcionando de punta a punta; faltan `modelo3d`, `memorama`, `armar`,
+  y conectar el contenido real de cada taller a la plantilla.
+- **Tabla de profesores.** Hoy "profe" = `isAdminEmail()` — es un problema de
+  seguridad (un profesor externo vería todo el panel financiero), no solo un
+  pendiente cosmético. Destraba también: nombre en los diplomas, firma, y ForYou.
+- **Justo antes de abrir:** respaldo de la BD (Supabase free no incluye backups
+  diarios) y un ping diario para que el proyecto no se pause por inactividad.
 
 ### 🟠 Deuda técnica — las tablas se relacionan por CORREO, no por id
 Detectado por Paola el 21 jul 2026. Hoy `chispas.usuario_email`, `resplandores.email`
@@ -374,13 +442,19 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
 **NO eliminar `chispas_usuario_email_fkey`.**
 
 ### 🟡 Pendiente
-- **Asignar demos a las cuentas** (requiere cuenta creada primero)
-- **Panel admin** — pulir Accesos y agregar pestaña de Reportes
+- **Acordado, sin empezar:** onboarding/visita guiada la primera vez en el aula;
+  `/aula-nueva` se está reconvirtiendo en salón de ensayo del profesor (en vez
+  de borrarla); ilustraciones de sellos y reacciones (las hace Paola);
+  corregir talleres con horario `12:00 PM – 12:00 PM` cargado mal (dato, no bug).
+- **Después de abrir:** Habitat deja de ser catálogo y se vuelve un mundo tipo
+  Minecraft con objetos desbloqueables; tienda de Supernovas rediseñada
+  alrededor de eso; traducción de voz en tiempo real; automatizar la emisión
+  de certificados (hoy el criterio es automático, el disparo es manual).
 - **Reporte de pago por WhatsApp** — falta leer `imageMessage` en `apps/bot/index.js`
   (hoy las fotos se ignoran por completo). Ver `docs/flujo-acceso-bot.md`.
-- **Dashboard Analytics** en panel admin — métricas de conversión, rentabilidad, reincidencia
-- **Error en consola frontend** — `Cannot read properties of undefined (reading 'payload')`. Nota: `useAuthStore.js` actual NO tiene referencia a `payload` (0 matches en `apps/web/src`); ya corregido o viene de una librería. Reproducir y leer stack trace para ubicarlo.
 - **Vigencia de Chispa en frontend** — bloquear rooms/contenido automáticamente al vencer
+- **`docker-compose.yml` → `viewer3d`** apuntaba a `./apps/viewer3d`, que no
+  existe en el repo (limpiado — ver "Lo que Está Terminado y Funciona").
 - **Limpieza env** — agregar `MAIL_FROM` y `BOT_HTTP_URL` al `.env` de la Toshiba (salen WARN); regenerar `package-lock.json` de la api con `resend`
 
 ### 🔮 Futuro
@@ -413,3 +487,39 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
 - ✅ CORS incluye `destello.courses`
 - ✅ Proxy Vercel `/api/*` → túnel en `vercel.json`
 - ✅ Talleres dinámicos desde BD en PageLanding y PageHabitat
+
+### Entregado en agosto 2026 (no estaba documentado aquí)
+
+- ✅ **`usuarios.whatsapp` único** (21 ago, commit `b53eea5`) — el bug que este
+  archivo listaba como prioridad ya está resuelto y verificado en producción:
+  índice único parcial (`001_whatsapp_unico.sql`) + `asegurarWhatsappLibre()`
+  validando en los 6 puntos que escriben el campo + `errorHandler.js` traduce
+  el 23505 de Postgres a un 409 legible.
+- ✅ **Reglas de cupo, plazos y liberación** (migraciones 006-009) — `v_cupo_taller`
+  como fuente única del cupo real; 48h para pagar → recordatorio → 24h de
+  gracia → liberar lugar; las cortesías/demos ocupan cupo igual que un pago
+  (`monto=0`, nunca cuentan como ingreso).
+- ✅ **`activarAlumno()`** (`inscripcionService.js`) — un solo camino
+  transaccional para activar una cuenta, usado tanto por confirmar-pago como
+  por el selector de estado del panel.
+- ✅ **Certificados por asistencia real** (migración 010-012) — latidos desde
+  el aula (`POST /users/me/aula/:tallerId/presencia`, cada 2 min, umbral 20 min
+  conectado), diploma con ornamentos + sello + QR, página pública
+  `/certificado/:folio`, emisión en bloque o por selección. **Emitir ≠ enviar**:
+  hoy el certificado aparece en el Home del alumno, no se le notifica.
+- ✅ **Bloqueo de usuarios** (migración 013) — dos interruptores reversibles
+  (`acceso_bloqueado` / `compras_bloqueadas`), motivo obligatorio, historial
+  append-only, el bot también lo respeta.
+- ✅ **Panel de Métricas** — SQL + SVG a mano (sin pandas/numpy ni Recharts),
+  sub-pestañas Resumen/Financiero/Ficha de alumno, paleta validada para
+  daltonismo.
+- ✅ **El Aula** — `src/aula/` (módulo desacoplado que no debe llamar a la API
+  de Destello) + `PageAula.jsx` como frontera. Shell, sellos, reacciones,
+  rejilla de la profesora como estado (no video), contrato de actividades con
+  Quiz funcionando de punta a punta. El bug de que el aula nunca abría a su
+  hora (migración 014: un `Date` de pg metido en un template literal, el día
+  calculado en UTC en vez de CDMX, y el horario en dos campos sin sincronizar)
+  quedó cerrado y verificado en producción el 25 ago 2026.
+- ✅ `docker-compose.yml` — quitado el servicio `viewer3d` que apuntaba a una
+  carpeta inexistente (`./apps/viewer3d`); se vuelve a agregar cuando exista
+  el visualizador 3D de verdad.

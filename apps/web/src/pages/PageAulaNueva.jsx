@@ -1,11 +1,17 @@
 /**
- * Destello — Pantalla de prueba del aula nueva
+ * Destello — Salón de ensayo del profesor
  *
- * Ruta: `/aula-nueva/:id`  ·  `/aula-nueva/:id?rol=profe` para verla del otro lado.
+ * Ruta: `/aula-nueva/:id` (entra como profe) · `/aula-nueva/:id?rol=alumno`
+ * para verla del otro lado.
  *
- * POR QUÉ EXISTE: el `/aula/:id` de siempre sigue intacto. Esta pantalla deja
- * ver el aula nueva con datos inventados, sin romper nada de lo que ya está en
- * producción y **sin necesitar todavía el servidor de video**.
+ * POR QUÉ EXISTE (reconvertida el 26 ago 2026, ver project_onboarding): nació
+ * como pantalla de prueba del aula nueva sin romper el `/aula/:id` real, y
+ * sigue sirviendo exactamente para eso — pero su uso principal ahora es que
+ * el profesor practique ANTES de su clase real: liberar y bloquear controles,
+ * poner sellos, dar la palabra, cambiar de actividad, hasta que le salga
+ * natural. Las 20 personas de abajo son alumnos de mentiras para practicar
+ * con ellos, no una clase vacía — y todavía no hace falta el servidor de
+ * video para ensayar nada de esto.
  *
  * Este archivo es el ÚNICO que conoce a Destello. Su trabajo es armar el objeto
  * `sesion` que describe `aula/contrato.js` y pasárselo al aula. El día que la
@@ -16,6 +22,22 @@
 import { useParams, useSearchParams } from 'react-router-dom'
 import Aula from '../aula/Aula.jsx'
 import { MARCA_DESTELLO } from '../aula/contrato.js'
+
+/** Aviso fijo de que esto es el salón de ensayo, no una clase real. */
+function AvisoEnsayo({ rol }) {
+    return (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 'var(--space-2)', padding: '6px 12px',
+            background: 'var(--color-ambar-600, #D97706)', color: '#1a1204',
+            fontSize: '13px', fontWeight: 600, textAlign: 'center',
+        }}>
+            🎓 Salón de ensayo — practica aquí antes de tu clase real. Nadie más te ve.
+            {rol === 'alumno' && ' (viendo como lo vería un alumno)'}
+        </div>
+    )
+}
 
 /** Gente de mentiras para poder ver el aula antes de que exista la de verdad. */
 const NOMBRES = [
@@ -54,7 +76,9 @@ const PERSONAS = NOMBRES.map((nombre, i) => ({
 export default function PageAulaNueva() {
     const { id } = useParams()
     const [params] = useSearchParams()
-    const rol = params.get('rol') === 'profe' ? 'profe' : 'alumno'
+    // Default = profe: el uso principal de este salón es que ELLA ensaye.
+    // ?rol=alumno queda para cuando quiera ver cómo se ve del otro lado.
+    const rol = params.get('rol') === 'alumno' ? 'alumno' : 'profe'
 
     const yo = rol === 'profe'
         ? { id: 'profe', nombre: 'Prof. Minerva', avatarUrl: null, camara: true,
@@ -133,5 +157,10 @@ export default function PageAulaNueva() {
         },
     }
 
-    return <Aula sesion={sesion} key={`${id}-${rol}`} />
+    return (
+        <>
+            <AvisoEnsayo rol={rol} />
+            <Aula sesion={sesion} key={`${id}-${rol}`} />
+        </>
+    )
 }
