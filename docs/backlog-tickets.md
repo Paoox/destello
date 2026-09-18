@@ -338,20 +338,19 @@ se llama desde el manejador principal de mensajes.
   siguiente; el `NOT NULL` final solo se pone cuando las 2 tablas ya tienen
   `usuario_id` poblado al 100%.
 
-**Paso 1 de 4 — ✅ código listo, ⚠️ pendiente correr en Supabase (18 sep 2026)**
-- Nueva migración `apps/api/src/db/migrations/015_usuario_id_paso1.sql`:
-  agrega `usuario_id INTEGER REFERENCES usuarios(id)` (nullable, `ON DELETE
+### ~~Paso 1 de 4 — agregar `usuario_id` nullable~~ ✅ CERRADO (18 sep 2026)
+- Migración `apps/api/src/db/migrations/015_usuario_id_paso1.sql`: agrega
+  `usuario_id INTEGER REFERENCES usuarios(id)` (nullable, `ON DELETE
   SET NULL` — mismo criterio que la FK vieja por email) a `chispas` y
-  `lista_espera`, con su índice cada una. Ya quedó vacía en todas las filas
-  — a propósito, eso es el paso 2.
+  `lista_espera`, con su índice cada una. Queda vacía en todas las filas
+  a propósito — llenarla es el paso 2.
 - `db/schema.supabase.sql` actualizado con esta migración también (sigue
   siendo la concatenación fiel de todas, ahora 001 a 015).
-- **No requiere redeploy de la API** — ningún código lee todavía la columna
-  nueva; las consultas `SELECT *` existentes solo van a traer un
-  `usuario_id: null` extra, que no rompe nada.
-- **Sí requiere acción en Supabase:** copiar el contenido de
-  `015_usuario_id_paso1.sql` y correrlo en el SQL Editor de Supabase — es
-  lo único pendiente para dar este paso por cerrado.
+- **Corrida en Supabase y confirmada por Paola (18 sep 2026), sin errores.**
+- No requirió redeploy de la API — ningún código lee la columna todavía.
+
+**Siguiente:** paso 2 — rellenar `usuario_id` en las filas existentes a
+partir del correo actual.
 
 ### T-14 — Limpiar el modelo viejo de códigos (Resplandor)
 
