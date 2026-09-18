@@ -494,28 +494,52 @@ Detalle completo y cómo diagnosticarlo en `docs/backlog-tickets.md` (T-S1).
   diarios) y un ping diario para que el proyecto no se pause por inactividad.
 
 ### 🟠 Deuda técnica — las tablas se relacionan por CORREO, no por id
-Detectado por Paola el 21 jul 2026. Hoy `chispas.usuario_email` y
+Detectado por Paola el 21 jul 2026. `chispas.usuario_email` y
 `lista_espera.email` ligan por texto (la tercera tabla que originalmente
 tenía este mismo problema, `resplandores.email`, ya no aplica: esa tabla es
-histórica desde el 18 sep 2026, T-14, y nada la consulta). Consecuencias: si
-alguien cambia de correo se rompe la cadena, y todas las queries hacen
-`LOWER(email) = LOWER($1)` para compensar mayúsculas.
+histórica desde el 18 sep 2026, T-14, y nada la consulta).
 
-Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etapas
-(NO hacerlo de un tirón):
-1. Agregar `usuario_id` nullable a las dos tablas
-2. Rellenarlo desde el correo actual (`UPDATE ... FROM usuarios WHERE LOWER(email)...`)
-3. Migrar las consultas de los servicios una por una, dejando el email como respaldo
-4. Recién entonces poner NOT NULL y quitar `chispas_usuario_email_fkey`
+Migración por etapas hacia `usuario_id` (T-13 en `docs/backlog-tickets.md`,
+detalle completo ahí) — **pasos 1, 2 y 3 ya cerrados y verificados (18 sep
+2026):** las dos tablas tienen la columna, las filas existentes ya están
+rellenas (con las huérfanas esperables — alguien sin cuenta todavía no
+tiene qué enlazar, eso es normal), toda inserción nueva la guarda, y los
+`JOIN` cruzados entre `chispas`/`lista_espera` ya prefieren `usuario_id`
+con el correo como respaldo automático.
 
-⚠️ Mientras esta migración no esté hecha, la regla #2 de abajo sigue vigente:
+**Falta solo el paso 4** (`NOT NULL` + quitar `chispas_usuario_email_fkey`)
+— pendiente a propósito, y con una duda por resolver antes de hacerlo: no
+todas las filas van a tener `usuario_id` alguna vez (una chispa "sin
+asignar", alguien en lista de espera sin cuenta todavía), así que "100%
+poblado" tal como estaba escrito el criterio original puede no ser la meta
+correcta — hay que revisarlo con calma antes de tocar la FK vieja.
+
+⚠️ Mientras el paso 4 no esté hecho, la regla #2 de abajo sigue vigente:
 **NO eliminar `chispas_usuario_email_fkey`.**
+
+### 🤖 Pendiente de la próxima revisión completa del bot
+`apps/bot/src/flujo.js` sigue marcado "NO tocar sin revisión a fondo" — lo
+de hoy (T-37, ya cerrado) fue una excepción puntual y acotada, no la
+revisión completa. Hallazgos que quedaron anotados para esa sesión (detalle
+en `docs/backlog-tickets.md`):
+- **T-35** — posible rama muerta de código para "avisar del resplandor
+  pendiente" (ya no se dispara nunca desde T-14, `GET /bot/pendientes`
+  siempre devuelve el arreglo vacío).
+- **T-36** — cuando el bot le dice a alguien "quedaste inscrito" y le manda
+  medios de pago, su registro sigue en `pendiente` y **no cuenta contra el
+  cupo real todavía** (`cupoService.js`: solo `cupo_confirmado`/`pagado`
+  cuentan). Paola está evaluando que el lugar se asigne de verdad desde ese
+  momento.
 
 ### 🟡 Pendiente
 - **Acordado, sin empezar:** onboarding/visita guiada la primera vez en el aula;
   `/aula-nueva` se está reconvirtiendo en salón de ensayo del profesor (en vez
   de borrarla); ilustraciones de sellos y reacciones (las hace Paola);
   corregir talleres con horario `12:00 PM – 12:00 PM` cargado mal (dato, no bug).
+- **T-34** — `PageLanding.jsx` (🔒 CONGELADA) todavía menciona "Resplandor y
+  Chispa" en su copy de marketing, un mecanismo que ya no existe en el
+  código (T-14, 18 sep 2026). Decisión de Paola: se actualiza al final,
+  cuando haya contenido nuevo listo para montar — no bloquea nada.
 - **Después de abrir:** Habitat deja de ser catálogo y se vuelve un mundo tipo
   Minecraft con objetos desbloqueables; tienda de Supernovas rediseñada
   alrededor de eso; traducción de voz en tiempo real; automatizar la emisión
@@ -535,6 +559,29 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
 ---
 
 ## Lo que Está Terminado y Funciona
+
+- ✅ **T-37 — el bot ya no dice "registro guardado" a ciegas** (18 sep 2026).
+  Encontrado al probar T-13: si el WhatsApp usado ya estaba ligado a otra
+  cuenta, `usuarioService.upsertUsuario()` rechazaba la creación
+  (`WA_EN_USO`, regla ya vigente: un WhatsApp no puede estar en dos
+  cuentas) pero el bot nunca revisaba la respuesta y seguía como si hubiera
+  funcionado — la persona podía hasta pagar un taller y después no poder
+  entrar nunca. Dos capas de arreglo (diseño de Paola): (1) preventiva —
+  nuevo endpoint `GET /bot/usuario-por-whatsapp/:numero` + nueva función
+  `iniciarRegistro()` en `flujo.js` que reconoce a la persona por su
+  WhatsApp ANTES de pedirle correo, sin volver a preguntar si ya tiene
+  cuenta; (2) red de seguridad — si `/bot/registrar` falla igual, el bot
+  ahora sí le avisa. Verificado por Paola en WhatsApp real: te reconoce y
+  saluda por nombre sin pedir correo.
+
+- ✅ **T-13, pasos 1-3 — migración hacia `usuario_id` en `chispas` y
+  `lista_espera`** (18 sep 2026). Columna agregada y poblada, toda
+  inserción nueva ya la guarda, y los `JOIN` cruzados entre las dos tablas
+  ya prefieren `usuario_id` con el correo como respaldo automático (si
+  cualquiera de los dos ids es `NULL`, SQL cae solo a la comparación por
+  correo — no hizo falta duplicar ninguna consulta). Falta solo el paso 4
+  (`NOT NULL` + quitar la FK vieja), pendiente a propósito — ver "Deuda
+  técnica" arriba. Detalle completo en `docs/backlog-tickets.md` (T-13).
 
 - ✅ **T-10 — nombre/apellido separados también en el caso borde** (18 sep
   2026). El bug original (bot concatenaba nombre completo) ya estaba
