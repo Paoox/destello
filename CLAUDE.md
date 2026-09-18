@@ -533,6 +533,15 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
 
 ## Lo que Está Terminado y Funciona
 
+- ✅ **T-10 — nombre/apellido separados también en el caso borde** (18 sep
+  2026). El bug original (bot concatenaba nombre completo) ya estaba
+  resuelto; quedaba que `activarAlumno()` (`inscripcionService.js`) copiara
+  el nombre completo de `lista_espera` sin partir cuando activaba a alguien
+  que nunca pasó por el bot. Nueva función `partirNombre()` (misma regla
+  que el bot: primera palabra = nombre, resto = apellido), aplicada en las
+  dos queries de `activarAlumno()`. Pruebas en
+  `inscripcionService.test.js` (4 casos). `npm test`: 12/12.
+
 - ✅ **T-14 (a/b/c) + T-33 — Modelo viejo de Resplandor y login por
   código/contraseña retirados por completo** (18 sep 2026). Hoy solo se
   entra por Google o WhatsApp OTP — todo lo demás se quitó:

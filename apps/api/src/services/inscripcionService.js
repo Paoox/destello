@@ -37,6 +37,23 @@ function segmento() {
     return crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 4)
 }
 
+/**
+ * Parte un nombre completo en nombre/apellido: primera palabra = nombre, el
+ * resto = apellido. Misma regla que ya usa el bot al capturar el registro
+ * (`apps/bot/src/flujo.js`, paso REG_NOMBRE) — se repite aquí porque este es
+ * el único otro camino que puede crear una cuenta con nombre de una sola
+ * cadena: cuando el admin activa a alguien que nunca pasó por el bot (T-10).
+ *
+ * Ojo: es solo una PROPUESTA para uso interno (saludar, buscar). El nombre
+ * del certificado se pregunta aparte, en el perfil — partir nombres a la
+ * fuerza es una pelea que no se gana (dos apellidos, "de la", etc.).
+ */
+export function partirNombre(completo) {
+    if (!completo) return { nombre: null, apellido: null }
+    const partes = completo.trim().replace(/\s+/g, ' ').split(' ')
+    return { nombre: partes[0], apellido: partes.slice(1).join(' ') || null }
+}
+
 function nuevoCodigoChispa() {
     return `DEST-${segmento()}-${segmento()}`
 }
@@ -129,26 +146,33 @@ export async function activarAlumno(listaEsperaId, opts = {}) {
             ? `El número ${wa} ya está ligado a la cuenta ${dueñoWa.email}, así que no se copió a ${email}.`
             : null
 
+        // T-10: reg.nombre viene de lista_espera como una sola cadena (puede
+        // ser "Ana Ruiz García" si esta persona nunca pasó por el bot, que sí
+        // guarda nombre/apellido separados desde el inicio). Se parte aquí
+        // para no repetir el bug de meter el apellido dentro del nombre.
+        const { nombre: nombreSplit, apellido: apellidoSplit } = partirNombre(reg.nombre)
+
         let usuario
         if (encontrados.length) {
             const { rows } = await q(
                 `UPDATE usuarios
                     SET estado       = 'activo',
-                        activado_por = COALESCE(activado_por, $4),
+                        activado_por = COALESCE(activado_por, $5),
                         nombre       = COALESCE(nombre,   $1),
-                        whatsapp     = COALESCE(whatsapp, $2),
+                        apellido     = COALESCE(apellido, $2),
+                        whatsapp     = COALESCE(whatsapp, $3),
                         updated_at   = NOW()
-                  WHERE id = $3
+                  WHERE id = $4
                 RETURNING *`,
-                [reg.nombre, waUsable, encontrados[0].id, actor]
+                [nombreSplit, apellidoSplit, waUsable, encontrados[0].id, actor]
             )
             usuario = rows[0]
         } else {
             const { rows } = await q(
-                `INSERT INTO usuarios (email, nombre, whatsapp, estado, activado_por, origen)
-                 VALUES ($1, $2, $3, 'activo', $4, 'admin')
+                `INSERT INTO usuarios (email, nombre, apellido, whatsapp, estado, activado_por, origen)
+                 VALUES ($1, $2, $3, $4, 'activo', $5, 'admin')
                  RETURNING *`,
-                [email, reg.nombre, waUsable, actor]
+                [email, nombreSplit, apellidoSplit, waUsable, actor]
             )
             usuario = rows[0]
         }

@@ -288,23 +288,24 @@ Verificado 18 sep 2026: `cupoService.hayCupo()` existe y ya se llama desde
 `listaEsperaService.js` (antes de anotar en lista de espera) y desde
 `chispaService.js` (antes de crear una chispa).
 
-### 🟡 T-10 — Nombre y apellido en un solo lugar (reducido a un caso borde)
-- **Estado verificado 18 sep 2026:** el problema original ya no existe en el
-  camino normal — `apps/bot/src/flujo.js` (paso `REG_NOMBRE`) ya separa
-  nombre y apellido al capturar el mensaje y los manda por separado a
-  `/bot/registrar`. El comentario en el propio código dice explícito: *"antes
-  eran concatenados, que era el bug que metía el apellido dentro del
-  nombre"*.
-- **Lo que sí queda:** `activarAlumno()` (`inscripcionService.js`) solo suma
-  `nombre = COALESCE(nombre, reg.nombre)` al activar desde `lista_espera` —
-  si la cuenta se crea por ESE camino (nunca pasó por el registro del bot) y
-  no tenía nombre, copia el nombre completo concatenado de `lista_espera` sin
-  partirlo, dejando `apellido` vacío. Caso angosto (alguien que el admin dio
-  de alta directo en lista de espera, no por el bot), pero real.
-- **Dónde tocar:** `inscripcionService.js` — partir `reg.nombre` en
-  nombre/apellido con la misma regla que ya usa el bot (primera palabra =
-  nombre, resto = apellido) antes de escribirlo, solo si el usuario es nuevo.
-- **Criterio de terminado:** una cuenta activada desde `lista_espera` sin
+### ~~T-10 — Nombre y apellido en un solo lugar~~ ✅ CERRADO (18 sep 2026)
+- **Estado verificado el 18 sep:** el problema original ya no existía en el
+  camino normal — `apps/bot/src/flujo.js` (paso `REG_NOMBRE`) ya separaba
+  nombre y apellido al capturar el mensaje. Solo quedaba el caso borde de
+  `activarAlumno()` (`inscripcionService.js`): al activar desde
+  `lista_espera` a alguien que nunca pasó por el bot, copiaba el nombre
+  completo concatenado sin partirlo, dejando `apellido` vacío.
+- **Qué se hizo:** nueva función `partirNombre()` (exportada) en
+  `inscripcionService.js` — misma regla que ya usa el bot: primera palabra
+  = nombre, el resto = apellido (o `null` si es una sola palabra). Se
+  aplica a `reg.nombre` antes de las dos queries de `activarAlumno()`
+  (la que actualiza una cuenta existente vía `COALESCE`, y la que crea una
+  cuenta nueva) — ninguna de las dos escribía `apellido` antes; ahora las
+  dos lo hacen.
+- **Pruebas:** `apps/api/src/services/inscripcionService.test.js` (4 casos:
+  nombre+apellido, una sola palabra, espacios extra, null/vacío). `npm test`
+  en `apps/api`: 12/12 (los 8 de antes + estos 4).
+- **Criterio de terminado:** ✅ una cuenta activada desde `lista_espera` sin
   pasar por el bot también termina con `nombre` y `apellido` separados.
 
 ### ~~T-11 — Transacción en `confirmar-pago`~~ ✅ ya resuelto
