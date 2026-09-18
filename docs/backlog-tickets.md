@@ -129,7 +129,7 @@ del contenedor contra el hash real:
 docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HASH)"
 ```
 
-### T-S2 — ✅ código listo y probado localmente, ⚠️ falta desplegar — sin límite de intentos por IP en login de admin y envío de OTP
+### T-S2 — ✅ CERRADO (18 sep 2026) — sin límite de intentos por IP en login de admin y envío de OTP
 - **Qué falta:** rate limiting por IP en `POST /admin/login` (hoy solo hay
   bcrypt, sin cooldown ni bloqueo tras varios intentos fallidos) y en
   `POST /auth/phone/send-code` (el único límite hoy es por número de WhatsApp
@@ -160,9 +160,9 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
   - Pruebas: `apps/api/src/middleware/rateLimit.test.js` (4 casos: límite por
     IP, IPs independientes entre sí, reseteo pasada la ventana, header
     `Retry-After`). `npm test` en `apps/api`: 8/8 pasan (con los 4 de T-S1).
-  - **Pendiente de desplegar:** este código todavía no está en la Toshiba —
-    falta `git pull` + `docker compose up --build -d api` para que tome
-    efecto en producción.
+  - Desplegado y verificado en prod (18 sep 2026): 11 intentos seguidos
+    contra `/admin/login` con contraseña incorrecta dieron `401` los
+    primeros 10 y `429` el 11.
 
 ### Notas menores de la misma revisión (no ameritan ticket propio todavía)
 - `.env.example` está listado dentro de `.gitignore` pero SÍ está trackeado en

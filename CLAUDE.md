@@ -432,11 +432,10 @@ Métodos de pago incluidos en templates:
 > sección se mantiene como resumen de alto nivel; para el detalle o el
 > estado real de un pendiente, ir al backlog.
 
-### 🔒 Seguridad — ver `docs/backlog-tickets.md` sección 2
-Detectado en la revisión del 17 sep 2026, más urgente que lo de abajo porque
-es explotable en producción hoy, no solo pendiente de construir.
-- **T-S2** — sin rate limiting por IP en `/admin/login` ni en
-  `/auth/phone/send-code`. Pendiente.
+### 🔒 Seguridad
+La revisión del 17 sep 2026 (`docs/backlog-tickets.md` sección 2) encontró
+T-S1 y T-S2, los dos ya cerrados y verificados en producción — ver
+"Lo que Está Terminado y Funciona" más abajo para el detalle de cada uno.
 
 ⚠️ **Al rotar `ADMIN_PASSWORD_HASH` en el `.env` de la Toshiba:** Docker
 Compose interpola ese archivo buscando `$ALGO` para sustituir variables, y un
@@ -501,6 +500,15 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
 ---
 
 ## Lo que Está Terminado y Funciona
+
+- ✅ **T-S2 — rate limiting por IP en `/admin/login` y `/auth/phone/send-code`**
+  (18 sep 2026). Middleware propio en memoria (`apps/api/src/middleware/rateLimit.js`,
+  mismo criterio que `otpService.js`, sin librería externa), leyendo
+  `CF-Connecting-IP` porque la API vive detrás de un Cloudflare Tunnel.
+  `/admin/login`: 10 intentos / 15 min por IP. `/auth/phone/send-code`:
+  8 solicitudes / 10 min por IP (además del límite ya existente por número).
+  Verificado en prod: 11 intentos seguidos contra `/admin/login` con
+  contraseña incorrecta dieron `401` los primeros 10 y `429` el 11.
 
 - ✅ **T-S1 — endpoints `/bot/*` ya exigen `BOT_API_KEY`** (17 sep 2026).
   Cerraba una cadena de robo de cuenta: cualquiera en internet podía llamar
