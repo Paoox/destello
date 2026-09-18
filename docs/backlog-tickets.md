@@ -369,13 +369,18 @@ se llama desde el manejador principal de mensajes.
     nuevo que explica qué es, que no se debe correr de un tirón sobre una
     base con datos, y que las tablas reales pueden tener cambios hechos a
     mano en Supabase que ningún script capturó.
-- **Pendiente menor, no bloqueante:** el encabezado del nuevo
-  `schema.supabase.sql` deja anotada una discrepancia sin resolver:
-  `talleres.id` ahí es `TEXT` (slug), pero `CLAUDE.md` documenta que hoy es
-  `UUID` — ninguna migración 001-014 hace ese cambio, así que probablemente
-  se hizo a mano en Supabase en algún momento. Falta un `\d talleres` en el
-  SQL Editor de Supabase para confirmar y, si aplica, dejar constancia con
-  una migración o nota.
+- **Discrepancia resuelta (18 sep 2026):** se confirmó contra la base real
+  (`information_schema.columns` en Supabase) que `talleres.id` **sí es
+  `TEXT`** (slug) — `schema.supabase.sql` estaba bien, `CLAUDE.md` tenía el
+  dato viejo (decía UUID) y ya se corrigió.
+- **Hallazgo nuevo de la misma consulta:** `talleres` tiene dos columnas
+  reales — `instructor TEXT` y `duracion_horas NUMERIC` — que no existen en
+  NINGÚN schema ni migración versionada del repo. Se agregaron a mano
+  directo en Supabase. No rompe nada (el código ya las usa vía
+  `tallerService.js`, `CLAUDE.md` ya las documentaba), pero confirma en
+  concreto que la base real puede tener más que cualquier archivo `.sql`
+  de aquí. Anotado en el encabezado de `schema.supabase.sql` para la
+  próxima vez que alguien dude de lo mismo.
 - **Criterio de terminado:** ✅ un solo schema en el repo
   (`db/schema.supabase.sql`), y refleja la estructura acumulada real, no solo
   el arranque de julio.

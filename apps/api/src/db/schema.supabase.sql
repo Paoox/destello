@@ -17,12 +17,19 @@
 --  capturó. Si algo aquí no coincide con la base real, la base real
 --  manda, no este archivo.
 --
---  ⚠️ Discrepancia conocida sin resolver (18 sep 2026): la sección
---  base de abajo define `talleres.id` como TEXT (slug). CLAUDE.md dice
---  que hoy es UUID (`gen_random_uuid()`). Ninguna migración 001-014
---  hace ese cambio — probablemente se hizo a mano en Supabase. Falta
---  verificar el tipo real (`\d talleres` en el SQL Editor de Supabase)
---  y, si es UUID, dejar constancia aquí con una migración o nota.
+--  ✅ Resuelto (18 sep 2026): se confirmó contra la base real
+--  (information_schema.columns en el SQL Editor de Supabase) que
+--  `talleres.id` SÍ es TEXT (slug), como dice la sección de abajo.
+--  CLAUDE.md tenía el dato viejo (decía UUID) — ya se corrigió ahí.
+--
+--  ⚠️ Pero esa misma consulta encontró algo más: `talleres` tiene dos
+--  columnas reales, `instructor TEXT` y `duracion_horas NUMERIC`, que
+--  NO existen en NINGÚN archivo de este repo (ni aquí ni en ninguna
+--  migración 001-014) — se agregaron a mano en Supabase sin dejar
+--  rastro versionado. Es la prueba concreta de la advertencia de
+--  arriba: la base real puede tener más que este archivo. Si vuelves
+--  a agregar una columna a mano, considera anotarla aquí aunque sea en
+--  un comentario, para que este archivo no se quede obsoleto otra vez.
 --
 --  Reglas de negocio que siguen vigentes (de la base original):
 --   · cupo_maximo  = 20 por defecto (control de reventa)

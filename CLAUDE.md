@@ -208,7 +208,7 @@ Ver `docs/flujo-acceso-bot.md` para el detalle del flujo actual.
 **`talleres`**
 | columna | tipo |
 |---------|------|
-| id | UUID PK (gen_random_uuid()) |
+| id | **TEXT PK** (slug, ej. `'taller-auriculoterapia'`) — confirmado 18 sep 2026 vía `information_schema.columns` en Supabase; NO es UUID (dato corregido, `schema.supabase.sql` ya lo tenía bien) |
 | nombre | TEXT NOT NULL |
 | descripcion | TEXT |
 | precio | NUMERIC |
@@ -219,8 +219,16 @@ Ver `docs/flujo-acceso-bot.md` para el detalle del flujo actual.
 | imagen_url | TEXT |
 | categoria | TEXT |
 | hora_inicio / hora_fin | TIME — derivadas del texto de `horario` en `tallerService.js`, no se editan directo |
-| duracion_horas | NUMERIC, default 4 |
-| instructor | TEXT — hoy vacío para casi todos los talleres (ver "Lo que Falta") |
+| duracion_horas | NUMERIC — ⚠️ existe en la BD real pero en NINGÚN schema/migración versionada (se agregó a mano en Supabase) |
+| instructor | TEXT — hoy vacío para casi todos los talleres (ver "Lo que Falta"). ⚠️ Mismo caso: no está en ningún `.sql` del repo |
+
+⚠️ **`instructor` y `duracion_horas` confirman que la base real tiene cambios
+hechos a mano en Supabase que ningún archivo versionado captura** — exactamente
+la advertencia que ya traía el encabezado de `db/schema.supabase.sql` desde
+que se reconstruyó (T-15, 18 sep 2026), ahora con evidencia concreta. Si se
+agrega otra columna a mano, considerar aunque sea dejar una línea en
+`db/schema.supabase.sql` documentándola, para que este archivo seguido de
+utilidad y no se quede desactualizado otra vez sin que nadie se entere.
 
 **Tablas agregadas por las migraciones 001-014** (`apps/api/src/db/migrations/`),
 no documentadas arriba en detalle — ver el `.sql` de cada una para columnas
