@@ -526,10 +526,10 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
   ahí es "Crear Chispa", para demos, que no se tocó). Se quitó toda esa UI
   y lógica; el panel quedó solo con Chispas. Sin test automatizado —
   `apps/web` no tiene ningún framework de pruebas configurado todavía;
-  verificación sintáctica con `esbuild`, ⚠️ **pendiente de probar a mano en
-  el panel real** (checklist en `docs/backlog-tickets.md`, T-14). El backend
-  (`resplandorService.js`, endpoints `/admin/resplandores/*`) sigue vivo a
-  propósito — es T-14b, pendiente.
+  verificado con `esbuild` (sintaxis) y a mano por Paola en el panel real
+  (checklist en `docs/backlog-tickets.md`, T-14) — todo correcto. El
+  backend (`resplandorService.js`, endpoints `/admin/resplandores/*`) sigue
+  vivo a propósito — es T-14b, pendiente.
 
 - ✅ **T-15 — un solo schema en el repo** (18 sep 2026). Se borraron los dos
   archivos del MVP pre-Supabase (`db/schema.sql` y

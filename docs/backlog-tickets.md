@@ -341,7 +341,7 @@ se llama desde el manejador principal de mensajes.
 > toca). Ver el detalle de la conversación en el historial de git de este
 > archivo si hace falta el contexto completo.
 
-#### T-14a — ✅ código listo, ⚠️ pendiente probar en el panel real — Limpiar `AccesosPanel.jsx`
+#### ~~T-14a — Limpiar `AccesosPanel.jsx`~~ ✅ CERRADO (18 sep 2026)
 - **Qué se hizo:** se quitó toda la UI y lógica de Resplandor del panel
   (botón crear/reenviar/revocar, tab de historial, tab de la vista global,
   mensajes de WhatsApp) — quedó como panel de Chispas exclusivamente. Se
@@ -358,10 +358,10 @@ se llama desde el manejador principal de mensajes.
   (Vitest/Testing Library/etc. — 0, confirmado en la revisión de seguridad
   del 17 sep). No fue posible escribir un test automatizado para este
   cambio; se verificó sintaxis con `esbuild` (compila sin errores) y
-  revisión manual línea por línea. **Falta la verificación funcional real,
-  a mano en el panel** — checklist de 6 puntos entregado a Paola (buscar
-  cuenta activa/en espera/inexistente, generar chispa, tabla global, sin
-  rastro de "Resplandor"). Marcar CERRADO solo cuando confirme que pasó.
+  revisión manual línea por línea. **Verificación funcional confirmada por
+  Paola en el panel real (18 sep 2026)**, con el checklist de 6 puntos
+  (buscar cuenta activa/en espera/inexistente, generar chispa, tabla
+  global, sin rastro de "Resplandor") — todo correcto.
 - **Pendiente futuro, no de este ticket:** meter Vitest + Testing Library a
   `apps/web` para que el frontend deje de depender 100% de pruebas manuales.
 
