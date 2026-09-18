@@ -369,8 +369,44 @@ se llama desde el manejador principal de mensajes.
   revisar cuando se quiera, no es parte del criterio de terminado de este
   paso).
 
-**Siguiente:** paso 3 — migrar las consultas de los servicios una por una,
-dejando el email como respaldo.
+### Paso 3 de 4 — se partió en dos al empezarlo (18 sep 2026)
+
+> Al arrancar el paso 3 se encontró que el patrón `usuario_email` se usa en
+> muchas más tablas de las que T-13 cubre (`pagos`, `eventos`, `insignias`,
+> `asistencias`, `certificados`, `usuarios_bloqueos`, `canjes_supernova`) —
+> esas quedan **fuera de alcance**, T-13 solo habla de `chispas` y
+> `lista_espera`. Dentro de esas dos tablas, el paso se partió en 3a/3b
+> (mismo criterio que T-14): 3a es aditivo y de bajo riesgo, 3b toca
+> consultas que ya funcionan.
+
+#### ~~Paso 3a — que las inserciones nuevas guarden `usuario_id`~~ ✅ código listo, ⚠️ pendiente probar (18 sep 2026)
+- **Qué se hizo:** los 4 lugares del código que insertan en `chispas` o
+  `lista_espera` ahora también guardan `usuario_id` (antes ninguno lo hacía
+  — con eso, el trabajo del paso 2 se habría ido quedando atrás con cada
+  registro nuevo):
+  - `listaEsperaService.registrarEnLista()` — nuevo lookup con
+    `findByEmail()` antes del INSERT (puede dar `null`, normal: no siempre
+    existe cuenta todavía cuando alguien se anota).
+  - `chispaService.createChispa()` — el UPSERT a `usuarios` que esta
+    función ya hacía (para garantizar que la cuenta exista) ahora captura
+    el `id` con `RETURNING id` y lo reutiliza en sus dos INSERT
+    (`lista_espera` y `chispas`).
+  - `inscripcionService.activarAlumno()` — ya tenía `usuario.id` resuelto
+    de antes; se agregó a su INSERT de `chispas`.
+  - **De paso** (no es un INSERT, pero mismo criterio que T-10): el UPDATE
+    de `activarAlumno()` que marca `lista_espera` como `'pagado'` ahora
+    también rellena `usuario_id` con `COALESCE` si el registro venía de
+    antes de esta migración — sin esto, la única forma de que un registro
+    viejo consiguiera su `usuario_id` sería re-correr el paso 2 a mano.
+- **Lo que NO se tocó:** ningún `SELECT`/`WHERE` que ya filtra por correo
+  — eso es el paso 3b. La FK vieja tampoco se toca (paso 4).
+- **Pruebas:** no fue posible escribir un test automatizado — depende de
+  una base de datos real (INSERT/UPDATE con `RETURNING`), y este proyecto
+  no tiene infraestructura de pruebas de integración con Postgres todavía.
+  `npm test` (unitarias, sin tocar BD): sigue en 12/12, sin regresiones.
+  Verificación real pendiente: crear una chispa o registrarse por el bot
+  después del deploy, y confirmar en Supabase que la fila nueva ya trae
+  `usuario_id`.
 
 ### T-14 — Limpiar el modelo viejo de códigos (Resplandor)
 

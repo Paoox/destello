@@ -4,6 +4,7 @@
 import { query } from '../db/db.js'
 import { hayCupo, sincronizarEstadoCupo } from './cupoService.js'
 import { estadoDe as bloqueoDe } from './bloqueoService.js'
+import { findByEmail } from './usuarioService.js'
 
 export async function listPorTaller(tallerId) {
     const { rows } = await query(
@@ -123,10 +124,17 @@ export async function registrarEnLista({ email, tallerId, nombre, whatsapp, orig
         return { nuevo: false, sinCupo: true, cupo, motivo, registro: null }
     }
 
+    // T-13, paso 3a: si ya existe cuenta para este correo, se guarda de una
+    // vez el usuario_id (nullable — la mayoría de las veces sí existe, porque
+    // el bot registra la cuenta antes de anotar en lista_espera, pero no es
+    // requisito). Sin esto, cada alta nueva volvería a dejar la columna vacía
+    // y el trabajo del paso 2 se iría quedando atrás.
+    const usuarioExistente = await findByEmail(emailNorm)
+
     const { rows } = await query(
-        `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado, origen)
-         VALUES ($1, $2, $3, $4, 'pendiente', $5) RETURNING *`,
-        [emailNorm, tallerId, nombre || null, whatsapp || null, origen]
+        `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado, origen, usuario_id)
+         VALUES ($1, $2, $3, $4, 'pendiente', $5, $6) RETURNING *`,
+        [emailNorm, tallerId, nombre || null, whatsapp || null, origen, usuarioExistente?.id ?? null]
     )
     // Si esta inscripción fue la que llenó el taller, el estado pasa a 'lleno'
     // solo. Así el Habitat y el bot no tienen que calcular nada: leen el taller

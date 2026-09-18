@@ -205,21 +205,27 @@ export async function activarAlumno(listaEsperaId, opts = {}) {
                 await q(
                     `INSERT INTO chispas
                         (code, taller_id, taller_nombre, expires_at,
-                         usuario_nombre, usuario_email, usuario_wa, created_by)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                         usuario_nombre, usuario_email, usuario_wa, created_by,
+                         usuario_id)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                     [chispaCode, reg.taller_id, reg.taller_nombre, expiresAt,
-                     usuario.nombre, usuario.email, usuario.whatsapp, actor]
+                     usuario.nombre, usuario.email, usuario.whatsapp, actor,
+                     usuario.id]
                 )
             }
         }
 
         // ── 4. lista_espera → pagado ────────────────────────────────────────
         // `pagado_at` y el evento los pone el trigger, no hace falta escribirlos.
+        // T-13, paso 3a: de paso se rellena usuario_id si el registro venía de
+        // antes de esta migración (COALESCE — nunca pisa un valor ya puesto).
         await q(
             `UPDATE lista_espera
-                SET estado = 'pagado', pagado_por = COALESCE(pagado_por, $2)
+                SET estado     = 'pagado',
+                    pagado_por = COALESCE(pagado_por, $2),
+                    usuario_id = COALESCE(usuario_id, $3)
               WHERE id = $1`,
-            [listaEsperaId, actor]
+            [listaEsperaId, actor, usuario.id]
         )
 
         // ── 5. El pago ──────────────────────────────────────────────────────

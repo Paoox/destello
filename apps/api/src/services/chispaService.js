@@ -101,8 +101,13 @@ export async function createChispa({
     // que a quien ya estaba en 'espera' (todos los que llegan por el bot) se le
     // creaba la chispa y aun así no podía entrar — `phoneAuthController` exige
     // 'activo'. Se veía como "le di su acceso y dice que no tiene cuenta".
+    // T-13, paso 3a: se aprovecha este mismo UPSERT (que YA garantiza que la
+    // cuenta existe) para capturar su id y guardarlo en lista_espera/chispas
+    // más abajo — sin esto, cada chispa nueva dejaría usuario_id vacío y el
+    // trabajo del paso 2 se iría quedando atrás.
+    let usuarioId = null
     if (emailOwner) {
-        await query(
+        const { rows: upsertRows } = await query(
             `INSERT INTO usuarios (email, nombre, whatsapp, estado, activado_por, origen)
              VALUES ($1, $2, $3, 'activo', 'admin:chispa', 'admin')
              ON CONFLICT (email) DO UPDATE
@@ -110,9 +115,11 @@ export async function createChispa({
                    whatsapp     = COALESCE(usuarios.whatsapp, EXCLUDED.whatsapp),
                    estado       = 'activo',
                    activado_por = COALESCE(usuarios.activado_por, 'admin:chispa'),
-                   updated_at   = NOW()`,
+                   updated_at   = NOW()
+             RETURNING id`,
             [emailOwner, usuarioNombre || null, waOwner]
         )
+        usuarioId = upsertRows[0]?.id ?? null
     }
 
     // ── La chispa APARTA el lugar; el pago lo confirma ──────────────────────
@@ -176,10 +183,10 @@ export async function createChispa({
 
         if (!yaEnLista.length) {
             const { rows: ins } = await query(
-                `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado, origen)
-                 VALUES ($1, $2, $3, $4, $5, 'admin')
+                `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado, origen, usuario_id)
+                 VALUES ($1, $2, $3, $4, $5, 'admin', $6)
                  RETURNING id`,
-                [emailOwner, tallerId, usuarioNombre || null, waOwner, estadoInicial]
+                [emailOwner, tallerId, usuarioNombre || null, waOwner, estadoInicial, usuarioId]
             )
             listaEsperaId = ins[0].id
         } else if (yaEnLista[0].estado === 'pendiente' ||
@@ -224,12 +231,12 @@ export async function createChispa({
          (code, taller_id, taller_nombre,
           usuario_email, usuario_nombre, usuario_wa,
           created_by, expires_at, is_demo,
-          used, revoked, created_at)
+          used, revoked, created_at, usuario_id)
          VALUES
              ($1, $2, $3,
               $4, $5, $6,
               $7, $8, $9,
-              FALSE, FALSE, NOW())
+              FALSE, FALSE, NOW(), $10)
              RETURNING *`,
         [
             code,
@@ -241,6 +248,7 @@ export async function createChispa({
             createdBy,
             expiresAt,
             Boolean(isDemo),
+            usuarioId,
         ]
     )
 
