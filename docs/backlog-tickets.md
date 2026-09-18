@@ -38,7 +38,7 @@ Formato de cada ticket: **qué falta** · **por qué importa** · **dónde tocar
 > mismo, no pendientes de construcción. Revisión de código estático (no se
 > ejecutó ningún ataque real ni se tocó producción).
 
-### T-S1 — ✅ código listo, ⚠️ pendiente configurar en la Toshiba — los endpoints `/bot/*` no verificaban que quien llama sea el bot
+### T-S1 — ✅ CERRADO (17 sep 2026) — los endpoints `/bot/*` no verificaban que quien llama sea el bot
 - **Qué falta:** un secreto compartido (ej. header `X-Bot-Key`, comparado
   contra una env var nueva `BOT_API_KEY`) que la API exija en cada ruta de
   `routes/bot.js`, y que `apps/bot/` mande en cada request.
@@ -89,11 +89,45 @@ Formato de cada ticket: **qué falta** · **por qué importa** · **dónde tocar
     `git log --all`), pero se reemplazó por un placeholder. **Si esa
     contraseña era la real de `/admin`, cámbiala por una nueva** — estuvo
     tiempo sentada en un archivo pensado para plantillas.
-  - **Pendiente para que esto sirva de algo:** generar un `BOT_API_KEY` real
-    (`openssl rand -hex 32`), ponerlo en el `.env` de la Toshiba (mismo valor
-    en la sección de la API y en `apps/bot/.env`), y
-    `docker compose up --build -d api` + `sudo systemctl restart destello-bot`.
-    Mientras no se haga, el bot en producción va a recibir 401 en todo.
+  - Desplegado en la Toshiba: `BOT_API_KEY` generado y puesto en los dos
+    `.env` (raíz y `apps/bot/`), redeploy hecho, bot verificado funcionando
+    de punta a punta con la clave configurada.
+  - **De paso, se rotaron `ADMIN_TOKEN_SECRET` y la contraseña de `/admin`**
+    (`ADMIN_PASSWORD_HASH`) porque ambas se compartieron en texto plano
+    durante la sesión de chat de este ticket — regla general: cualquier
+    secreto que toca un chat/log se trata como expuesto y se rota, sin
+    importar que sea "solo para mí".
+
+#### ⚠️ Gotcha descubierto al rotar la contraseña: hashes bcrypt en el `.env` raíz necesitan `$` escapados como `$$`
+
+`docker-compose.yml` referencia varias variables como `${ADMIN_PASSWORD_HASH}`,
+y Docker Compose interpola el `.env` de la raíz buscando patrones `$ALGO` para
+sustituir variables — igual que hace con las que sí queremos. Un hash bcrypt
+(formato `$2a$12$<53 caracteres>`) trae 3 signos `$`, y el bloque después del
+tercero es texto base64 (`./0-9A-Za-z`) que, si por azar empieza con una
+letra, Compose lo confunde con el nombre de una variable, no la encuentra, y
+la borra en silencio — corrompiendo el hash sin ningún error visible.
+
+Pasó exactamente esto el 17 sep 2026: un hash nuevo cuyo salt empezaba con
+letra perdió ese pedazo completo al cargarse en el contenedor, y ni la
+contraseña vieja ni la nueva entraban — el síntoma no daba ninguna pista de
+que el problema era el `.env`, no la contraseña. Con ~52 de 64 caracteres
+posibles del alfabeto bcrypt siendo letras, esto va a pasar la **mayoría** de
+las veces que se rote la contraseña, no es un caso raro.
+
+**Regla para la próxima vez que se cambie `ADMIN_PASSWORD_HASH` (o cualquier
+valor con `$` que Compose vaya a interpolar):** duplicar cada `$` como `$$` en
+el `.env`. Ejemplo con un hash **inventado** (nunca pegar aquí el hash real —
+este repo es público):
+```
+# Hash de ejemplo (NO es uno real): $2a$12$EjemploDeSaltNoEsReal1.HashDeEjemploNoUsarNunca123
+# En el .env:                      ADMIN_PASSWORD_HASH="$$2a$$12$$EjemploDeSaltNoEsReal1.HashDeEjemploNoUsarNunca123"
+```
+Para diagnosticar si esto vuelve a pasar, comparar qué quedó cargado adentro
+del contenedor contra el hash real:
+```bash
+docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HASH)"
+```
 
 ### T-S2 — Sin límite de intentos por IP en login de admin y envío de OTP
 - **Qué falta:** rate limiting por IP en `POST /admin/login` (hoy solo hay

@@ -435,14 +435,17 @@ Métodos de pago incluidos en templates:
 ### 🔒 Seguridad — ver `docs/backlog-tickets.md` sección 2
 Detectado en la revisión del 17 sep 2026, más urgente que lo de abajo porque
 es explotable en producción hoy, no solo pendiente de construir.
-- **T-S1 ✅ código listo / ⚠️ falta configurar en la Toshiba** — los endpoints
-  `/bot/*` no verificaban que quien llamara fuera el bot Faro; cualquiera en
-  internet podía pisar el WhatsApp de una cuenta ajena vía `/bot/registrar` y
-  robársela por OTP. Ya está cerrado con `verificarBotKey` +
-  `BOT_API_KEY` — falta generar la clave real y ponerla en el `.env` de la
-  Toshiba (API y bot) + redeploy. Ver sección "Bot" en Endpoints, arriba.
 - **T-S2** — sin rate limiting por IP en `/admin/login` ni en
   `/auth/phone/send-code`. Pendiente.
+
+⚠️ **Al rotar `ADMIN_PASSWORD_HASH` en el `.env` de la Toshiba:** Docker
+Compose interpola ese archivo buscando `$ALGO` para sustituir variables, y un
+hash bcrypt (`$2a$12$...`) casi siempre trae un tramo que empieza con letra
+justo después del tercer `$` — Compose lo confunde con el nombre de una
+variable inexistente y lo borra en silencio, corrompiendo el hash sin ningún
+error visible (pasó el 17 sep 2026: ni la contraseña vieja ni la nueva
+entraban). **Hay que escapar cada `$` como `$$`** en esa línea del `.env`.
+Detalle completo y cómo diagnosticarlo en `docs/backlog-tickets.md` (T-S1).
 
 ### 🔴 Bloquea el lanzamiento (meta: 11 sep 2026, capas 1-2 del aula)
 - **Video real en el aula.** Plan: primero probar OpenVidu (fork de LiveKit) en
@@ -498,6 +501,21 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
 ---
 
 ## Lo que Está Terminado y Funciona
+
+- ✅ **T-S1 — endpoints `/bot/*` ya exigen `BOT_API_KEY`** (17 sep 2026).
+  Cerraba una cadena de robo de cuenta: cualquiera en internet podía llamar
+  `/bot/registrar` con el correo de una cuenta ajena y pisarle el WhatsApp
+  para luego entrar por OTP; `/bot/diagnostico` y `/bot/pendientes` exponían
+  datos y códigos internos de cualquier email sin autenticación. Middleware
+  `verificarBotKey` en `routes/bot.js`, header `X-Bot-Key` desde
+  `apps/bot/src/flujo.js` (`apiFetch()`). Verificado en prod: el bot sigue
+  respondiendo normal con la clave puesta, y `curl` externo sin la clave
+  contra `https://api.destello.courses/bot/diagnostico/...` confirma
+  `401 UNAUTHORIZED` (18 sep 2026). De paso se rotaron `ADMIN_TOKEN_SECRET`
+  y la contraseña de `/admin` (se
+  habían compartido en texto plano durante la sesión). Detalle completo en
+  `docs/backlog-tickets.md` (T-S1), incluyendo el gotcha de escapar `$` como
+  `$$` en hashes bcrypt dentro del `.env`.
 
 - ✅ **Bot Faro — fix `@lid` + opción 2 con inscripción directa** (21 jul 2026). Verificado en prod:
   un chat `@lid` resolvió el número vía `senderPn` sin preguntarle nada al usuario, y el flujo
