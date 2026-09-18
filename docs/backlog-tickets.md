@@ -338,6 +338,21 @@ se llama desde el manejador principal de mensajes.
   siguiente; el `NOT NULL` final solo se pone cuando las 2 tablas ya tienen
   `usuario_id` poblado al 100%.
 
+**Paso 1 de 4 — ✅ código listo, ⚠️ pendiente correr en Supabase (18 sep 2026)**
+- Nueva migración `apps/api/src/db/migrations/015_usuario_id_paso1.sql`:
+  agrega `usuario_id INTEGER REFERENCES usuarios(id)` (nullable, `ON DELETE
+  SET NULL` — mismo criterio que la FK vieja por email) a `chispas` y
+  `lista_espera`, con su índice cada una. Ya quedó vacía en todas las filas
+  — a propósito, eso es el paso 2.
+- `db/schema.supabase.sql` actualizado con esta migración también (sigue
+  siendo la concatenación fiel de todas, ahora 001 a 015).
+- **No requiere redeploy de la API** — ningún código lee todavía la columna
+  nueva; las consultas `SELECT *` existentes solo van a traer un
+  `usuario_id: null` extra, que no rompe nada.
+- **Sí requiere acción en Supabase:** copiar el contenido de
+  `015_usuario_id_paso1.sql` y correrlo en el SQL Editor de Supabase — es
+  lo único pendiente para dar este paso por cerrado.
+
 ### T-14 — Limpiar el modelo viejo de códigos (Resplandor)
 
 > Partido en 3 el 18 sep 2026 al empezarlo: resultó ser una funcionalidad
