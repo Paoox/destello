@@ -18,8 +18,18 @@ const API = (path, token, opts = {}) =>
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         ...opts,
     }).then(async r => {
-        const data = await r.json()
-        if (!r.ok) throw new Error(data.message ?? `Error ${r.status}`)
+        const crudo = await r.text()
+        let data = null
+        try {
+            data = crudo ? JSON.parse(crudo) : null
+        } catch {
+            // No era JSON — casi siempre la API todavía no tiene esta ruta
+            // (falta redesplegar) o el túnel/Vercel devolvió su página de
+            // error. Sin esto, el panel mostraba el JSON.parse crudo
+            // ("Unexpected token '<'...") en vez de decir qué pasó.
+            throw new Error('El servidor no respondió con datos válidos — puede que la API no tenga esta función todavía (falta redesplegar).')
+        }
+        if (!r.ok) throw new Error(data?.message ?? `Error ${r.status}`)
         return data
     })
 
