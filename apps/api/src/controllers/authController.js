@@ -1,12 +1,11 @@
 /**
  * Destello API — Auth Controller
- * Login de usuario con chispa o email+password, OAuth social, refresh y logout.
+ * OAuth social (Google), login por WhatsApp/OTP (ver phoneAuthController.js),
+ * refresh y logout.
  */
 import jwt      from 'jsonwebtoken'
-import bcrypt   from 'bcryptjs'
 import { registrarLogin } from '../services/eventoService.js'
 import { AppError }               from '../middleware/errorHandler.js'
-import { validateChispa }         from '../services/chispaService.js'
 import { query }                  from '../db/db.js'
 import { verifyFirebaseToken }    from '../services/firebaseAdmin.js'
 import * as bloqueoService        from '../services/bloqueoService.js'
@@ -15,93 +14,6 @@ function signToken(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   })
-}
-
-/**
- * POST /auth/login
- * Maneja dos flujos según el body que llega:
- *   - { email, password }  → login con credenciales de cuenta (usuario registrado)
- *   - { code }             → login con Chispa (acceso directo a taller)
- */
-export async function loginWithCode(req, res, next) {
-  try {
-    const { email, password, code } = req.body
-
-    // ── Flujo A: email + contraseña ───────────────────────────────────────────
-    if (email && password) {
-      const { rows } = await query(
-          `SELECT * FROM usuarios WHERE email = $1 AND estado = 'activo'`,
-          [email.toLowerCase().trim()]
-      )
-      const usuario = rows[0]
-
-      if (!usuario || !usuario.password) {
-        throw new AppError('Correo o contraseña incorrectos', 401, 'INVALID_CREDENTIALS')
-      }
-
-      const match = await bcrypt.compare(password, usuario.password)
-      if (!match) {
-        throw new AppError('Correo o contraseña incorrectos', 401, 'INVALID_CREDENTIALS')
-      }
-
-      // Cuenta suspendida: se le dice, no se le miente con "contraseña
-      // incorrecta". Un error genérico protege un poco más contra quien
-      // defrauda a propósito, pero deja a ciegas a quien fue bloqueado por
-      // error — y ese caso va a existir. La comprobación va DESPUÉS de la
-      // contraseña, para no revelarle a un extraño que esa cuenta existe.
-      if (usuario.acceso_bloqueado === true) {
-        throw new AppError(bloqueoService.MENSAJE_ACCESO, 403, 'CUENTA_BLOQUEADA')
-      }
-
-      const token = signToken({ userId: usuario.id, role: 'alumno' })
-      return res.json({
-        status: 'ok',
-        token,
-        user: {
-          id:     usuario.id,
-          email:  usuario.email,
-          nombre: usuario.nombre,
-          role:   'alumno',
-        },
-      })
-    }
-
-    // ── Flujo B: Chispa ───────────────────────────────────────────────────────
-    if (!code) throw new AppError('Código de acceso requerido', 400, 'BAD_REQUEST')
-
-    const result = await validateChispa(code)
-
-    if (!result.valid) {
-      const messages = {
-        INVALID_CODE: 'Código no reconocido',
-        REVOKED:      'Este código ha sido revocado',
-        ALREADY_USED: 'Este código ya fue utilizado',
-        EXPIRED:      'Este código ha expirado',
-      }
-      throw new AppError(
-          messages[result.reason] ?? 'Código de acceso inválido',
-          401,
-          result.reason,
-      )
-    }
-
-    // La chispa es un camino de entrada distinto al del correo y la
-    // contraseña, así que necesita su propia revisión: si no, bloquear una
-    // cuenta no serviría de nada mientras la persona conserve un código.
-    if (result.record?.usuario_email) {
-      const bloqueo = await bloqueoService.estadoDe(result.record.usuario_email)
-      if (bloqueo.acceso) {
-        throw new AppError(bloqueoService.MENSAJE_ACCESO, 403, 'CUENTA_BLOQUEADA')
-      }
-    }
-
-    const user  = { id: result.record.id, role: 'alumno', tallerId: result.record.taller_id }
-    const token = signToken({ userId: user.id, role: user.role, tallerId: user.tallerId })
-
-    res.json({ status: 'ok', token, user })
-  } catch (err) {
-    next(err)
-  }
 }
 
 /**

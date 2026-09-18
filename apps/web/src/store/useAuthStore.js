@@ -14,24 +14,6 @@ export const useAuthStore = create((set, get) => ({
   isLoggedIn:  () => !!get().token,
 
   // ── Acciones ──────────────────────────────────────────────
-  login: async (credentials) => {
-    set({ isLoading: true, error: null })
-    try {
-      const res  = await fetch('/api/auth/login', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(credentials),
-      })
-      if (!res.ok) throw new Error('Credenciales incorrectas')
-      const data = await res.json()
-      set({ user: data.user, token: data.token, isLoading: false })
-      sessionStorage.setItem('destello_token', data.token)
-      if (data.user) sessionStorage.setItem('destello_user', JSON.stringify(data.user))
-    } catch (err) {
-      set({ error: err.message, isLoading: false })
-    }
-  },
-
   logout: () => {
     sessionStorage.removeItem('destello_token')
     sessionStorage.removeItem('destello_user')

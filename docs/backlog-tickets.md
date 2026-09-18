@@ -535,18 +535,35 @@ se llama desde el manejador principal de mensajes.
   `resend`.
 - **T-23** — Automatizar el aviso de certificado emitido (hoy "emitir" solo lo
   pone en el Home del alumno, nadie le avisa).
-- **T-33** *(encontrado al cerrar T-14c, 18 sep 2026)* — Decidir qué hacer con
-  el login por correo+contraseña: `LoginForm` (`PageLogin.jsx`) no tiene
-  ningún campo para eso — solo Google y WhatsApp OTP — pero la rama
-  "email+password" de `authController.loginWithCode()` sigue viva en el
-  backend, inalcanzable desde la UI actual. Es la otra mitad del modelo
-  viejo que T-14 no cubrió (T-14 solo hablaba de *registro*, no de login).
-  Antes de tocarlo: confirmar con Paola si alguna cuenta vieja todavía
-  necesita entrar así, o si ya es 100% seguro retirarlo.
-- **T-34** *(mismo hallazgo)* — `PageLanding.jsx` (🔒 CONGELADA) tiene una
-  sección de marketing "RESPLANDOR & CHISPA" explicándole el concepto viejo
-  a las visitas — no se tocó por la regla de no modificar esa página sin
-  permiso explícito. Decisión de contenido para Paola, no de código.
+
+### ~~T-33 — Retirar `POST /auth/login` (email+contraseña y código de Chispa)~~ ✅ CERRADO (18 sep 2026)
+- **Encontrado al cerrar T-14c:** `LoginForm` (`PageLogin.jsx`) no tiene
+  ningún campo de correo+contraseña — solo Google y WhatsApp OTP. Al
+  revisar quién llama a `POST /auth/login` desde el frontend, se encontró
+  que el único llamador era `useAuthStore.login()` — que a su vez **nadie
+  llamaba**. O sea, ni la rama de contraseña NI la de código de Chispa
+  eran alcanzables desde la app.
+- **Confirmado con Paola:** hoy solo se entra por Google o WhatsApp, así
+  que se autorizó retirar la ruta completa, no solo la parte de contraseña.
+- **Qué se hizo:**
+  - `authController.js` — se quitó `loginWithCode()` completa (las dos
+    ramas). Imports `bcrypt` y `validateChispa` quitados, sin más
+    llamadores en el archivo.
+  - `routes/auth.js` — se quitó `POST /auth/login`.
+  - `useAuthStore.js` — se quitó la acción `login()` (cero llamadores).
+  - La columna `usuarios.password` NO se tocó — sigue en la tabla, sin
+    ningún código que la lea o escriba ya.
+- **Pruebas:** `npm test` en `apps/api` sigue en 8/8. `apps/web` verificado
+  con `esbuild`. Pendiente probar en el sitio real que Google y WhatsApp
+  siguen funcionando igual (mismo checklist que T-14c).
+
+### T-34 — `PageLanding.jsx` con copy de marketing desactualizado
+- `PageLanding.jsx` (🔒 CONGELADA) tiene una sección de marketing
+  "RESPLANDOR & CHISPA" explicándole el concepto viejo a las visitas — no
+  se tocó por la regla de no modificar esa página sin permiso explícito.
+- **Decisión de Paola (18 sep 2026):** se actualiza al final, cuando haya
+  contenido nuevo listo para montar en la página. No es una decisión de
+  código — queda en espera, no bloquea nada.
 
 ---
 

@@ -1,13 +1,18 @@
 /**
  * Destello API — Auth Routes
- * POST /auth/login                → login con chispa o email+password
  * POST /auth/social               → login con Google (Firebase idToken)
+ * POST /auth/phone/send-code      → OTP por WhatsApp
+ * POST /auth/phone/verify         → verifica OTP, login o liga número
  * POST /auth/refresh              → renueva JWT
  * POST /auth/logout               → cierra sesión
  *
- * El registro con Resplandor (POST /auth/register, /auth/resplandor/*)
- * se retiró el 18 sep 2026 (T-14c) — era inalcanzable: /acceso no tenía
- * ningún enlace en la app, y nada crea Resplandores nuevos desde T-14a/b.
+ * Hoy solo se entra por Google o WhatsApp — se retiraron (18 sep 2026,
+ * T-14c/T-33) los otros dos caminos, ninguno alcanzable desde la UI:
+ *   - El registro con Resplandor (POST /auth/register, /auth/resplandor/*):
+ *     /acceso no tenía ningún enlace en la app, y nada crea Resplandores
+ *     nuevos desde T-14a/b.
+ *   - POST /auth/login (email+contraseña Y código de Chispa): su único
+ *     llamador en el frontend, useAuthStore.login(), no lo usaba nadie.
  * Ver docs/backlog-tickets.md.
  */
 import { Router }    from 'express'
@@ -26,7 +31,6 @@ const limitarEnvioOtp = rateLimit({
     mensaje:  'Demasiados códigos solicitados. Espera unos minutos.',
 })
 
-router.post('/login',               ctrl.loginWithCode)
 router.post('/social',              ctrl.loginWithSocial)
 router.post('/phone/send-code',     limitarEnvioOtp, phoneCtrl.sendCode)
 router.post('/phone/verify',        phoneCtrl.verifyCode)
