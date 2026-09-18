@@ -349,7 +349,7 @@ se llama desde el manejador principal de mensajes.
 - **Corrida en Supabase y confirmada por Paola (18 sep 2026), sin errores.**
 - No requirió redeploy de la API — ningún código lee la columna todavía.
 
-### Paso 2 de 4 — ✅ código listo, ⚠️ pendiente correr en Supabase (18 sep 2026)
+### ~~Paso 2 de 4 — rellenar `usuario_id`~~ ✅ CERRADO (18 sep 2026)
 - Migración `apps/api/src/db/migrations/016_usuario_id_paso2.sql`: rellena
   `usuario_id` en `chispas` y `lista_espera` cruzando por correo (sin
   distinguir mayúsculas, `LOWER(...)`) contra `usuarios.email`. Idempotente
@@ -363,9 +363,11 @@ se llama desde el manejador principal de mensajes.
 - `db/schema.supabase.sql` actualizado (ahora 001 a 016).
 - **No requiere redeploy de la API** — sigue sin haber código que lea la
   columna.
-- **Sí requiere acción en Supabase:** correr `016_usuario_id_paso2.sql` en
-  el SQL Editor y revisar el resultado de la consulta final antes de dar
-  este paso por cerrado.
+- **Corrida en Supabase y confirmada por Paola (18 sep 2026).** Resultado:
+  `chispas` 9/9 con `usuario_id`. `lista_espera` 6/7, con 1 huérfana (correo
+  sin cuenta asociada hoy — dato de prueba, no bloquea nada; queda para
+  revisar cuando se quiera, no es parte del criterio de terminado de este
+  paso).
 
 **Siguiente:** paso 3 — migrar las consultas de los servicios una por una,
 dejando el email como respaldo.
