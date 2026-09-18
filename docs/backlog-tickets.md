@@ -349,8 +349,26 @@ se llama desde el manejador principal de mensajes.
 - **Corrida en Supabase y confirmada por Paola (18 sep 2026), sin errores.**
 - No requirió redeploy de la API — ningún código lee la columna todavía.
 
-**Siguiente:** paso 2 — rellenar `usuario_id` en las filas existentes a
-partir del correo actual.
+### Paso 2 de 4 — ✅ código listo, ⚠️ pendiente correr en Supabase (18 sep 2026)
+- Migración `apps/api/src/db/migrations/016_usuario_id_paso2.sql`: rellena
+  `usuario_id` en `chispas` y `lista_espera` cruzando por correo (sin
+  distinguir mayúsculas, `LOWER(...)`) contra `usuarios.email`. Idempotente
+  — solo toca filas con `usuario_id IS NULL`, correrla dos veces no hace
+  nada la segunda vez.
+- Trae una consulta de revisión al final que reporta, por tabla: total de
+  filas, cuántas quedaron con `usuario_id`, cuántas quedaron "huérfanas"
+  (tienen correo pero ese correo no existe en `usuarios` — vale la pena
+  mirarlas, no bloquean nada), y en chispas cuántas están "sin asignar"
+  (nunca tuvieron dueño).
+- `db/schema.supabase.sql` actualizado (ahora 001 a 016).
+- **No requiere redeploy de la API** — sigue sin haber código que lea la
+  columna.
+- **Sí requiere acción en Supabase:** correr `016_usuario_id_paso2.sql` en
+  el SQL Editor y revisar el resultado de la consulta final antes de dar
+  este paso por cerrado.
+
+**Siguiente:** paso 3 — migrar las consultas de los servicios una por una,
+dejando el email como respaldo.
 
 ### T-14 — Limpiar el modelo viejo de códigos (Resplandor)
 

@@ -4,7 +4,7 @@
 --  ⚠️ NO ES UN SCRIPT PARA CORRER DE UN TIROTAZO EN UNA BASE VIVA.
 --  Es la concatenación, en orden y SIN EDITAR, de:
 --    1) La base original de Supabase (esta sección, de jul 2026)
---    2) Cada migración de apps/api/src/db/migrations/ (001 a 015)
+--    2) Cada migración de apps/api/src/db/migrations/ (001 a 016)
 --  Sirve para leer "cómo llegamos a la estructura de hoy" de corrido,
 --  y como punto de partida si algún día hay que levantar una base
 --  nueva desde cero (correr cada sección EN ORDEN, revisando que
@@ -2438,3 +2438,66 @@ COMMENT ON COLUMN lista_espera.usuario_id IS
 -- Nullable hoy, pero ya se puede indexar: los JOINs del paso 3 la van a usar.
 CREATE INDEX IF NOT EXISTS idx_chispas_usuario_id       ON chispas(usuario_id);
 CREATE INDEX IF NOT EXISTS idx_lista_espera_usuario_id  ON lista_espera(usuario_id);
+
+-- ════════════════════════════════════════════════════════════
+--  MIGRACIÓN: 016_usuario_id_paso2
+--  Archivo real: apps/api/src/db/migrations/016_usuario_id_paso2.sql
+-- ════════════════════════════════════════════════════════════
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- Destello — 016: rellenar usuario_id en chispas y lista_espera (T-13, PASO 2 de 4)
+-- ════════════════════════════════════════════════════════════════════════════
+--
+-- QUÉ HACE
+--
+-- La migración 015 agregó `usuario_id` (nullable) pero la dejó vacía a
+-- propósito. Esta la rellena cruzando por correo (sin distinguir mayúsculas,
+-- igual que ya hace todo el código vivo) contra `usuarios.email`.
+--
+-- Es IDEMPOTENTE: solo toca filas donde `usuario_id IS NULL`, así que
+-- correrla dos veces no hace nada la segunda vez.
+--
+-- Lo que NO hace: no toca ninguna consulta del código (siguen leyendo por
+-- email, paso 3), no pone `NOT NULL`, no quita la FK vieja (paso 4).
+--
+-- Filas que se quedan sin `usuario_id` después de esto son las que tienen un
+-- correo que no corresponde a ningún `usuarios.email` — la revisión al final
+-- las cuenta para que se puedan mirar antes de seguir al paso 3.
+
+BEGIN;
+
+UPDATE chispas c
+   SET usuario_id = u.id
+  FROM usuarios u
+ WHERE c.usuario_id IS NULL
+   AND c.usuario_email IS NOT NULL
+   AND LOWER(u.email) = LOWER(c.usuario_email);
+
+UPDATE lista_espera le
+   SET usuario_id = u.id
+  FROM usuarios u
+ WHERE le.usuario_id IS NULL
+   AND le.email IS NOT NULL
+   AND LOWER(u.email) = LOWER(le.email);
+
+COMMIT;
+
+-- ── Revisión: cuántas quedaron pobladas vs. huérfanas ────────────────────────
+-- Una fila "huérfana" tiene un correo que no existe en `usuarios` — vale la
+-- pena mirarlas antes de migrar las consultas (paso 3), pero no bloquean nada.
+SELECT
+    'chispas' AS tabla,
+    COUNT(*)                                   AS total,
+    COUNT(usuario_id)                          AS con_usuario_id,
+    COUNT(*) FILTER (WHERE usuario_id IS NULL
+                        AND usuario_email IS NOT NULL) AS huerfanas_con_email,
+    COUNT(*) FILTER (WHERE usuario_email IS NULL)      AS sin_asignar
+FROM chispas
+UNION ALL
+SELECT
+    'lista_espera' AS tabla,
+    COUNT(*)                          AS total,
+    COUNT(usuario_id)                 AS con_usuario_id,
+    COUNT(*) FILTER (WHERE usuario_id IS NULL AND email IS NOT NULL) AS huerfanas_con_email,
+    0                                  AS sin_asignar
+FROM lista_espera;
