@@ -342,12 +342,43 @@ se llama desde el manejador principal de mensajes.
 - **Criterio de terminado:** marcado como deprecado en comentarios/README, sin
   romper el historial de la tabla `resplandores`.
 
-### T-15 — Resolver los dos schemas contradictorios
-- **Qué falta:** `db/schema.sql` y `db/schema.supabase.sql` difieren en el
-  default de `usuarios.estado`, el nombre de columna de email en `resplandores`,
-  y el tipo de `lista_espera.taller_id`. El código vivo asume el de Supabase.
-- **Criterio de terminado:** un solo schema en el repo, o el viejo claramente
-  marcado como histórico/no usar.
+### ~~T-15 — Resolver los dos schemas contradictorios~~ ✅ CERRADO (18 sep 2026)
+- **Qué falta (original):** `db/schema.sql` y `db/schema.supabase.sql` diferían
+  en el default de `usuarios.estado`, el nombre de columna de email en
+  `resplandores`, y el tipo de `lista_espera.taller_id`. El código vivo asume
+  el de Supabase.
+- **Lo que se encontró al revisar a fondo:** el problema era más grande que
+  "dos schemas distintos" — `schema.supabase.sql` (jul 2026) tampoco reflejaba
+  la realidad de hoy: le faltaban 6+ tablas de las migraciones 001-014
+  (`pagos`, `eventos`, `bot_conversaciones`, `certificados`, `asistencias`,
+  `usuarios_bloqueos`) y encima empezaba con `DROP TABLE ... CASCADE` de las
+  tablas principales. Como el proyecto sigue en desarrollo y hoy no hay datos
+  reales de usuarios (confirmado con Paola), correrlo por accidente no
+  hubiera sido catastrófico — pero igual no era el schema "de hoy".
+  También apareció una migración huérfana más:
+  `apps/api/src/migrations/002_create_resplandores.sql` (abril 2026, mismo
+  origen MVP que `schema.sql`) — completamente superada por
+  `schema.supabase.sql`, que ya crea `resplandores` desde cero.
+- **Qué se hizo:**
+  - Se borraron `db/schema.sql` y `src/migrations/002_create_resplandores.sql`
+    (los dos del MVP pre-Supabase, con tipos/columnas/FK equivocados —
+    recuperables del historial de git si algún día hace falta verlos).
+  - `db/schema.supabase.sql` se reconstruyó como la concatenación **literal**
+    (verificada con `diff` contra cada archivo fuente, no transcrita a mano)
+    de la base original + las 14 migraciones en orden, con un encabezado
+    nuevo que explica qué es, que no se debe correr de un tirón sobre una
+    base con datos, y que las tablas reales pueden tener cambios hechos a
+    mano en Supabase que ningún script capturó.
+- **Pendiente menor, no bloqueante:** el encabezado del nuevo
+  `schema.supabase.sql` deja anotada una discrepancia sin resolver:
+  `talleres.id` ahí es `TEXT` (slug), pero `CLAUDE.md` documenta que hoy es
+  `UUID` — ninguna migración 001-014 hace ese cambio, así que probablemente
+  se hizo a mano en Supabase en algún momento. Falta un `\d talleres` en el
+  SQL Editor de Supabase para confirmar y, si aplica, dejar constancia con
+  una migración o nota.
+- **Criterio de terminado:** ✅ un solo schema en el repo
+  (`db/schema.supabase.sql`), y refleja la estructura acumulada real, no solo
+  el arranque de julio.
 
 ---
 

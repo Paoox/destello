@@ -228,11 +228,21 @@ exactas: `pagos`, `eventos` (bitácora JSONB append-only), `bot_conversaciones`
 (persiste conversaciones del bot, sobrevive reinicios), `asistencias` y
 `certificados` (migración 010), `usuarios_bloqueos` (migración 013, append-only).
 
-⚠️ Hay una migración fuera de la carpeta numerada:
-`apps/api/src/migrations/002_create_resplandores.sql` (carpeta `src/migrations/`,
-singular — no confundir con `src/db/migrations/`). No es residuo: la tabla
-`resplandores` sigue activa. Antes de moverla a la secuencia numerada, confirmar
-si ya se corrió en Supabase.
+✅ **Resuelto (18 sep 2026, T-15):** la pregunta de arriba sobre la migración
+huérfana `src/migrations/002_create_resplandores.sql` ya se contestó: era
+residuo del MVP pre-Supabase (abril 2026, mismo estilo que el `schema.sql`
+viejo — `id SERIAL`, sin las columnas ni la FK que tiene `resplandores` hoy).
+Quedó completamente reemplazada por `db/schema.supabase.sql`, que ya crea
+`resplandores` desde cero con la estructura correcta. Se borró (recuperable
+en el historial de git si algún día hace falta ver el original).
+
+`apps/api/src/db/schema.sql` (el otro schema viejo, también del MVP) se borró
+por la misma razón. Hoy solo queda **un** schema en el repo:
+`apps/api/src/db/schema.supabase.sql`, reconstruido el 18 sep 2026 como la
+concatenación literal (sin editar) de la base original de Supabase + las 14
+migraciones — pensado para leerse de corrido, no para correrse tal cual sobre
+una base con datos. Ver la advertencia y la discrepancia conocida
+(`talleres.id`) en su propio encabezado.
 
 ---
 
@@ -500,6 +510,14 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
 ---
 
 ## Lo que Está Terminado y Funciona
+
+- ✅ **T-15 — un solo schema en el repo** (18 sep 2026). Se borraron los dos
+  archivos del MVP pre-Supabase (`db/schema.sql` y
+  `src/migrations/002_create_resplandores.sql`, con tipos/columnas/FK
+  equivocados). `db/schema.supabase.sql` se reconstruyó como la
+  concatenación verificada de la base original + las 14 migraciones — ver
+  su propio encabezado para el detalle y una discrepancia sin resolver
+  (`talleres.id`). Detalle completo en `docs/backlog-tickets.md` (T-15).
 
 - ✅ **T-S2 — rate limiting por IP en `/admin/login` y `/auth/phone/send-code`**
   (18 sep 2026). Middleware propio en memoria (`apps/api/src/middleware/rateLimit.js`,
