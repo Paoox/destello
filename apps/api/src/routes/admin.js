@@ -39,12 +39,20 @@ import * as asistenciaService  from '../services/asistenciaService.js'
 import * as certificadoService from '../services/certificadoService.js'
 import * as bloqueoService      from '../services/bloqueoService.js'
 import { sincronizarEstadoCupo } from '../services/cupoService.js'
+import { rateLimit }          from '../middleware/rateLimit.js'
 import crypto                from 'node:crypto'
 
 const router = Router()
 
 // ── Pública ───────────────────────────────────────────────
-router.post('/login', adminLogin)
+// Sin esto, la contraseña única de admin se podía probar por fuerza bruta
+// sin ningún freno (T-S2, docs/backlog-tickets.md).
+const limitarLoginAdmin = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max:      10,
+    mensaje:  'Demasiados intentos de acceso. Espera unos minutos.',
+})
+router.post('/login', limitarLoginAdmin, adminLogin)
 
 // ── Protegidas con adminToken ─────────────────────────────
 router.use(authenticateAdmin)

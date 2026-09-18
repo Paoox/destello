@@ -129,7 +129,7 @@ del contenedor contra el hash real:
 docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HASH)"
 ```
 
-### T-S2 — Sin límite de intentos por IP en login de admin y envío de OTP
+### T-S2 — ✅ código listo y probado localmente, ⚠️ falta desplegar — sin límite de intentos por IP en login de admin y envío de OTP
 - **Qué falta:** rate limiting por IP en `POST /admin/login` (hoy solo hay
   bcrypt, sin cooldown ni bloqueo tras varios intentos fallidos) y en
   `POST /auth/phone/send-code` (el único límite hoy es por número de WhatsApp
@@ -143,6 +143,26 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
   `routes/admin.js` (ruta `/login`) y `routes/auth.js` (`/phone/send-code`).
 - **Criterio de terminado:** N intentos fallidos por IP en una ventana de
   tiempo bloquean temporalmente esa IP; prueba que lo confirma.
+- **Estado (18 sep 2026):** implementado, sin librería externa — mismo
+  criterio que `otpService.js` (Map en memoria, un solo contenedor, no hace
+  falta Redis).
+  - `apps/api/src/middleware/rateLimit.js` (nuevo) — `rateLimit({ windowMs, max })`
+    genérico por IP, responde 429 + header `Retry-After` al pasarse del
+    límite. `clientIp()` lee `CF-Connecting-IP` (la API vive detrás de un
+    Cloudflare Tunnel — sin esto, `req.ip` habría sido siempre la IP del
+    túnel, no la de quien hace la petición, y el límite no habría servido de
+    nada).
+  - `routes/admin.js` — `/login`: 10 intentos / 15 min por IP.
+  - `routes/auth.js` — `/phone/send-code`: 8 solicitudes / 10 min por IP
+    (además del límite ya existente por número en `otpService.js` — este es
+    el que faltaba, por IP, para que no se use como vector de spam hacia
+    números ajenos).
+  - Pruebas: `apps/api/src/middleware/rateLimit.test.js` (4 casos: límite por
+    IP, IPs independientes entre sí, reseteo pasada la ventana, header
+    `Retry-After`). `npm test` en `apps/api`: 8/8 pasan (con los 4 de T-S1).
+  - **Pendiente de desplegar:** este código todavía no está en la Toshiba —
+    falta `git pull` + `docker compose up --build -d api` para que tome
+    efecto en producción.
 
 ### Notas menores de la misma revisión (no ameritan ticket propio todavía)
 - `.env.example` está listado dentro de `.gitignore` pero SÍ está trackeado en
