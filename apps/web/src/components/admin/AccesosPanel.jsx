@@ -1,35 +1,48 @@
 /**
  * Destello Admin — AccesosPanel
  * ─────────────────────────────────────────────────────────────────────────────
- * Panel unificado de Resplandores y Chispas.
+ * Panel de Chispas: asigna acceso a un taller a un usuario que YA tiene cuenta.
  *
- * FLUJO CORRECTO:
- *   1. Usuario se inscribe a lista de espera
- *   2. Admin confirma cupo → correo con métodos de pago
- *   3. Usuario paga y manda comprobante por WA
- *   4. Admin verifica pago → genera y manda RESPLANDOR (WA + mail)
- *   5. Usuario usa Resplandor → crea cuenta → flag resplandor = "usado"
- *   6. Resplandor "usado" habilita crear CHISPA en el panel
- *   7. Admin manda Chispa por WA → usuario accede al taller y rooms del Habitat
+ * FLUJO REAL (actualizado 18 sep 2026 — ver docs/backlog-tickets.md T-14):
+ *   1. Usuario escribe al bot Faro → se crea su cuenta (`usuarios`, estado
+ *      'espera') y se anota en lista de espera. Esto pasa UNA vez, la
+ *      primera vez que compra un taller.
+ *   2. Admin confirma su lugar desde ListaEsperaAdmin → correo con métodos
+ *      de pago.
+ *   3. Usuario paga y reporta el pago por WhatsApp.
+ *   4. Admin confirma el pago desde ListaEsperaAdmin → `activarAlumno()`
+ *      activa la cuenta (estado 'activo') Y crea la Chispa del taller, todo
+ *      junto, en una transacción. Ningún código pasa por el usuario.
+ *   5. Aquí, en este panel, se pueden generar Chispas ADICIONALES para una
+ *      cuenta ya activa — el caso principal es dar una demo/cortesía de un
+ *      taller distinto.
+ *
+ * El "Resplandor" (RESP-XXXX-XXXX) era el mecanismo viejo, de antes de que
+ * existiera el bot, para esto mismo — quedó huérfano (ninguna pantalla lo
+ * dispara ya) y se quitó de este panel. La tabla y el backend siguen vivos
+ * por ahora (T-14b/c en el backlog), pero esta UI ya no los usa.
  *
  * REGLAS:
- *   - Solo 1 Resplandor por usuario (código único de invitación)
- *   - Las Chispas pueden ser muchas (una por taller comprado)
+ *   - Las Chispas pueden ser muchas (una por taller comprado o regalado)
  *   - Chispa vigente → rooms del Habitat activas
  *   - Chispa vencida → rooms bloqueadas automáticamente
+ *   - El cupo máximo del taller se valida solo (`cupoService.hayCupo()`)
  *
  * ESTADOS de usuarioStatus:
  *   - 'idle'      → sin búsqueda
  *   - 'searching' → buscando
- *   - 'found'     → tiene cuenta activa (estado = 'activo', pasó por Resplandor)
- *   - 'espera'    → registrado por el bot (estado = 'espera'), aún necesita Resplandor
- *   - 'not_found' → no existe en la tabla usuarios
+ *   - 'found'     → tiene cuenta activa (estado = 'activo') — se le puede
+ *                   dar una Chispa aquí
+ *   - 'espera'    → tiene cuenta pero aún no está activa — actívala primero
+ *                   desde ListaEsperaAdmin (confirmar pago)
+ *   - 'not_found' → no existe en la tabla usuarios — todavía no ha escrito
+ *                   al bot
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-    Sun, Sparkle, MagnifyingGlass, CheckCircle, WarningCircle,
-    Copy, CheckFat, Envelope, XCircle, ArrowClockwise,
-    WhatsappLogo, User, Lock, Info, Clock,
+    Sparkle, MagnifyingGlass, CheckCircle, WarningCircle,
+    Copy, CheckFat, XCircle, ArrowClockwise,
+    WhatsappLogo, User, Lock, Clock,
 } from '@phosphor-icons/react'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -56,13 +69,6 @@ const VIGENCIA_OPTS = [
 ]
 
 function ahora() { return new Date() }
-
-function getEstadoResp(r) {
-    if (r.revoked) return 'revocado'
-    if (r.used)    return 'usado'
-    if (r.expires_at && new Date(r.expires_at) < ahora()) return 'expirado'
-    return 'activo'
-}
 
 function getEstadoChispa(c) {
     if (c.revoked)  return 'revocada'
@@ -138,7 +144,6 @@ export default function AccesosPanel({ adminToken }) {
     const [emailInput,    setEmailInput]    = useState('')
     const [usuario,       setUsuario]       = useState(null)
     const [usuarioStatus, setUsuarioStatus] = useState('idle') // idle|searching|found|espera|not_found
-    const [usuarioResps,  setUsuarioResps]  = useState([])
     const debounceRef = useRef(null)
 
     // ── Estado de formularios
@@ -150,12 +155,8 @@ export default function AccesosPanel({ adminToken }) {
     // ── Datos globales
     const [talleres,     setTalleres]     = useState([])
     const [allChispas,   setAllChispas]   = useState([])
-    const [allResps,     setAllResps]     = useState([])
-    const [loadingResps, setLoadingResps] = useState(false)
 
-    // ── Tabs y filtros
-    const [globalTab,    setGlobalTab]    = useState('chispas')
-    const [userTab,      setUserTab]      = useState('resplandores')
+    // ── Filtro
     const [globalSearch, setGlobalSearch] = useState('')
 
     // ── Stats
@@ -180,30 +181,21 @@ export default function AccesosPanel({ adminToken }) {
             .catch(() => {})
     }, [adminToken])
 
-    // ── Carga de todos los resplandores (lazy al abrir su tab)
-    useEffect(() => {
-        if (globalTab !== 'resplandores' || allResps.length > 0) return
-        setLoadingResps(true)
-        API('/resplandores/all', adminToken)
-            .then(d => setAllResps(d.resplandores ?? []))
-            .catch(() => {})
-            .finally(() => setLoadingResps(false))
-    }, [globalTab, adminToken])
-
     const refreshChispas = useCallback(() => {
         API('/chispas', adminToken).then(d => setAllChispas(d.chispas ?? [])).catch(() => {})
         API('/chispas/stats', adminToken).then(d => setStats(d.stats ?? null)).catch(() => {})
     }, [adminToken])
 
-    const refreshAllResps = useCallback(() => { setAllResps([]) }, [])
-
     const [searchError, setSearchError] = useState(null)
 
+    // Reutiliza /admin/resplandores?email= solo por el `usuario` que trae en
+    // la respuesta — es el único lugar del backend que ya hace esa búsqueda.
+    // El arreglo `resplandores` que también devuelve se ignora a propósito:
+    // ver el encabezado de este archivo (T-14).
     const recargarUsuario = useCallback(async (email) => {
         setSearchError(null)
         try {
             const data = await API(`/resplandores?email=${encodeURIComponent(email)}`, adminToken)
-            setUsuarioResps(data.resplandores ?? [])
             if (data.usuario) {
                 setUsuario(data.usuario)
                 setUsuarioStatus(data.usuario.estado === 'activo' ? 'found' : 'espera')
@@ -222,55 +214,13 @@ export default function AccesosPanel({ adminToken }) {
         const val = e.target.value
         setEmailInput(val)
         setUsuario(null); setUsuarioStatus('idle')
-        setUsuarioResps([]); setLastCode(null); setCreateError(null)
+        setLastCode(null); setCreateError(null)
 
         if (debounceRef.current) clearTimeout(debounceRef.current)
         if (!val.includes('@') || val.length < 5) return
 
         setUsuarioStatus('searching')
         debounceRef.current = setTimeout(() => recargarUsuario(val.trim()), 600)
-    }
-
-    // ── Derivaciones del estado del resplandor del usuario
-    const respActivo    = usuarioResps.find(r => !r.revoked && !r.used && (!r.expires_at || new Date(r.expires_at) > ahora()))
-    const respUsado     = usuarioResps.find(r => r.used)
-    const respExpirado  = usuarioResps.find(r => !r.revoked && !r.used && r.expires_at && new Date(r.expires_at) <= ahora())
-    const puedeCrearResp = !respActivo
-
-    // ── Acciones: Resplandor
-    const crearResplandor = async () => {
-        setCreating('resplandor'); setCreateError(null); setLastCode(null)
-        try {
-            const data = await API('/resplandores', adminToken, {
-                method: 'POST',
-                body: JSON.stringify({ email: emailInput.trim() }),
-            })
-            setLastCode({ tipo: 'resplandor', code: data.code })
-            await recargarUsuario(emailInput.trim())
-            refreshAllResps()
-        } catch (err) {
-            setCreateError(err.message)
-        } finally { setCreating(null) }
-    }
-
-    const reenviarResp = async (code) => {
-        setCreating('reenvio'); setCreateError(null)
-        try {
-            await API(`/resplandores/${code}/reenviar`, adminToken, { method: 'POST' })
-            setLastCode({ tipo: 'reenvio', code, para: usuario?.nombre ?? emailInput })
-        } catch (err) { setCreateError(err.message) }
-        finally { setCreating(null) }
-    }
-
-    const revocarResp = async (code) => {
-        if (!confirm(`¿Revocar el resplandor ${code}?`)) return
-        setCreating('revocando')
-        try {
-            await API(`/resplandores/${code}`, adminToken, { method: 'DELETE' })
-            await recargarUsuario(emailInput.trim())
-            refreshAllResps()
-        } catch (err) { setCreateError(err.message) }
-        finally { setCreating(null) }
     }
 
     // ── Acción: Chispa
@@ -348,12 +298,6 @@ export default function AccesosPanel({ adminToken }) {
         `(_Ya pagué, quiero reportarlo_). Puedes mandarme la foto de tu comprobante. 📸\n\n` +
         `¡Nos vemos dentro! 🌟`
 
-    const waMsgResplandor = (code, nombre) =>
-        `¡Hola ${primerNombre(nombre)}! ☀\n\n` +
-        `Aquí está tu *Resplandor* para crear tu cuenta en Destello:\n\n` +
-        `*${code}*\n\n` +
-        `Úsalo en: https://destello.courses/acceso`
-
     // ── Chispas de este usuario
     const usuarioChispas = allChispas.filter(c =>
         c.usuarioEmail && usuario &&
@@ -366,19 +310,17 @@ export default function AccesosPanel({ adminToken }) {
         !q || [c.code, c.usuarioNombre, c.usuarioEmail, c.tallerNombre]
             .some(v => v?.toLowerCase().includes(q))
     )
-    const respsFiltered = allResps.filter(r =>
-        !q || [r.code, r.nombre, r.usuario_nombre, r.email]
-            .some(v => v?.toLowerCase().includes(q))
-    )
-
     // ── Datos de WA del usuario activo
     const waNumber = (usuario?.whatsapp ?? '').replace(/\D/g, '').slice(-10)
     const vigLabel = chispaForm.expiresInDays == null
         ? 'Sin vigencia'
         : VIGENCIA_OPTS.find(o => o.value === chispaForm.expiresInDays)?.label ?? `${chispaForm.expiresInDays} días`
 
-    const searchActive   = usuarioStatus === 'found' || usuarioStatus === 'espera' || usuarioStatus === 'not_found'
-    const needsResplandor = usuarioStatus === 'not_found' || usuarioStatus === 'espera'
+    const searchActive    = usuarioStatus === 'found' || usuarioStatus === 'espera' || usuarioStatus === 'not_found'
+    // Sin cuenta activa todavía no se le puede dar una Chispa aquí — o no
+    // existe (nunca escribió al bot) o existe pero sigue sin pagar/activar
+    // (eso se hace en ListaEsperaAdmin, no en este panel).
+    const sinCuentaActiva = usuarioStatus === 'not_found' || usuarioStatus === 'espera'
     const hasFullAccount  = usuarioStatus === 'found'
 
     // ── Botón WA compacto reutilizable
@@ -457,12 +399,6 @@ export default function AccesosPanel({ adminToken }) {
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                             <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cuenta</span>
                             <Pill estado="activo" />
-                            {respUsado && (
-                                <>
-                                    <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 4 }}>Resplandor</span>
-                                    <Pill estado="usado" />
-                                </>
-                            )}
                         </div>
                     </div>
                 )}
@@ -499,10 +435,7 @@ export default function AccesosPanel({ adminToken }) {
                                 Sin cuenta en Destello
                             </p>
                             <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-                                {respActivo
-                                    ? '☀ Ya tiene un Resplandor activo pendiente de usar.'
-                                    : 'Necesita un Resplandor para poder registrarse primero.'
-                                }
+                                Todavía no le ha escrito al bot Faro — ahí es donde se crea la cuenta.
                             </p>
                         </div>
                     </div>
@@ -511,89 +444,13 @@ export default function AccesosPanel({ adminToken }) {
 
             {/* ══ CARDS DE ACCIÓN ═══════════════════════════════════════════ */}
             {searchActive && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', alignItems: 'start' }}>
-
-                    {/* ── CARD RESPLANDOR ──────────────────────────────── */}
-                    <div style={{
-                        ...sCard,
-                        borderColor: needsResplandor ? '#d9770666' : 'var(--border-default)',
-                        opacity:     hasFullAccount ? 0.4 : 1,
-                        transition:  'opacity 0.2s, border-color 0.2s',
-                    }}>
-                        <h4 style={{ margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 'var(--text-sm)' }}>
-                            <Sun size={17} weight="fill" color="#d97706" />
-                            Resplandor
-                        </h4>
-                        <p style={{ margin: '0 0 var(--space-4)', fontSize: 11, color: 'var(--text-muted)' }}>
-                            {hasFullAccount
-                                ? 'Ya usó su Resplandor y tiene cuenta. Usa la Chispa →'
-                                : usuarioStatus === 'espera'
-                                    ? 'Se registró por el bot. Envíale un Resplandor para que cree su cuenta.'
-                                    : 'Invitación única para crear cuenta en Destello.'
-                            }
-                        </p>
-
-                        {needsResplandor && (
-                            <>
-                                {usuarioResps.length > 0 && (
-                                    <div style={{ marginBottom: 'var(--space-3)' }}>
-                                        <p style={{ ...sLabel, marginBottom: 6 }}>Historial</p>
-                                        {usuarioResps.map(r => {
-                                            const est    = getEstadoResp(r)
-                                            const canAct = est === 'activo' || est === 'expirado'
-                                            return (
-                                                <div key={r.code} style={sHistRow}>
-                                                    <code style={{ fontWeight: 700, color: '#d97706', fontSize: 12, flex: 1 }}>{r.code}</code>
-                                                    <Pill estado={est} />
-                                                    {canAct && (
-                                                        <>
-                                                            <button onClick={() => reenviarResp(r.code)} disabled={!!creating} style={sBtnTiny('#0D7377')}>
-                                                                <Envelope size={11} /> Reenviar
-                                                            </button>
-                                                            <WaBtnSm
-                                                                waKey={`card-resp-${r.code}`}
-                                                                onClick={() => sendWA(waNumber, waMsgResplandor(r.code, usuario?.nombre), `card-resp-${r.code}`)}
-                                                                disabled={!waNumber}
-                                                            />
-                                                            <button onClick={() => revocarResp(r.code)} disabled={!!creating} style={sBtnTiny('#ef4444')}>
-                                                                <XCircle size={11} /> Revocar
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                )}
-
-                                <button
-                                    onClick={crearResplandor}
-                                    disabled={!!creating || !puedeCrearResp}
-                                    style={{
-                                        ...sBtnPrimary('#d97706'),
-                                        opacity: puedeCrearResp && !creating ? 1 : 0.5,
-                                        cursor:  puedeCrearResp && !creating ? 'pointer' : 'not-allowed',
-                                    }}
-                                >
-                                    {creating === 'resplandor' ? 'Creando...' :
-                                        !puedeCrearResp ? '☀ Ya tiene Resplandor activo' :
-                                            '☀ Crear y enviar Resplandor'}
-                                </button>
-
-                                {!puedeCrearResp && respActivo && (
-                                    <p style={{ fontSize: 11, color: '#d97706', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                        <Info size={12} /> Revócalo primero para crear uno nuevo.
-                                    </p>
-                                )}
-                            </>
-                        )}
-                    </div>
+                <div style={{ maxWidth: 420 }}>
 
                     {/* ── CARD CHISPA ──────────────────────────────────── */}
                     <div style={{
                         ...sCard,
                         borderColor: hasFullAccount ? 'var(--color-jade-500)66' : 'var(--border-default)',
-                        opacity:     needsResplandor ? 0.4 : 1,
+                        opacity:     sinCuentaActiva ? 0.5 : 1,
                         transition:  'opacity 0.2s, border-color 0.2s',
                     }}>
                         <h4 style={{ margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 'var(--text-sm)' }}>
@@ -601,9 +458,11 @@ export default function AccesosPanel({ adminToken }) {
                             Chispa
                         </h4>
                         <p style={{ margin: '0 0 var(--space-4)', fontSize: 11, color: 'var(--text-muted)' }}>
-                            {needsResplandor
-                                ? 'Primero necesita su Resplandor para crear cuenta ←'
-                                : 'Llave de acceso a un taller específico.'
+                            {usuarioStatus === 'espera'
+                                ? 'Todavía no tiene cuenta activa — actívala desde Lista de espera (confirmar pago).'
+                                : sinCuentaActiva
+                                    ? 'Necesita cuenta en Destello primero.'
+                                    : 'Llave de acceso a un taller específico.'
                             }
                         </p>
 
@@ -674,9 +533,9 @@ export default function AccesosPanel({ adminToken }) {
                             </form>
                         )}
 
-                        {needsResplandor && (
+                        {sinCuentaActiva && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 12 }}>
-                                <Lock size={14} /> Disponible cuando el usuario tenga cuenta.
+                                <Lock size={14} /> Disponible cuando el usuario tenga cuenta activa.
                             </div>
                         )}
                     </div>
@@ -685,141 +544,63 @@ export default function AccesosPanel({ adminToken }) {
 
             {/* ══ CÓDIGO GENERADO ════════════════════════════════════════════ */}
             {lastCode && (
-                <div style={{
-                    ...sCard,
-                    borderColor: lastCode.tipo === 'chispa' ? 'var(--color-jade-500)66' : lastCode.tipo === 'reenvio' ? '#3b82f666' : '#d9770666',
-                }}>
-                    {lastCode.tipo === 'reenvio' ? (
-                        <p style={{ margin: 0, fontWeight: 600, color: '#3b82f6', fontSize: 'var(--text-sm)' }}>
-                            📧 Resplandor reenviado correctamente al correo del usuario.
+                <div style={{ ...sCard, borderColor: 'var(--color-jade-500)66' }}>
+                        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px' }}>
+                            ⚡ Chispa generada para <strong>{usuario?.nombre ?? emailInput}</strong>
                         </p>
-                    ) : (
-                        <>
-                            <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px' }}>
-                                {lastCode.tipo === 'chispa' ? '⚡ Chispa generada' : '☀ Resplandor creado'} para <strong>{usuario?.nombre ?? emailInput}</strong>
-                            </p>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                                <code style={{
-                                    fontSize: 24, fontWeight: 800, letterSpacing: '0.08em', flex: 1,
-                                    color: lastCode.tipo === 'chispa' ? 'var(--color-jade-500)' : '#d97706',
-                                }}>
-                                    {lastCode.code}
-                                </code>
-                                <CopyBtn text={lastCode.code} />
-                            </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                            <code style={{
+                                fontSize: 24, fontWeight: 800, letterSpacing: '0.08em', flex: 1,
+                                color: 'var(--color-jade-500)',
+                            }}>
+                                {lastCode.code}
+                            </code>
+                            <CopyBtn text={lastCode.code} />
+                        </div>
 
-                            {/* Botón WA — envía desde el bot */}
-                            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                                {lastCode.tipo === 'chispa' && waNumber.length >= 10 && (
-                                    <button
-                                        onClick={() => sendWA(
-                                            waNumber,
-                                            waMsgChispa(lastCode.code, chispaForm.tallerNombre, vigLabel, usuario?.nombre),
-                                            'lastChispa'
-                                        )}
-                                        disabled={sendingWA === 'lastChispa'}
-                                        style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: 6,
-                                            padding: '8px 16px',
-                                            background: sendingWA === 'lastChispa' ? '#128C7E' : '#25D366',
-                                            borderRadius: 'var(--radius-lg)', color: '#fff',
-                                            fontWeight: 700, fontSize: 13, border: 'none',
-                                            cursor: sendingWA === 'lastChispa' ? 'not-allowed' : 'pointer',
-                                            transition: 'background 0.2s',
-                                        }}
-                                    >
-                                        <WhatsappLogo size={16} weight="fill" />
-                                        {sendingWA === 'lastChispa' ? 'Enviando...' : 'Enviar por WhatsApp'}
-                                    </button>
-                                )}
+                        {/* Botón WA — envía desde el bot */}
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                            {waNumber.length >= 10 && (
+                                <button
+                                    onClick={() => sendWA(
+                                        waNumber,
+                                        waMsgChispa(lastCode.code, chispaForm.tallerNombre, vigLabel, usuario?.nombre),
+                                        'lastChispa'
+                                    )}
+                                    disabled={sendingWA === 'lastChispa'}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                                        padding: '8px 16px',
+                                        background: sendingWA === 'lastChispa' ? '#128C7E' : '#25D366',
+                                        borderRadius: 'var(--radius-lg)', color: '#fff',
+                                        fontWeight: 700, fontSize: 13, border: 'none',
+                                        cursor: sendingWA === 'lastChispa' ? 'not-allowed' : 'pointer',
+                                        transition: 'background 0.2s',
+                                    }}
+                                >
+                                    <WhatsappLogo size={16} weight="fill" />
+                                    {sendingWA === 'lastChispa' ? 'Enviando...' : 'Enviar por WhatsApp'}
+                                </button>
+                            )}
 
-                                {lastCode.tipo === 'resplandor' && waNumber.length >= 10 && (
-                                    <button
-                                        onClick={() => sendWA(
-                                            waNumber,
-                                            waMsgResplandor(lastCode.code, usuario?.nombre),
-                                            'lastResp'
-                                        )}
-                                        disabled={sendingWA === 'lastResp'}
-                                        style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: 6,
-                                            padding: '8px 16px',
-                                            background: sendingWA === 'lastResp' ? '#128C7E' : '#25D366',
-                                            borderRadius: 'var(--radius-lg)', color: '#fff',
-                                            fontWeight: 700, fontSize: 13, border: 'none',
-                                            cursor: sendingWA === 'lastResp' ? 'not-allowed' : 'pointer',
-                                            transition: 'background 0.2s',
-                                        }}
-                                    >
-                                        <WhatsappLogo size={16} weight="fill" />
-                                        {sendingWA === 'lastResp' ? 'Enviando...' : 'Enviar por WhatsApp'}
-                                    </button>
-                                )}
-
-                                {!waNumber && (
-                                    <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
-                                        Sin número WA — copia el código manualmente.
-                                    </p>
-                                )}
-                            </div>
-                        </>
-                    )}
+                            {!waNumber && (
+                                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
+                                    Sin número WA — copia el código manualmente.
+                                </p>
+                            )}
+                        </div>
                 </div>
             )}
 
             {/* ══ HISTORIAL DEL USUARIO ══════════════════════════════════════ */}
-            {searchActive && (usuarioResps.length > 0 || usuarioChispas.length > 0 || hasFullAccount) && (
+            {searchActive && (usuarioChispas.length > 0 || hasFullAccount) && (
                 <div style={sCard}>
                     <p style={{ margin: '0 0 var(--space-3)', fontWeight: 700, fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center', gap: 6 }}>
                         <User size={15} color="var(--text-muted)" />
-                        Historial — {usuario?.nombre ?? emailInput}
+                        Chispas de {usuario?.nombre ?? emailInput}
                     </p>
 
-                    <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border-subtle)', marginBottom: 'var(--space-3)' }}>
-                        {[
-                            { id: 'resplandores', label: `Resplandores (${usuarioResps.length})` },
-                            { id: 'chispas',      label: `Chispas (${usuarioChispas.length})` },
-                        ].map(t => (
-                            <button key={t.id} onClick={() => setUserTab(t.id)} style={sTabBtn(userTab === t.id)}>
-                                {t.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    {userTab === 'resplandores' && (
-                        usuarioResps.length === 0
-                            ? <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>Sin resplandores.</p>
-                            : usuarioResps.map(r => {
-                                const est    = getEstadoResp(r)
-                                const canAct = est === 'activo' || est === 'expirado'
-                                return (
-                                    <div key={r.code} style={sHistRow}>
-                                        <code style={{ fontWeight: 700, color: '#d97706', fontSize: 12 }}>{r.code}</code>
-                                        <Pill estado={est} />
-                                        <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1 }}>
-                                            {r.created_at ? new Date(r.created_at).toLocaleDateString('es-MX') : ''}
-                                        </span>
-                                        {canAct && (
-                                            <>
-                                                <button onClick={() => reenviarResp(r.code)} disabled={!!creating} style={sBtnTiny('#0D7377')}>
-                                                    <Envelope size={11} /> Reenviar
-                                                </button>
-                                                <WaBtnSm
-                                                    waKey={`hist-resp-${r.code}`}
-                                                    onClick={() => sendWA(waNumber, waMsgResplandor(r.code, usuario?.nombre), `hist-resp-${r.code}`)}
-                                                    disabled={!waNumber}
-                                                />
-                                                <button onClick={() => revocarResp(r.code)} disabled={!!creating} style={sBtnTiny('#ef4444')}>
-                                                    <XCircle size={11} /> Revocar
-                                                </button>
-                                            </>
-                                        )}
-                                    </div>
-                                )
-                            })
-                    )}
-
-                    {userTab === 'chispas' && (
+                    {(
                         usuarioChispas.length === 0
                             ? <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>Sin chispas asignadas.</p>
                             : usuarioChispas.map(c => {
@@ -858,21 +639,14 @@ export default function AccesosPanel({ adminToken }) {
                 </div>
             )}
 
-            {/* ══ VISTA GLOBAL ═══════════════════════════════════════════════ */}
+            {/* ══ VISTA GLOBAL — todas las chispas ═════════════════════════ */}
             <div style={sCard}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)', flexWrap: 'wrap', gap: 8 }}>
-                    <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid var(--border-subtle)' }}>
-                        {[
-                            { id: 'chispas',      label: `Todas las chispas (${allChispas.length})` },
-                            { id: 'resplandores', label: 'Todos los resplandores' },
-                        ].map(t => (
-                            <button key={t.id} onClick={() => setGlobalTab(t.id)} style={sTabBtn(globalTab === t.id)}>
-                                {t.label}
-                            </button>
-                        ))}
-                    </div>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: 'var(--text-sm)' }}>
+                        Todas las chispas ({allChispas.length})
+                    </p>
                     <button
-                        onClick={() => { refreshChispas(); refreshAllResps() }}
+                        onClick={refreshChispas}
                         style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, display: 'flex' }}
                         title="Actualizar"
                     >
@@ -891,131 +665,63 @@ export default function AccesosPanel({ adminToken }) {
                     />
                 </div>
 
-                {/* Tabla — Chispas */}
-                {globalTab === 'chispas' && (
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                            <thead>
-                            <tr>
-                                {['Código', 'Usuario', 'Taller', 'Vigencia', 'Estado', ''].map(h => (
-                                    <th key={h} style={sTh}>{h}</th>
-                                ))}
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {chispasFiltered.length === 0 && (
-                                <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Sin resultados</td></tr>
-                            )}
-                            {chispasFiltered.map(c => {
-                                const est  = getEstadoChispa(c)
-                                const cWa  = (c.usuarioWa ?? '').replace(/\D/g, '').slice(-10)
-                                return (
-                                    <tr key={c.code} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                                        <td style={sTd}>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                                                <code style={{ fontWeight: 700, color: 'var(--color-jade-500)', fontSize: 12 }}>{c.code}</code>
-                                                <CopyBtn text={c.code} />
-                                                {c.isDemo && <DemoTag />}
-                                            </span>
-                                        </td>
-                                        <td style={sTd}>
-                                            <p style={{ margin: 0, fontWeight: 600, fontSize: 12 }}>{c.usuarioNombre ?? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>Sin asignar</span>}</p>
-                                            {c.usuarioEmail && <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>{c.usuarioEmail}</p>}
-                                        </td>
-                                        <td style={{ ...sTd, color: 'var(--text-muted)' }}>{c.tallerNombre ?? c.tallerId ?? '—'}</td>
-                                        <td style={{ ...sTd, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('es-MX') : 'Sin límite'}</td>
-                                        <td style={sTd}><Pill estado={est} /></td>
-                                        <td style={sTd}>
-                                            <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                                {est === 'activa' && cWa.length >= 10 && (
-                                                    <WaBtnSm
-                                                        waKey={`global-chispa-${c.code}`}
-                                                        onClick={() => sendWA(
-                                                            cWa,
-                                                            waMsgChispa(c.code, c.tallerNombre ?? '—', c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('es-MX') : 'Sin límite', c.usuarioNombre),
-                                                            `global-chispa-${c.code}`
-                                                        )}
-                                                    />
-                                                )}
-                                                {est === 'activa' && (
-                                                    <button onClick={() => revocarChispa(c.code)} style={sBtnTiny('#ef4444')}>
-                                                        <XCircle size={11} /> Revocar
-                                                    </button>
-                                                )}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                )
-                            })}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-
-                {/* Tabla — Resplandores */}
-                {globalTab === 'resplandores' && (
-                    loadingResps
-                        ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Cargando...</p>
-                        : (
-                            <div style={{ overflowX: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                                    <thead>
-                                    <tr>
-                                        {['Código', 'Usuario', 'Correo', 'Creado', 'Estado', ''].map(h => (
-                                            <th key={h} style={sTh}>{h}</th>
-                                        ))}
-                                    </tr>
-                                    </thead>
-                                    <tbody>
-                                    {respsFiltered.length === 0 && (
-                                        <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Sin resultados</td></tr>
-                                    )}
-                                    {respsFiltered.map(r => {
-                                        const est    = getEstadoResp(r)
-                                        const canAct = est === 'activo' || est === 'expirado'
-                                        const rWa    = (r.usuario_whatsapp ?? '').replace(/\D/g, '').slice(-10)
-                                        return (
-                                            <tr key={r.code} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                                                <td style={sTd}>
-                                                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                        <code style={{ fontWeight: 700, color: '#d97706', fontSize: 12 }}>{r.code}</code>
-                                                        <CopyBtn text={r.code} />
-                                                    </span>
-                                                </td>
-                                                <td style={{ ...sTd, fontWeight: 600, fontSize: 12 }}>{r.nombre ?? r.usuario_nombre ?? '—'}</td>
-                                                <td style={{ ...sTd, color: 'var(--text-muted)', fontSize: 12 }}>{r.email}</td>
-                                                <td style={{ ...sTd, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{r.created_at ? new Date(r.created_at).toLocaleDateString('es-MX') : '—'}</td>
-                                                <td style={sTd}><Pill estado={est} /></td>
-                                                <td style={sTd}>
-                                                    {canAct && (
-                                                        <span style={{ display: 'flex', gap: 4 }}>
-                                                            <button onClick={() => reenviarResp(r.code)} style={sBtnTiny('#0D7377')}>
-                                                                <Envelope size={11} /> Reenviar
-                                                            </button>
-                                                            {rWa.length >= 10 && (
-                                                                <WaBtnSm
-                                                                    waKey={`global-resp-${r.code}`}
-                                                                    onClick={() => sendWA(
-                                                                        rWa,
-                                                                        waMsgResplandor(r.code, r.nombre ?? r.usuario_nombre),
-                                                                        `global-resp-${r.code}`
-                                                                    )}
-                                                                />
-                                                            )}
-                                                            <button onClick={() => revocarResp(r.code)} style={sBtnTiny('#ef4444')}>
-                                                                <XCircle size={11} /> Revocar
-                                                            </button>
-                                                        </span>
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                        <tr>
+                            {['Código', 'Usuario', 'Taller', 'Vigencia', 'Estado', ''].map(h => (
+                                <th key={h} style={sTh}>{h}</th>
+                            ))}
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {chispasFiltered.length === 0 && (
+                            <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Sin resultados</td></tr>
+                        )}
+                        {chispasFiltered.map(c => {
+                            const est  = getEstadoChispa(c)
+                            const cWa  = (c.usuarioWa ?? '').replace(/\D/g, '').slice(-10)
+                            return (
+                                <tr key={c.code} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                    <td style={sTd}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                                            <code style={{ fontWeight: 700, color: 'var(--color-jade-500)', fontSize: 12 }}>{c.code}</code>
+                                            <CopyBtn text={c.code} />
+                                            {c.isDemo && <DemoTag />}
+                                        </span>
+                                    </td>
+                                    <td style={sTd}>
+                                        <p style={{ margin: 0, fontWeight: 600, fontSize: 12 }}>{c.usuarioNombre ?? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>Sin asignar</span>}</p>
+                                        {c.usuarioEmail && <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>{c.usuarioEmail}</p>}
+                                    </td>
+                                    <td style={{ ...sTd, color: 'var(--text-muted)' }}>{c.tallerNombre ?? c.tallerId ?? '—'}</td>
+                                    <td style={{ ...sTd, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('es-MX') : 'Sin límite'}</td>
+                                    <td style={sTd}><Pill estado={est} /></td>
+                                    <td style={sTd}>
+                                        <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                            {est === 'activa' && cWa.length >= 10 && (
+                                                <WaBtnSm
+                                                    waKey={`global-chispa-${c.code}`}
+                                                    onClick={() => sendWA(
+                                                        cWa,
+                                                        waMsgChispa(c.code, c.tallerNombre ?? '—', c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('es-MX') : 'Sin límite', c.usuarioNombre),
+                                                        `global-chispa-${c.code}`
                                                     )}
-                                                </td>
-                                            </tr>
-                                        )
-                                    })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )
-                )}
+                                                />
+                                            )}
+                                            {est === 'activa' && (
+                                                <button onClick={() => revocarChispa(c.code)} style={sBtnTiny('#ef4444')}>
+                                                    <XCircle size={11} /> Revocar
+                                                </button>
+                                            )}
+                                        </span>
+                                    </td>
+                                </tr>
+                            )
+                        })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     )
@@ -1064,15 +770,6 @@ const sBtnTiny = (color) => ({
     border: `1px solid ${color}`, borderRadius: 'var(--radius-md)',
     color, fontSize: 11, fontWeight: 600, cursor: 'pointer',
     fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
-})
-
-const sTabBtn = (active) => ({
-    padding: 'var(--space-2) var(--space-3)',
-    background: 'transparent', border: 'none',
-    borderBottom: active ? '2px solid var(--color-jade-500)' : '2px solid transparent',
-    color: active ? 'var(--color-jade-500)' : 'var(--text-muted)',
-    fontFamily: 'var(--font-sans)', fontWeight: active ? 700 : 400,
-    fontSize: 13, cursor: 'pointer', marginBottom: -1,
 })
 
 const sHistRow = {

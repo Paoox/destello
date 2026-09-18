@@ -519,6 +519,18 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
 
 ## Lo que Está Terminado y Funciona
 
+- ✅ **T-14a — `AccesosPanel.jsx` limpio de Resplandor** (18 sep 2026). El
+  panel de `/admin` tab Accesos era, en el código, "Resplandores y Chispas"
+  unificados — pero el botón de crear/enviar Resplandor no se usa desde que
+  el bot registra cuentas directo (confirmado con Paola: lo que sí se usa
+  ahí es "Crear Chispa", para demos, que no se tocó). Se quitó toda esa UI
+  y lógica; el panel quedó solo con Chispas. Sin test automatizado —
+  `apps/web` no tiene ningún framework de pruebas configurado todavía;
+  verificación sintáctica con `esbuild`, ⚠️ **pendiente de probar a mano en
+  el panel real** (checklist en `docs/backlog-tickets.md`, T-14). El backend
+  (`resplandorService.js`, endpoints `/admin/resplandores/*`) sigue vivo a
+  propósito — es T-14b, pendiente.
+
 - ✅ **T-15 — un solo schema en el repo** (18 sep 2026). Se borraron los dos
   archivos del MVP pre-Supabase (`db/schema.sql` y
   `src/migrations/002_create_resplandores.sql`, con tipos/columnas/FK

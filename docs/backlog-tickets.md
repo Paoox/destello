@@ -21,7 +21,7 @@ Formato de cada ticket: **qué falta** · **por qué importa** · **dónde tocar
 | Aula — video | Video en vivo real (profe + alumnos) vía OpenVidu/LiveKit | El aula dice "Sin video todavía"; todo lo demás (sellos, pizarrón, semáforo) ya funciona sin video | 🔴 Falta construir completo |
 | Aula — actividades | 4 tipos: quiz, memorama, armar, modelo3d, todas sobre el mismo contrato (`contrato.js`) | Solo **quiz** existe de punta a punta. Las otras 3 están declaradas pero no implementadas (`registro.js`) — por eso el 🚧 que viste el 25 ago | 🔴 3 de 4 actividades por construir |
 | Aula — profesores | Tabla `profesores` real, con permisos propios (solo su salón, no el panel financiero) | `esProfe` = `isAdminEmail()` — cualquier admin ve todo; no hay concepto de "profesor externo" | 🔴 Riesgo de seguridad, no solo pendiente |
-| Accesos | Login sin códigos, activación transaccional, relación por `usuario_id` | Login sin códigos ✅, activación unificada y transaccional ✅ (verificado 18 sep). Queda: relación por email (T-13, a propósito diferida) y limpiar el modelo viejo de códigos (T-14) | 🟠 Solo T-13/T-14/T-15 reales, ver sección 4 |
+| Accesos | Login sin códigos, activación transaccional, relación por `usuario_id` | Login sin códigos ✅, activación unificada y transaccional ✅, panel de Chispas limpio de Resplandor ✅ (T-14a, 18 sep). Queda: relación por email (T-13, diferida), backend/frontend del modelo viejo de códigos (T-14b/c) | 🟠 T-13/T-14b/T-14c reales, ver sección 4 |
 | Bot Faro | Menú completo, reporte de pago con foto, diagnóstico automático | Menú y opción 2 (talleres) funcionando ✅. Reporte de pago con foto: el bot **ignora imágenes por completo** | 🟡 Mitad implementado |
 | Panel Admin | 7 tabs completos, métricas por vistas SQL | Los 7 tabs existen y funcionan ✅. Una métrica de stats está rota (cuenta mal un estado) | 🟠 Bug puntual |
 | Certificados | Emisión automática al cumplir criterio | Criterio automático, **disparo manual** — nadie se entera cuando ya calificó | 🟡 Falta automatizar el envío/aviso |
@@ -172,13 +172,13 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
 - `apps/web/src/services/publicApi.js` tiene `const BASE = '/api'` fijo, pero
   `CLAUDE.md` documenta `BASE = import.meta.env.VITE_API_URL ?? '/api'`. Hoy
   no rompe nada (el proxy de Vercel cubre `/api/*`), pero el código y el doc
-  ya no coinciden — ajustar uno de los dos al cerrar T-14.
+  ya no coinciden — ajustar uno de los dos al cerrar T-14c.
 - La ruta `/acceso` sigue registrada y navegable en `App.jsx` (no es solo
   "huérfana sin link" como dice `CLAUDE.md` — cualquiera puede escribir la URL
   a mano), y sigue viva junto con `POST /auth/resplandor/validate` / `consume`,
-  sin rate limit propio. Refuerza la prioridad de **T-14** (deprecar el modelo
-  viejo de códigos): mientras exista, es superficie de ataque adicional,
-  aunque de riesgo bajo (código de 32 bits de entropía).
+  sin rate limit propio. Refuerza la prioridad de **T-14c** (lado usuario del
+  modelo viejo de códigos): mientras exista, es superficie de ataque
+  adicional, aunque de riesgo bajo (código de 32 bits de entropía).
 - No se encontraron secretos reales expuestos en el código ni en el historial
   de git (`.env` nunca se commiteó), ni inyección SQL (todas las queries
   revisadas usan parámetros o listas blancas fijas para nombres de columna),
@@ -331,16 +331,63 @@ se llama desde el manejador principal de mensajes.
   siguiente; el `NOT NULL` final solo se pone cuando las 3 tablas ya tienen
   `usuario_id` poblado al 100%.
 
-### T-14 — Limpiar código muerto del modelo viejo de códigos
-- **Qué falta:** deprecar (no borrar todavía) `resplandorService.js` +
-  `resplandorController.js`, `POST /admin/lista-espera/:id/confirmar`, los 5
-  endpoints `/admin/resplandores/*`, `PageAcceso.jsx`, `RegisterForm` con
-  contraseña, `POST /auth/register`.
-- **Por qué importa:** es peso muerto activo desde que se decidió no mandar
-  códigos al usuario (20 jul 2026); confunde a cualquiera que lea el código sin
-  el contexto.
-- **Criterio de terminado:** marcado como deprecado en comentarios/README, sin
-  romper el historial de la tabla `resplandores`.
+### T-14 — Limpiar el modelo viejo de códigos (Resplandor)
+
+> Partido en 3 el 18 sep 2026 al empezarlo: resultó ser una funcionalidad
+> viva y entrelazada en 3 zonas separadas, no "agregar comentarios de
+> deprecado" como decía la descripción original. Antes de tocar nada se
+> confirmó con Paola que el botón manual de Resplandor en el panel **no se
+> usa** (lo que sí usa es "Crear Chispa", para demos — algo aparte, no se
+> toca). Ver el detalle de la conversación en el historial de git de este
+> archivo si hace falta el contexto completo.
+
+#### T-14a — ✅ código listo, ⚠️ pendiente probar en el panel real — Limpiar `AccesosPanel.jsx`
+- **Qué se hizo:** se quitó toda la UI y lógica de Resplandor del panel
+  (botón crear/reenviar/revocar, tab de historial, tab de la vista global,
+  mensajes de WhatsApp) — quedó como panel de Chispas exclusivamente. Se
+  renombró `needsResplandor` → `sinCuentaActiva` (misma lógica, nombre que
+  ya no depende del concepto que se quitó). El encabezado del archivo se
+  reescribió para describir el flujo real (bot → `activarAlumno()`, sin
+  Resplandor de por medio).
+- **Backend sin tocar a propósito:** el panel sigue llamando
+  `GET /admin/resplandores?email=` porque es el único endpoint que ya hace
+  la búsqueda de `usuario` por correo que este panel necesita — solo se dejó
+  de usar el arreglo `resplandores` de la respuesta. Se retira cuando se
+  haga T-14b.
+- **Pruebas:** `apps/web` no tiene NINGÚN framework de pruebas configurado
+  (Vitest/Testing Library/etc. — 0, confirmado en la revisión de seguridad
+  del 17 sep). No fue posible escribir un test automatizado para este
+  cambio; se verificó sintaxis con `esbuild` (compila sin errores) y
+  revisión manual línea por línea. **Falta la verificación funcional real,
+  a mano en el panel** — checklist de 6 puntos entregado a Paola (buscar
+  cuenta activa/en espera/inexistente, generar chispa, tabla global, sin
+  rastro de "Resplandor"). Marcar CERRADO solo cuando confirme que pasó.
+- **Pendiente futuro, no de este ticket:** meter Vitest + Testing Library a
+  `apps/web` para que el frontend deje de depender 100% de pruebas manuales.
+
+#### T-14b — Backend admin: retirar `resplandorService.js` y endpoints
+- **Qué falta:** una vez que ninguna pantalla llame a `/admin/resplandores/*`
+  (confirmado con T-14a), retirar `resplandorService.js`,
+  `resplandorController.js`, los endpoints `/admin/resplandores/*`, y
+  `POST /admin/lista-espera/:id/confirmar` (la ruta huérfana que manda
+  resplandor o chispa por correo — confirmado que `ListaEsperaAdmin.jsx`
+  nunca la llama).
+- **Por qué importa:** es peso muerto activo desde el 20 jul 2026; confunde
+  a cualquiera que lea el código sin el contexto, y es superficie de ataque
+  extra sin necesidad.
+- **Criterio de terminado:** las rutas dejan de existir (o quedan marcadas
+  deprecadas si Paola prefiere no borrar el histórico); la tabla
+  `resplandores` NO se toca — sigue con su historial.
+
+#### T-14c — Lado usuario: `PageAcceso.jsx`, registro con contraseña
+- **Qué falta:** `PageAcceso.jsx` (ruta `/acceso`, navegable a mano aunque
+  sin link — ver hallazgo de seguridad del 17 sep), el `RegisterForm` con
+  contraseña en `PageLogin.jsx`, `POST /auth/register`,
+  `POST /auth/resplandor/validate` y `/consume`.
+- **Por qué importa:** mismo peso muerto que T-14b, del lado del usuario
+  final — y reduce la superficie de ataque que ya se señaló en T-S1/T-S2.
+- **Criterio de terminado:** la ruta `/acceso` deja de estar disponible (o
+  redirige a `/login`), y los endpoints correspondientes dejan de existir.
 
 ### ~~T-15 — Resolver los dos schemas contradictorios~~ ✅ CERRADO (18 sep 2026)
 - **Qué falta (original):** `db/schema.sql` y `db/schema.supabase.sql` diferían
