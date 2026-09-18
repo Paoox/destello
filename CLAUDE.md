@@ -490,6 +490,11 @@ Detalle completo y cómo diagnosticarlo en `docs/backlog-tickets.md` (T-S1).
   (Hostinger KVM 2, Phoenix) con un LiveKit/OpenVidu real y apuntar
   `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` de producción ahí —
   el código de la app no cambia, solo esas 3 variables.
+- **T-38 — Migrar TODO el backend (API + bot) de la Toshiba al VPS.**
+  Decidido con Paola (18 sep 2026): no es solo el video — la Toshiba es un
+  punto único de falla (depende de una laptop prendida en una casa). Se
+  agenda ~15-20 días antes del lanzamiento, en la misma ventana que el
+  montaje del VPS de video. Detalle completo en `docs/backlog-tickets.md`.
 - **Actividades reales (T-02/T-03/T-04).** Existe el contrato
   (`src/aula/actividades/contrato.js`) y el Quiz funcionando de punta a
   punta; faltan `memorama`, `armar` y `modelo3d`. **Las 3 están bloqueadas

@@ -255,6 +255,42 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
   viajar entre sesiones — mismo mecanismo (canal de datos de LiveKit) que
   ya se usó para "dar la palabra", pendiente como su propio trabajo.
 
+### T-38 — Migrar TODO el backend (API + bot) de la Toshiba al VPS
+- **Qué falta:** mover no solo el servidor de video (T-01) sino la API
+  (Docker) y el bot de WhatsApp (Baileys) de la Toshiba al mismo VPS
+  (Hostinger KVM 2, Phoenix), para que un apagón, corte de internet o falla
+  de la máquina en casa de Paola deje de tumbar Destello completo.
+- **Por qué importa:** hoy Destello depende de que una laptop en una casa
+  particular esté prendida y conectada 24/7 — es el punto único de falla
+  más grande del proyecto. Un VPS de datacenter no tiene ese problema.
+- **Decidido con Paola (18 sep 2026):** viable, no urgente — se agenda
+  ~15-20 días antes del lanzamiento del MVP (no la semana misma, para tener
+  margen si algo sale mal). Se hace en la MISMA ventana que el montaje del
+  VPS para video (T-01) ya que de todas formas hay que tocar la infra.
+- **Lo fácil:** la API ya está en Docker (`docker-compose.yml` corre casi
+  tal cual en cualquier máquina); la base de datos ya vive en Supabase, no
+  se mueve.
+- **Lo delicado (operativo, no de código):** la sesión de WhatsApp del bot
+  (`apps/bot/auth_info/`, Baileys). Dos caminos: copiar la carpeta tal cual
+  y esperar que WhatsApp la acepte en el nuevo servidor, o volver a
+  escanear el QR desde el VPS (más confiable, ~5 min de interrupción). Las
+  conversaciones no se pierden en ningún caso — viven en
+  `bot_conversaciones` (BD), no en la sesión del bot.
+- **Lo que hay que planear con cuidado:** el corte de DNS/túnel de
+  Cloudflare — probar todo en el VPS ANTES de apagar la Toshiba, para no
+  dejar un hueco sin servicio. Repasar variable por variable el `.env` al
+  copiarlo (ya hubo gotchas de este tipo antes — T-S1, el escape de `$` en
+  `ADMIN_PASSWORD_HASH`, variables faltantes en `docker-compose.yml`).
+- **Dónde tocar:** infraestructura del VPS (fuera del repo), `docker-compose.yml`
+  (puede necesitar ajustes de host/networking al dejar de depender de
+  `host.docker.internal` hacia el bot local), configuración de Cloudflare
+  (Named Tunnel → probablemente ya no hace falta un tunnel con IP pública
+  real; puede simplificarse a un registro DNS directo + reverse proxy con
+  TLS en el VPS).
+- **Criterio de terminado:** API, bot y (si ya existe para entonces) el
+  servidor de video corriendo en el VPS; sitio y bot funcionando de punta a
+  punta contra el VPS; la Toshiba puede apagarse sin que Destello se caiga.
+
 ### T-02 — Actividad: Memorama
 - **Qué falta:** componente que exporte `Componente` + `resumen`, sumado a
   `TIPOS` en `apps/web/src/aula/actividades/registro.js`. Contenido = parejas a
