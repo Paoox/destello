@@ -20,9 +20,18 @@ import certificadosRouter from './routes/certificados.js'
 import { errorHandler }  from './middleware/errorHandler.js'
 import { requestLogger } from './middleware/requestLogger.js'
 import { authenticate }  from './middleware/authenticate.js'
+import { enviarRecordatoriosAutomaticos } from './services/recordatorioAutoService.js'
 
 const app  = express()
 const PORT = process.env.PORT || 3001
+
+// Recordatorio automático de pago (T-36) — cada cuánto se revisa quién ya
+// venció su plazo de 48 h sin recordatorio. En memoria, sin librería externa
+// (mismo criterio que otpService/rateLimit): el contenedor de Docker corre
+// un solo proceso permanente (systemd lo mantiene arriba), así que un
+// setInterval de toda la vida del proceso es suficiente — no hace falta cron
+// del sistema operativo.
+const INTERVALO_RECORDATORIOS_MS = 30 * 60 * 1000
 
 app.use(helmet())
 app.use(cors({
@@ -67,6 +76,18 @@ async function start() {
     console.log(`✦ Destello API corriendo en http://0.0.0.0:${PORT}`)
     console.log(`  Entorno: ${process.env.NODE_ENV || 'development'}`)
   })
+
+  // Primera corrida a los 2 min (deja que el bot Faro también esté arriba —
+  // systemd levanta destello-api y destello-bot por separado, sin orden
+  // garantizado), y de ahí en adelante cada INTERVALO_RECORDATORIOS_MS.
+  setTimeout(() => {
+    const correr = () => {
+      enviarRecordatoriosAutomaticos().catch(err =>
+        console.error('[recordatorio-auto] error en la corrida:', err.message))
+    }
+    correr()
+    setInterval(correr, INTERVALO_RECORDATORIOS_MS)
+  }, 2 * 60 * 1000)
 }
 
 start()

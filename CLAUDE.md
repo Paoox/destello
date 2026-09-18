@@ -296,9 +296,6 @@ GET  /bot/usuario-por-whatsapp/:numero → verifica si ese WhatsApp ya tiene cue
                                          pedirle correo — ver T-37 en backlog)
 POST /bot/lista-espera                → registra en lista de espera
 GET  /bot/listas/:email               → listas de espera del usuario
-GET  /bot/pendientes/:email           → chispas sin usar (el campo `resplandores`
-                                         de la respuesta siempre viene vacío desde
-                                         T-14 — nada crea resplandores ya)
 GET  /bot/diagnostico/:email          → foto completa del acceso, para que el bot ramifique
 POST /bot/completar-whatsapp          → guarda el WhatsApp de quien ya tiene permiso pero no lo tenía
 POST /bot/reporte-acceso              → levanta reporte (abierto incluso a cuentas bloqueadas)
@@ -368,12 +365,12 @@ Métodos de pago incluidos en templates:
 ### Menú del bot (5 opciones)
 1. Registrarte a taller → captura datos → lista de espera
 2. Ver talleres (falta: inscripción desde aquí)
-3. No me llegó mi acceso → busca por email → devuelve chispa pendiente si hay
-   (el copy visible al usuario NO usa "chispa" — es nombre interno). El código
-   del bot (`flujo.js`) puede seguir teniendo una rama para "avisar del
-   resplandor" — desde T-14 (18 sep 2026) esa rama nunca se dispara, porque
-   `GET /bot/pendientes` siempre devuelve el arreglo de resplandores vacío.
-   No se tocó `flujo.js` para confirmarlo/limpiarlo — pendiente si hace falta.
+3. No me llegó mi acceso → `resolverAcceso()` en `flujo.js` diagnostica todo
+   por `GET /bot/diagnostico/:email` (T-35, 18 sep 2026: confirmado que no
+   existe, ni existía, ninguna rama de "avisar del resplandor pendiente" —
+   el endpoint viejo que sí la tenía, `GET /bot/pendientes/:email`, no tenía
+   ningún llamador en todo el repo desde antes de T-14; se borró junto con
+   `getPendientesPorEmail()`)
 4. Medios de pago → SPEI + efectivo
 5. Dudas → "próximamente"
 
@@ -519,17 +516,16 @@ correcta — hay que revisarlo con calma antes de tocar la FK vieja.
 
 ### 🤖 Pendiente de la próxima revisión completa del bot
 `apps/bot/src/flujo.js` sigue marcado "NO tocar sin revisión a fondo" — lo
-de hoy (T-37, ya cerrado) fue una excepción puntual y acotada, no la
-revisión completa. Hallazgos que quedaron anotados para esa sesión (detalle
-en `docs/backlog-tickets.md`):
-- **T-35** — posible rama muerta de código para "avisar del resplandor
-  pendiente" (ya no se dispara nunca desde T-14, `GET /bot/pendientes`
-  siempre devuelve el arreglo vacío).
-- **T-36** — cuando el bot le dice a alguien "quedaste inscrito" y le manda
-  medios de pago, su registro sigue en `pendiente` y **no cuenta contra el
-  cupo real todavía** (`cupoService.js`: solo `cupo_confirmado`/`pagado`
-  cuentan). Paola está evaluando que el lugar se asigne de verdad desde ese
-  momento.
+de hoy (T-37, T-35, T-36, ya cerrados) fueron excepciones puntuales y
+acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
+- **T-35 — ✅ CERRADO (18 sep 2026):** no existía (ni existió nunca) una
+  rama de "avisar del resplandor pendiente" en `flujo.js`. Sí apareció un
+  endpoint backend muerto relacionado (`GET /bot/pendientes/:email`, sin
+  ningún llamador en todo el repo) — se borró junto con
+  `getPendientesPorEmail()`.
+- **T-36 — ✅ CERRADO (18 sep 2026):** `pendiente` ya cuenta contra el cupo
+  real (migración 017) y el recordatorio de 48h ya se manda solo — ver
+  "Lo que Está Terminado y Funciona" más abajo para el detalle completo.
 
 ### 🟡 Pendiente
 - **Acordado, sin empezar:** onboarding/visita guiada la primera vez en el aula;
@@ -693,10 +689,37 @@ en `docs/backlog-tickets.md`):
   índice único parcial (`001_whatsapp_unico.sql`) + `asegurarWhatsappLibre()`
   validando en los 6 puntos que escriben el campo + `errorHandler.js` traduce
   el 23505 de Postgres a un 409 legible.
-- ✅ **Reglas de cupo, plazos y liberación** (migraciones 006-009) — `v_cupo_taller`
-  como fuente única del cupo real; 48h para pagar → recordatorio → 24h de
-  gracia → liberar lugar; las cortesías/demos ocupan cupo igual que un pago
-  (`monto=0`, nunca cuentan como ingreso).
+- ✅ **Reglas de cupo, plazos y liberación** (migraciones 006-009, extendidas
+  por 017 en T-36) — `v_cupo_taller` como fuente única del cupo real; 48h
+  para pagar → recordatorio → 24h de gracia → liberar lugar; las
+  cortesías/demos ocupan cupo igual que un pago (`monto=0`, nunca cuentan
+  como ingreso).
+- ✅ **T-36 — `pendiente` ya ocupa cupo real, con recordatorio automático**
+  (18 sep 2026). Antes, `v_cupo_taller` solo contaba `cupo_confirmado`/
+  `pagado` — un renglón `pendiente` (el que crea el bot apenas alguien elige
+  taller, ANTES de que Paola confirme nada, con el mensaje "¡Quedaste
+  inscrito!" + medios de pago) no apartaba nada. Con poco cupo, varias
+  personas casi al mismo tiempo podían pasar la validación y a todas se les
+  prometía un lugar que el sistema no les estaba apartando de verdad.
+  Migración `017_pendiente_cuenta_cupo.sql`: agrega `pendiente` a los
+  estados que cuentan en `v_cupo_taller`, y extiende el reloj de 48h+24h de
+  `v_alertas` para que también arranque en `pendiente` (usando `created_at`
+  como base, porque `confirmado_at` solo se llena al confirmar el lugar —
+  algo que un `pendiente` recién creado todavía no pasó). El botón "Liberar"
+  del panel ya funcionaba para cualquier estado, así que no hizo falta UI
+  nueva — un `pendiente` vencido aparece con el mismo reloj/botón que un
+  `cupo_confirmado` vencido. `relojPago()` (`ListaEsperaAdmin.jsx`) se
+  extendió igual, cayendo a `created_at` cuando no hay `confirmado_at`.
+  **De paso, a petición de Paola:** el recordatorio de las 48h dejó de ser
+  manual — nuevo `recordatorioAutoService.js`, corrido cada 30 min desde
+  `index.js` (`setInterval`, sin librería externa ni cron del sistema,
+  mismo criterio que `otpService`/`rateLimit`), manda automáticamente el
+  mismo WhatsApp que antes mandaba Paola a mano con el botón "Recordar" (que
+  se conserva, como respaldo/adelanto manual). El texto (automático y
+  manual, idéntico) reenvía también los datos de pago completos (SPEI +
+  tarjeta) — ajuste pedido por Paola el mismo día, para que la persona no
+  tenga que buscar el mensaje viejo. Pruebas: 16/16 en `apps/api`
+  (`recordatorioAutoService.test.js`, 4 casos: texto base + datos de pago).
 - ✅ **`activarAlumno()`** (`inscripcionService.js`) — un solo camino
   transaccional para activar una cuenta, usado tanto por confirmar-pago como
   por el selector de estado del panel.

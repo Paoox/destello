@@ -116,9 +116,12 @@ export async function registrarEnLista({ email, tallerId, nombre, whatsapp, orig
     // del Habitat y el panel entran todos por esta puerta. Validar en un solo
     // lugar es lo que garantiza que ninguno se salte la regla.
     //
-    // Ojo: entrar a la lista como 'pendiente' NO aparta lugar todavía — pero
-    // si el taller ya está lleno tampoco tiene sentido seguir formando gente
-    // para un salón sin sillas. Mejor decírselo de una vez.
+    // Desde T-36 (18 sep 2026): entrar a la lista como 'pendiente' SÍ aparta
+    // lugar de una vez (antes no, y varias personas casi al mismo tiempo
+    // podían pasar esta misma validación y terminar con un lugar prometido
+    // que el sistema no les estaba apartando). Por eso esta revisión importa
+    // tanto como antes: si el taller ya está lleno, no tiene sentido seguir
+    // formando gente para un salón sin sillas — mejor decírselo de una vez.
     const { hayCupo: hayLugar, cupo, motivo } = await hayCupo(tallerId)
     if (!hayLugar) {
         return { nuevo: false, sinCupo: true, cupo, motivo, registro: null }
@@ -162,35 +165,4 @@ export async function getListasPorEmail(email) {
         [email.toLowerCase().trim()]
     )
     return rows
-}
-
-/**
- * Devuelve chispas activas y resplandores activos pendientes para un email.
- * Usado por el bot cuando el alumno dice "no me llegó mi código".
- */
-export async function getPendientesPorEmail(email) {
-    const emailNorm = email.toLowerCase().trim()
-
-    const { rows: chispas } = await query(
-        `SELECT c.code, t.nombre AS taller_nombre
-         FROM chispas c
-                  JOIN talleres t ON t.id = c.taller_id
-         WHERE LOWER(c.usuario_email) = $1
-           AND c.used = FALSE
-           AND c.revoked = FALSE
-           AND (c.expires_at IS NULL OR c.expires_at > NOW())`,
-        [emailNorm]
-    )
-
-    const { rows: resplandores } = await query(
-        `SELECT code, email
-         FROM resplandores
-         WHERE LOWER(email) = $1
-           AND used = FALSE
-           AND revoked = FALSE
-           AND (expires_at IS NULL OR expires_at > NOW())`,
-        [emailNorm]
-    )
-
-    return { chispas, resplandores }
 }

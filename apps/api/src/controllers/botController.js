@@ -4,7 +4,7 @@
  */
 
 import { upsertUsuario, findByEmail, cuentaConWhatsapp } from '../services/usuarioService.js'
-import { registrarEnLista, getListasPorEmail, getPendientesPorEmail } from '../services/listaEsperaService.js'
+import { registrarEnLista, getListasPorEmail } from '../services/listaEsperaService.js'
 import { diagnosticar, completarWhatsapp } from '../services/diagnosticoService.js'
 import { crearReporte, MOTIVOS } from '../services/reporteService.js'
 import { subirComprobante, storageDisponible } from '../services/storageService.js'
@@ -93,19 +93,6 @@ export async function listasDeUsuario(req, res, next) {
     try {
         const listas = await getListasPorEmail(req.params.email)
         res.json({ status: 'ok', listas })
-    } catch (err) {
-        next(err)
-    }
-}
-
-/**
- * GET /bot/pendientes/:email
- * Verifica si hay chispas o resplandores pendientes para un email.
- */
-export async function pendientesDeUsuario(req, res, next) {
-    try {
-        const pendientes = await getPendientesPorEmail(req.params.email)
-        res.json({ status: 'ok', ...pendientes })
     } catch (err) {
         next(err)
     }

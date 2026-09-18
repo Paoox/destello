@@ -10,13 +10,23 @@
  *
  * ── La regla ────────────────────────────────────────────────────────────────
  *
- * Ocupa lugar quien está en `cupo_confirmado` o `pagado`. Los `pendiente` NO:
- * están formados, todavía sin permiso. Y quien tenía chispa y ya se le venció
- * deja de ocupar — así una cortesía sin usar libera su asiento sola.
+ * Ocupa lugar quien está en `pendiente`, `cupo_confirmado` o `pagado`. Solo
+ * `rechazado` NO. Y quien tenía chispa y ya se le venció deja de ocupar —
+ * así una cortesía sin usar libera su asiento sola.
  *
- * El cálculo vive en la vista `v_cupo_taller` (migración 008), no aquí. Una
- * sola fórmula para todos: el panel, el bot y el Habitat leen lo mismo. Dos
- * fórmulas para la misma cosa es como empiezan los números que no cuadran.
+ * ⚠️ Hasta el 18 sep 2026 `pendiente` NO contaba (T-36) — el bot le dice
+ * "quedaste inscrito" apenas hay cupo, sin esperar a que se confirme el
+ * lugar, así que dejarlo fuera del conteo dejaba prometer el mismo lugar a
+ * varias personas a la vez. Se agregó en la migración 017, junto con
+ * extender el reloj de 48h+24h de `v_alertas` para que también arranque en
+ * `pendiente` (con `created_at` como base) y un recordatorio automático
+ * (`recordatorioAutoService.js`) para que no se quede apartado para siempre
+ * si nadie lo revisa a mano.
+ *
+ * El cálculo vive en la vista `v_cupo_taller` (migración 008, extendida por
+ * 017), no aquí. Una sola fórmula para todos: el panel, el bot y el Habitat
+ * leen lo mismo. Dos fórmulas para la misma cosa es como empiezan los
+ * números que no cuadran.
  */
 
 import { query } from '../db/db.js'

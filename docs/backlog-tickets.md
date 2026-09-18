@@ -678,55 +678,121 @@ se llama desde el manejador principal de mensajes.
   contenido nuevo listo para montar en la página. No es una decisión de
   código — queda en espera, no bloquea nada.
 
-### T-35 — Revisar si `apps/bot/src/flujo.js` tiene una rama muerta de Resplandor
-- **Qué falta:** confirmar si el código del bot (opción 3, "No me llegó mi
-  acceso") todavía tiene una rama para "avisar del resplandor pendiente".
-  Si la tiene, desde T-14 (18 sep 2026) nunca se dispara —
-  `GET /bot/pendientes/:email` siempre devuelve el arreglo `resplandores`
-  vacío, porque nada crea resplandores ya.
-- **Por qué no se hizo ya:** `flujo.js` está explícitamente marcado en
-  `CLAUDE.md` como "lo que YA funciona (NO tocar)" — no se revisó a fondo
-  en esta sesión para no arriesgar el flujo real del bot sin pruebas.
-- **Criterio de terminado:** si existe la rama muerta, se quita (o se deja
-  documentada como inofensiva); si no existe, se cierra el ticket sin
-  cambios.
-- **Aprovechar la misma sesión para:** confirmar con datos reales la
-  verificación funcional que quedó diferida en T-10 (activar desde
-  `lista_espera` a alguien que nunca escribió al bot, y revisar que
-  `usuarios.nombre`/`apellido` queden bien separados).
+### ~~T-35 — Revisar si `apps/bot/src/flujo.js` tiene una rama muerta de Resplandor~~ ✅ CERRADO (18 sep 2026)
+- **Qué se investigó:** si la opción 3 del bot ("No me llegó mi acceso")
+  todavía tenía una rama para "avisar del resplandor pendiente".
+- **Lo que se encontró:** `resolverAcceso()` (la función completa detrás de
+  la opción 3) no menciona "resplandor" en ningún lado — está construida
+  enteramente sobre `getDiagnostico()` → `GET /bot/diagnostico/:email` →
+  `diagnosticar()` (`diagnosticoService.js`), que tampoco toca la tabla
+  `resplandores`. `grep -i resplandor` sobre todo `flujo.js`: cero
+  resultados. **No existe la rama muerta en `flujo.js` — y, revisando el
+  historial de git, nunca existió en esta forma.**
+- **Lo que sí apareció (código muerto real, pero en el backend, no en el
+  bot):** `flujo.js` alguna vez sí llamó a `GET /bot/pendientes/:email`
+  (visible en el historial de git), pero ese llamado se quitó hace mucho —
+  de hecho antes de T-14, no por T-14. El endpoint siguió viviendo en la
+  API sin que nada lo llamara: `grep` sobre todo `apps/` (bot + web + api)
+  confirmó **cero llamadores** a `/bot/pendientes` o a
+  `getPendientesPorEmail()` en todo el repo. Ese endpoint era justo el que
+  consultaba `resplandores` — la función interna se llamaba, literalmente,
+  "avisar pendientes", pero nadie la disparaba.
+- **Qué se hizo:** se borró el endpoint completo, siguiendo el mismo
+  criterio de T-14b (verificar cero llamadores antes de tocar, no dejar
+  código muerto que confunda a quien lea el repo después):
+  - `apps/api/src/routes/bot.js` — quitada la ruta `GET /pendientes/:email`
+    y su import.
+  - `apps/api/src/controllers/botController.js` — quitada
+    `pendientesDeUsuario()` y el import de `getPendientesPorEmail`.
+  - `apps/api/src/services/listaEsperaService.js` — quitada
+    `getPendientesPorEmail()` completa (la única función que consultaba
+    `resplandores` en el código vivo).
+  - **La tabla `resplandores` NO se tocó** — sigue con su historial
+    completo, igual que todas las veces anteriores que se limpió algo
+    relacionado (T-14).
+- **Pruebas:** `npm test` en `apps/api`: 12/12, sin regresiones (el
+  endpoint borrado no tenía test propio). `node --check` en los 3 archivos
+  tocados: sin errores de sintaxis.
+- **Criterio de terminado:** ✅ confirmado que no existe la rama muerta en
+  `flujo.js` (nunca existió); de paso se cerró el hallazgo relacionado —
+  el endpoint backend que sí quedaba muerto, ya no existe.
+- **Nota:** la "aprovechar la misma sesión para confirmar T-10 con datos
+  reales" que traía este ticket sigue diferida — decisión de Paola en
+  T-10, no depende de este hallazgo.
 
-### T-36 — `pendiente` no cuenta contra el cupo, pero el bot ya promete el lugar
+### ~~T-36 — `pendiente` no cuenta contra el cupo, pero el bot ya promete el lugar~~ ✅ CERRADO (18 sep 2026)
 - **Encontrado:** Paola probó el registro por el bot (18 sep 2026) y, en
   cuanto eligió taller, el bot le mandó de inmediato "¡Registro completado!
   Quedaste inscrito" + los medios de pago — sin pasar por que el admin
-  confirme el lugar a mano. Esto **no es un bug introducido hoy**: es un
-  comportamiento intencional y ya documentado dentro del propio
+  confirme el lugar a mano. Esto **no era un bug introducido ese día**: es
+  un comportamiento intencional y ya documentado dentro del propio
   `flujo.js` (comentario explícito: mandar el precio de una vez en cuanto
   hay cupo, en vez de hacer esperar a la persona a que el admin conteste).
-- **El detalle que sí vale la pena resolver:** `cupoService.js` dice,
+- **El detalle que sí valía la pena resolver:** `cupoService.js` decía,
   textual, *"Ocupa lugar quien está en `cupo_confirmado` o `pagado`. Los
-  `pendiente` NO."* — o sea, cuando el bot le dice a alguien "quedaste
-  inscrito", su registro sigue en `pendiente` y **no está contando contra
-  el cupo real todavía**. Si varias personas se registran casi al mismo
-  tiempo para un taller con poco cupo, a todas se les puede prometer lugar
-  aunque el taller ya esté, en los hechos, lleno — el primero que paga se
-  queda, a los demás se les prometió algo que el sistema no les estaba
-  apartando.
-- **Lo que Paola está evaluando** (18 sep 2026): que el lugar se **asigne**
-  de verdad al detectar disponibilidad (contando ya contra el cupo desde
-  ese momento) y se mande el medio de pago; la confirmación al 100% llega
-  cuando se paga; si no paga a tiempo, la liberación automática que ya
-  existe (48h + 24h de gracia) se encarga de soltar el lugar. Dos de las
-  tres piezas (mandar medios de pago de inmediato, liberar si no paga) ya
-  existen — falta la primera (que "pendiente" cuente contra el cupo desde
-  que se asigna, no hasta `cupo_confirmado`).
-- **Por qué no se resolvió ya:** es una decisión de negocio (qué tan
-  temprano se "reserva" un lugar) más que un bug — se revisa junto con
-  T-35 en la próxima sesión completa del flujo del bot, no a media
-  conversación de otro ticket.
-- **Criterio de terminado:** decidir junto con Paola si `pendiente` debe
-  contar contra `v_cupo_taller` (o algún estado intermedio nuevo), y
-  ajustar `cupoService.js` + lo que dependa de esa regla.
+  `pendiente` NO."* — o sea, cuando el bot le decía a alguien "quedaste
+  inscrito", su registro seguía en `pendiente` y **no contaba contra el
+  cupo real todavía**. Si varias personas se registraban casi al mismo
+  tiempo para un taller con poco cupo, a todas se les podía prometer lugar
+  aunque el taller ya estuviera, en los hechos, lleno.
+- **Decisión de Paola (18 sep 2026):** `pendiente` sí debe ocupar cupo desde
+  que se crea, con el mismo reloj de 48h+24h de gracia que ya existía
+  (extendido para arrancar en `pendiente`, no solo en `cupo_confirmado`) —
+  y, a petición suya en la misma sesión, el recordatorio de las 48h dejó de
+  ser manual.
+- **Qué se hizo:**
+  - **Migración `017_pendiente_cuenta_cupo.sql`:** `v_cupo_taller` ahora
+    cuenta `pendiente` además de `cupo_confirmado`/`confirmado`/`pagado`.
+    `v_alertas` (etapas `falta_recordatorio` y `gracia_vencida`) también
+    incluye `pendiente`, usando `COALESCE(confirmado_at, created_at)` como
+    base del plazo — un `pendiente` nunca tiene `confirmado_at` (ese campo
+    solo se llena al "confirmar lugar", que un `pendiente` recién creado
+    todavía no pasó), así que sin el `COALESCE` el reloj nunca habría
+    arrancado para esos renglones.
+  - **`relojPago()`** (`ListaEsperaAdmin.jsx`) — mismo cambio del lado del
+    panel: ahora aplica a `pendiente` también, cayendo a `r.created_at`
+    cuando no hay `confirmado_at`/`apartado_at`. El botón "Liberar" (que ya
+    era agnóstico al estado, solo mira la etapa del reloj) y el botón
+    "Recordar" empezaron a funcionar solos para `pendiente` sin tocar más
+    UI.
+  - **Nuevo `recordatorioAutoService.js`** — la pieza que Paola pidió de
+    paso: la API ya no depende de que alguien mire el panel para mandar el
+    recordatorio de las 48h. `index.js` corre
+    `enviarRecordatoriosAutomaticos()` cada 30 min (`setInterval`, primera
+    corrida 2 min después de arrancar, sin librería externa ni cron del
+    sistema — mismo criterio que `otpService`/`rateLimit`): busca los
+    mismos renglones que `v_alertas` marca `falta_recordatorio`, les manda
+    el mismo texto que antes mandaba Paola a mano con el botón "Recordar",
+    y solo estampa `recordatorio_at` si el WhatsApp salió bien (igual que
+    el flujo manual — si no llegó, no es justo empezarle a correr la
+    gracia). El botón manual se conserva como respaldo/adelanto.
+  - **Ajuste sobre la marcha (mismo día):** a petición de Paola, el
+    recordatorio (automático Y el botón manual, mismo texto en los dos)
+    ahora reenvía los datos de pago completos (SPEI + tarjeta) — antes
+    solo decía "el plazo se cumplió", asumiendo que la persona todavía
+    tenía a la mano el primer mensaje con la CLABE. Duplicado igual que ya
+    estaba duplicado en `mailService.js`/`ListaEsperaAdmin.jsx` (no hay un
+    módulo de constantes de pago compartido todavía).
+  - **La liberación (etapa `gracia_vencida` → `rechazado` + revocar
+    chispa) sigue siendo manual a propósito** — no se tocó: el propio
+    endpoint `/admin/lista-espera/:id/liberar` ya lo dice en su comentario,
+    "alguien puede pagar el domingo y avisar el lunes, y no queremos que un
+    cron le quite el lugar de madrugada". Solo se automatizó el
+    recordatorio, no la liberación.
+- **Pruebas:** `apps/api` — `npm test`: 16/16 (12 de antes + 4 nuevos en
+  `recordatorioAutoService.test.js`, sobre el texto del mensaje —
+  `sendWhatsapp`/DB no se pueden probar sin infraestructura de integración,
+  mismo caso que T-13 3a/3b). `node --check` en los archivos backend
+  tocados, `esbuild` en `ListaEsperaAdmin.jsx`: sin errores.
+- **Verificación funcional real:** pendiente — no se probó contra un taller
+  con cupo real ni se confirmó en prod que el `setInterval` mande el
+  WhatsApp automático (requiere esperar 48h reales o manipular fechas en
+  una base de prueba). Anotado para la próxima vez que se pruebe el flujo
+  completo del bot con datos reales.
+- **Criterio de terminado:** ✅ `pendiente` cuenta contra `v_cupo_taller`
+  desde que se crea; el recordatorio de 48h se manda solo, sin depender de
+  que alguien abra el panel; la liberación sigue siendo decisión manual de
+  Paola, sin cambios.
 
 ### ~~T-37 — El bot dice "registro guardado" aunque falle silenciosamente~~ ✅ CERRADO (18 sep 2026)
 - **Encontrado:** al verificar T-13 paso 3a con una inscripción real por el

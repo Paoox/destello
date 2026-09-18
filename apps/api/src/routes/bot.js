@@ -10,7 +10,6 @@ import {
     buscarUsuarioPorWhatsapp,
     agregarALista,
     listasDeUsuario,
-    pendientesDeUsuario,
     diagnosticoDeAcceso,
     completarWhatsappDeUsuario,
     reportarAcceso,
@@ -43,7 +42,6 @@ router.get('/usuario/:email',        buscarUsuario)
 router.get('/usuario-por-whatsapp/:numero', buscarUsuarioPorWhatsapp)
 router.post('/lista-espera',         rechazarSinCompras, agregarALista)
 router.get('/listas/:email',         listasDeUsuario)
-router.get('/pendientes/:email',     pendientesDeUsuario)
 router.get('/diagnostico/:email',    diagnosticoDeAcceso)
 router.post('/completar-whatsapp',   rechazarBloqueados, completarWhatsappDeUsuario)
 router.post('/reporte-pago',         rechazarBloqueados, reportarPago)

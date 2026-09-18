@@ -24,12 +24,17 @@ const HORAS_DE_GRACIA = 24
 /**
  * Estado del reloj de pago de un registro.
  *
- * Solo aplica a quien tiene el lugar apartado (`cupo_confirmado`) pero aún no
- * paga. `apartado_at` viene de la fecha de su chispa — ver GET /admin/lista-espera.
+ * Aplica a quien tiene un lugar apartado esperando pago: `cupo_confirmado`
+ * (Paola ya lo confirmó) y, desde T-36 (18 sep 2026, migración 017), también
+ * `pendiente` — el bot ya le dice "quedaste inscrito" apenas hay cupo, sin
+ * esperar a que Paola conteste, así que ese lugar también empieza a ocupar
+ * cupo real desde que se crea, y necesita el mismo reloj para no quedarse
+ * apartado para siempre si nadie lo revisa. `apartado_at` viene de la fecha
+ * de su chispa — ver GET /admin/lista-espera.
  *
  * El plazo tiene TRES etapas, no una:
  *
- *   1. 48 h desde que se le confirma el lugar → `en_plazo` / `por_vencer`
+ *   1. 48 h desde que se aparta el lugar      → `en_plazo` / `por_vencer`
  *   2. Se vencieron y NO se le ha avisado     → `falta_recordatorio`
  *   3. Ya se le mandó recordatorio            → `en_gracia` (24 h más)
  *   4. Pasó la gracia sin respuesta           → `gracia_vencida` → se libera
@@ -38,16 +43,22 @@ const HORAS_DE_GRACIA = 24
  * quien nunca le avisaste es muy distinto de liberarlo después de que no
  * contestó.** Por eso el botón de liberar solo aparece en la etapa 4.
  *
+ * Desde T-36 la etapa 2 ya no depende de que Paola mire el panel: la API
+ * manda sola el recordatorio al cumplirse las 48 h (`recordatorioAutoService.js`,
+ * mismo criterio: `recordatorio_at` solo se estampa si el WhatsApp salió bien).
+ *
  * @returns {{ clave: 'na'|'en_plazo'|'por_vencer'|'falta_recordatorio'|'en_gracia'|'gracia_vencida',
  *             horas: number|null }}
  */
 function relojPago(r) {
-    if (!['cupo_confirmado', 'confirmado'].includes(r.estado)) return { clave: 'na', horas: null }
+    if (!['pendiente', 'cupo_confirmado', 'confirmado'].includes(r.estado)) return { clave: 'na', horas: null }
 
-    // `confirmado_at` es el dato real desde la migración 003. `apartado_at`
-    // (derivado de la fecha de la chispa) queda como respaldo para los
-    // registros viejos que nunca pasaron por el trigger.
-    const base = r.confirmado_at || r.apartado_at
+    // `confirmado_at` es el dato real desde la migración 003 — solo lo tiene
+    // quien ya pasó por "confirmar lugar". `apartado_at` (derivado de la
+    // fecha de la chispa) es respaldo para registros viejos. Un `pendiente`
+    // no tiene ninguno de los dos todavía (nunca se confirmó, no hay chispa),
+    // así que cae a `created_at`: el momento exacto en que el bot lo apartó.
+    const base = r.confirmado_at || r.apartado_at || r.created_at
     if (!base) return { clave: 'na', horas: null }
 
     // Etapa 3 y 4: si ya se le recordó, lo que corre es la gracia.
@@ -185,7 +196,10 @@ function buildWaMensaje(r) {
  *
  * Deliberadamente amable pero claro: la persona pudo haber pagado y olvidado
  * avisarnos, así que primero se le da esa salida antes de hablar de liberar
- * el lugar.
+ * el lugar. Reenvía los datos de pago (a petición de Paola, 18 sep 2026):
+ * ya pasaron 48 h desde el primer mensaje, no hay que asumir que los tenga
+ * a la mano. Mismo texto que `textoRecordatorio()` en
+ * `recordatorioAutoService.js` (backend) — mantenerlos iguales.
  */
 function buildWaRecordatorio(r) {
     const nombre = r.nombre?.split(' ')[0] || 'alumno/a'
@@ -198,6 +212,17 @@ function buildWaRecordatorio(r) {
         '',
         'Todavía no nos llega tu comprobante de pago y el plazo ya se cumplió. ' +
         'Si ya pagaste, mándame la foto por aquí y lo confirmo enseguida. 📸',
+        '',
+        'Si no lo has hecho, aquí tienes de nuevo los datos:',
+        '',
+        '🏦 *SPEI — Inbursa*',
+        'Titular: Paola Arreola',
+        `CLABE: ${SPEI_CLABE}`,
+        '',
+        '💳 *Pago en efectivo*',
+        `Tarjeta: ${CARD_NUM}`,
+        'Titular: Paola Arreola',
+        '(Walmart · OXXO · Sears · Sanborns · Bodega Aurrera)',
         '',
         'Si algo se te complicó, dime y vemos cómo te ayudo. ' +
         'Si no puedo confirmarlo pronto tendría que liberar tu lugar para alguien de la lista. 🙏',
@@ -613,7 +638,12 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                         )}
                                         {/* Recordar pago — solo aparece cuando el reloj de 48 h
                                             ya venció o está por vencer. No tiene sentido ofrecerlo
-                                            para alguien que apenas apartó su lugar hace una hora. */}
+                                            para alguien que apenas apartó su lugar hace una hora.
+                                            Desde T-36 (18 sep 2026) la API ya manda este mismo
+                                            recordatorio sola al cumplirse las 48 h (ver
+                                            recordatorioAutoService.js) — este botón queda como
+                                            respaldo: para adelantarlo antes de tiempo, o para
+                                            reintentar a mano si el automático falló. */}
                                         {r.whatsapp && ETAPAS_TRABAJO.includes(relojPago(r).clave) && (
                                             <button
                                                 onClick={() => enviarWa(r, 'recordatorio')}
