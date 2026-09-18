@@ -69,8 +69,10 @@ destello/
 │   │   │   │                            PageHome, PageHabitat, PageAula, PageAulaNueva,
 │   │   │   │                            PageCertificado, PagePerfil
 │   │   │   ├── aula/                 ← El módulo del aula (Aula.jsx, Sello.jsx,
-│   │   │   │                            actividades/contrato.js + Quiz.jsx). NUNCA
-│   │   │   │                            llama a la API de Destello — ver "Reglas Críticas"
+│   │   │   │                            actividades/contrato.js + Quiz.jsx,
+│   │   │   │                            video/useVideoAula.js + PistaVideo.jsx
+│   │   │   │                            — LiveKit, T-01). NUNCA llama a la API
+│   │   │   │                            de Destello — ver "Reglas Críticas"
 │   │   │   ├── components/
 │   │   │   │   ├── admin/            ← AccesosPanel, ListaEsperaAdmin, TalleresPanel,
 │   │   │   │   │                        AsistenciaPanel, MetricasPanel, etc.
@@ -312,6 +314,8 @@ GET  /users/me/talleres                 → talleres del usuario (para Home)
 POST /users/me/canjear                  · POST /users/me/supernovas/:id/canjear
 GET  /users/me/confirmar-asistencia     · POST /users/me/confirmar-asistencia (demos)
 POST /users/me/aula/:tallerId/presencia → LATIDO de asistencia (cada 2 min desde el aula)
+GET  /users/me/aula/:tallerId/video-token → token de LiveKit para el video del aula (T-01);
+                                           `video: null` si no hay servidor configurado o sin acceso
 GET  /users/me/certificados             → certificados ya emitidos al usuario
 ```
 
@@ -478,17 +482,26 @@ entraban). **Hay que escapar cada `$` como `$$`** en esa línea del `.env`.
 Detalle completo y cómo diagnosticarlo en `docs/backlog-tickets.md` (T-S1).
 
 ### 🔴 Bloquea el lanzamiento (meta: 11 sep 2026, capas 1-2 del aula)
-- **Video real en el aula.** Plan: primero probar OpenVidu (fork de LiveKit) en
-  local/1 a 1 para perfilar su comportamiento; recién después se contrata el VPS
-  (Hostinger KVM 2, Phoenix) y se monta ahí. Hoy el aula dice "Sin video todavía".
-- **Actividades reales.** Existe el contrato (`src/aula/actividades/contrato.js`)
-  y el Quiz funcionando de punta a punta; faltan `modelo3d`, `memorama`, `armar`,
-  y conectar el contenido real de cada taller a la plantilla.
-- **Tabla de profesores.** Hoy "profe" = `isAdminEmail()` — es un problema de
-  seguridad (un profesor externo vería todo el panel financiero), no solo un
-  pendiente cosmético. Destraba también: nombre en los diplomas, firma, y ForYou.
-- **Justo antes de abrir:** respaldo de la BD (Supabase free no incluye backups
-  diarios) y un ping diario para que el proyecto no se pause por inactividad.
+- **Video real en el aula (T-01) — fase local ✅, falta el VPS.** La
+  integración completa (cámara, micrófono, audio, "dar la palabra"/
+  "silenciar" en tiempo real) ya está construida y probada en local con
+  OpenVidu — ver el detalle completo en "Lo que Está Terminado y Funciona"
+  más abajo. **Lo que falta para el lanzamiento:** contratar y montar el VPS
+  (Hostinger KVM 2, Phoenix) con un LiveKit/OpenVidu real y apuntar
+  `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` de producción ahí —
+  el código de la app no cambia, solo esas 3 variables.
+- **Actividades reales (T-02/T-03/T-04).** Existe el contrato
+  (`src/aula/actividades/contrato.js`) y el Quiz funcionando de punta a
+  punta; faltan `memorama`, `armar` y `modelo3d`. **Las 3 están bloqueadas
+  por igual (18 sep 2026):** Paola necesita armar primero el material real
+  de cada una (parejas, piezas, modelos 3D) — construirlas con contenido
+  inventado invalidaría la prueba del contrato, mismo criterio que ya
+  aplicaba solo a `modelo3d` y ahora se extiende a las tres.
+- **Tabla de profesores (T-05).** Hoy "profe" = `isAdminEmail()` — es un
+  problema de seguridad (un profesor externo vería todo el panel
+  financiero), no solo un pendiente cosmético. Destraba también: nombre en
+  los diplomas, firma, y ForYou. Sin bloqueo externo — se puede construir
+  ya.
 
 ### 🟠 Deuda técnica — las tablas se relacionan por CORREO, no por id
 Detectado por Paola el 21 jul 2026. `chispas.usuario_email` y
@@ -528,6 +541,10 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
   "Lo que Está Terminado y Funciona" más abajo para el detalle completo.
 
 ### 🟡 Pendiente
+- **T-06 — Respaldo de BD + ping diario** *(movido aquí desde "Bloquea el
+  lanzamiento", 18 sep 2026)*: la BD todavía tiene cambios frecuentes, no
+  está pulida — Paola decidió que respaldarla ahora no es prioridad, se
+  retoma cuando la estructura esté más estable.
 - **Acordado, sin empezar:** onboarding/visita guiada la primera vez en el aula;
   `/aula-nueva` se está reconvirtiendo en salón de ensayo del profesor (en vez
   de borrarla); ilustraciones de sellos y reacciones (las hace Paola);
@@ -556,7 +573,72 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
 
 ## Lo que Está Terminado y Funciona
 
-- ✅ **T-37 — el bot ya no dice "registro guardado" a ciegas** (18 sep 2026).
+- ✅ **T-01 — Video real en el aula, fase local** (18 sep 2026). Cámara,
+  micrófono, audio y el control de palabra ya son de verdad — probado de
+  punta a punta por Paola con dos cuentas reales en dos pestañas, cámaras
+  físicas, contra un OpenVidu corriendo en local (Docker Desktop en su
+  propia máquina). Falta solo el VPS para el lanzamiento (ver "Bloquea el
+  lanzamiento" arriba) — el código no cambia, solo la URL/llaves.
+  - **Backend:** `apps/api/src/services/videoService.js` (`livekit-server-sdk`)
+    firma un token de LiveKit scoped a una sala por taller (`sala-<tallerId>`)
+    y a la identidad del usuario (su `id`, como string — coincide con el
+    `Persona.id` que ya usa el resto del aula). Nuevo endpoint
+    `GET /users/me/aula/:tallerId/video-token`, mismo candado de acceso que
+    ya usan los latidos de asistencia (`asistenciaService.tieneAcceso()`).
+    `video: null` en la respuesta (200, no error) si `LIVEKIT_URL`/llaves no
+    están configuradas — el aula ya sabe mostrar "Sin video todavía" en ese
+    caso, no hizo falta inventar un tercer estado.
+  - **Contrato del aula extendido, sin romper la regla:** `sesion.video =
+    { serverUrl, token } | null` (`aula/contrato.js`) — lo pide
+    `PageAula.jsx` (la única pieza que puede hablar con la API de Destello)
+    y se lo pasa al aula ya armado. Nada dentro de `src/aula/` llama a
+    LiveKit por su cuenta con llaves propias; solo usa el token que ya le
+    dieron.
+  - **Conexión real:** `aula/video/useVideoAula.js` (hook sobre
+    `livekit-client`) + `aula/video/PistaVideo.jsx` (pega una pista de
+    LiveKit a un `<video>`/`<audio>`). Rellenó el hueco que `Avatar.jsx` ya
+    tenía marcado desde antes (`{camara && null}`) para el video real en
+    lugar del avatar de color. `BarraControles` (micro/cámara) y la tira de
+    personas ya reflejan el estado real de LiveKit, no estado inventado.
+  - **"Dar la palabra" / "silenciar" en tiempo real**, agregado el mismo día
+    a petición de Paola tras la primera prueba (antes era solo estado local,
+    no le llegaba nada a la otra persona): usa el **canal de datos de
+    LiveKit** (`localParticipant.publishData()` / `RoomEvent.DataReceived`)
+    — mensajería directa entre navegadores por el mismo servidor que ya
+    reenvía cámara y micrófono, sin backend nuevo. Importante, ya
+    documentado en el propio código desde antes: **nunca se puede prender el
+    micrófono de alguien a la fuerza** (ningún navegador lo permite sin que
+    la persona lo confirme) — "dar la palabra" solo le quita el bloqueo a SU
+    botón; es ella quien lo prende.
+  - **Indicador verde/rojo/ámbar** (pedido por Paola durante la prueba, para
+    depurar mientras se conecta video real): 🔴 sin permiso (silenciada) ·
+    🟡 con permiso, aún sin prender · 🟢 de verdad hablando/transmitiendo —
+    visible siempre, tanto en el avatar de la tira como en los botones de
+    micro/cámara. Antes de esto se escondía el badge por completo a quien
+    estaba silenciada (buen criterio para 20+ personas en clase real, pero
+    poco útil mientras se depura conexión real de a dos).
+  - **Bug real encontrado y corregido en la misma sesión:** el hook solo
+    escuchaba `LocalTrackPublished`/`Unpublished` para refrescar el estado
+    propio de cámara/micro — pero `setMicrophoneEnabled(false)` normalmente
+    **silencia** la pista sin despublicarla, así que esos eventos solo
+    disparaban la primera vez. Resultado: el color del botón se quedaba
+    pegado en el primer valor capturado, sin importar cuántas veces se
+    volviera a apagar/prender. Arreglado escuchando también
+    `RoomEvent.TrackMuted`/`TrackUnmuted` (que sí disparan en cada toggle,
+    para la pista propia y las remotas).
+  - **Infraestructura de prueba (fuera del repo, no es código de Destello):**
+    `openvidu-local-deployment` (Community 3.8.0) clonado en
+    `~/openvidu-local-deployment`, con `LAN_MODE=false`/`USE_HTTPS=false` (un
+    solo equipo, sin certificados) y un `docker-compose.override.yml` local
+    fijando `NODE_IP=127.0.0.1` — sin esto, el contenedor de LiveKit anuncia
+    su IP interna de Docker para el video/audio (ICE), inalcanzable desde el
+    navegador, y la señalización conecta pero el video nunca llega
+    ("could not establish pc connection").
+  - **Pruebas:** `apps/api` — `npm test`: 19/19 (3 nuevos en
+    `videoService.test.js`: nombre de sala, token nulo sin config, token
+    válido con JWT de 3 partes). La parte de LiveKit/React no tiene test
+    automatizado (necesita cámara/navegador real) — verificado a mano por
+    Paola de punta a punta.
   Encontrado al probar T-13: si el WhatsApp usado ya estaba ligado a otra
   cuenta, `usuarioService.upsertUsuario()` rechazaba la creación
   (`WA_EN_USO`, regla ya vigente: un WhatsApp no puede estar en dos

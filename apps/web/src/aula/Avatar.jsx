@@ -11,6 +11,7 @@
  * misma persona siempre sale del mismo color, así que la profe la reconoce de
  * un vistazo aunque no le lea el nombre.
  */
+import PistaVideo from './video/PistaVideo.jsx'
 
 /** Doce tonos que se distinguen entre sí y se ven bien sobre fondo oscuro. */
 const TONOS = [
@@ -33,9 +34,13 @@ function iniciales(nombre = '') {
     return (partes[0][0] + partes[1][0]).toUpperCase()
 }
 
-export default function Avatar({ persona, size = 40, mostrarNombre = false }) {
+export default function Avatar({ persona, pista = null, size = 40, mostrarNombre = false }) {
     const { nombre = '', avatarUrl = null, camara = false } = persona ?? {}
     const tono = tonoDe(nombre)
+    // Sin pista todavía (se está conectando, o la persona no tiene cámara
+    // prendida en LiveKit aunque el contrato diga `camara: true`) → se ve el
+    // avatar de color, nunca una pantalla negra.
+    const conVideo = camara && pista != null
 
     const cuadro = {
         width:        size,
@@ -58,14 +63,16 @@ export default function Avatar({ persona, size = 40, mostrarNombre = false }) {
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <div style={cuadro} title={nombre}>
-                {avatarUrl
-                    ? <img src={avatarUrl} alt={nombre}
-                           style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : iniciales(nombre)}
-                {/* Cuando la cámara está prendida, aquí va el video en lugar del
-                    avatar. Se deja el hueco marcado para no tener que rehacer
-                    este componente al conectar LiveKit. */}
-                {camara && null}
+                {conVideo ? (
+                    <PistaVideo track={pista} style={{
+                        width: '100%', height: '100%', objectFit: 'cover',
+                    }} />
+                ) : avatarUrl ? (
+                    <img src={avatarUrl} alt={nombre}
+                         style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                    iniciales(nombre)
+                )}
             </div>
             {mostrarNombre && (
                 <span style={{

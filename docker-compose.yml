@@ -45,6 +45,12 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
       - SUPABASE_BUCKET_COMPROBANTES=${SUPABASE_BUCKET_COMPROBANTES:-comprobantes}
+      # Video del aula (T-01) — vacías hasta que exista un servidor LiveKit/
+      # OpenVidu real (hoy solo se prueba en local, fuera de la Toshiba). Sin
+      # ellas el endpoint de token devuelve `video: null`, no truena nada.
+      - LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
     depends_on:
       redis:
         condition: service_healthy

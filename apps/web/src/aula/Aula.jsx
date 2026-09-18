@@ -26,6 +26,8 @@ import {
 import Avatar from './Avatar.jsx'
 import Sello from './Sello.jsx'
 import BandejaSellos from './BandejaSellos.jsx'
+import PistaVideo from './video/PistaVideo.jsx'
+import { useVideoAula } from './video/useVideoAula.js'
 import { MARCA_DESTELLO, MINUTOS_SIN_TOCAR } from './contrato.js'
 import { SELLOS, REACCIONES, selloPorId, reaccionPorId, SELLOS_VISIBLES_EN_PIZARRON } from './catalogo.js'
 import { tipoDe, resumenDe } from './actividades/registro.js'
@@ -110,8 +112,16 @@ function BarraSuperior({ sesion }) {
    Piezas chicas
    ══════════════════════════════════════════════════════════════════════════ */
 
-function BotonIcono({ children, titulo, activo = false, peligro = false, onClick, disabled = false }) {
+/**
+ * `estado`: para micro/cámara, donde "apagado" es un estado normal y visible,
+ * no un error — necesita su propio color (rojo), distinto de "peligro"
+ * (que es para acciones destructivas: silenciar a todos, bloqueada por la
+ * profe). `'on'` → verde, `'off'` → rojo, `null` → el estilo de siempre
+ * (gris/jade), para no afectar los demás botones (chat, ajustes, mano...).
+ */
+function BotonIcono({ children, titulo, activo = false, peligro = false, estado = null, onClick, disabled = false }) {
     const [hover, setHover] = useState(false)
+    const colorEstado = estado === 'on' ? 'var(--color-success)' : estado === 'off' ? 'var(--color-error)' : null
     return (
         <button
             onClick={onClick}
@@ -124,15 +134,14 @@ function BotonIcono({ children, titulo, activo = false, peligro = false, onClick
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 34, height: 34, padding: 0,
                 background: peligro ? 'rgba(220,38,38,0.15)'
+                          : colorEstado ? `${colorEstado}22`
                           : activo  ? 'rgba(13,115,119,0.18)'
                           : hover   ? 'var(--bg-card)' : 'transparent',
                 border: `1px solid ${peligro ? 'var(--color-error)'
-                                   : activo ? 'var(--color-jade-500)'
-                                   : 'var(--border-subtle)'}`,
+                                   : colorEstado ?? (activo ? 'var(--color-jade-500)' : 'var(--border-subtle)')}`,
                 borderRadius: 'var(--radius-full)',
                 color: peligro ? 'var(--color-error)'
-                     : activo  ? 'var(--color-jade-400)'
-                     : 'var(--text-secondary)',
+                     : colorEstado ?? (activo ? 'var(--color-jade-400)' : 'var(--text-secondary)'),
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 opacity: disabled ? 0.45 : 1,
                 transition: 'all .15s',
@@ -161,9 +170,21 @@ function Semaforo({ activo, size = 8 }) {
    Ventana izquierda — el video
    ══════════════════════════════════════════════════════════════════════════ */
 
-function VentanaVideo({ sesion, onAbrirChat, chatAbierto, onMicro, onReaccionar }) {
+function VentanaVideo({ sesion, video, pistasCamara, onAbrirChat, chatAbierto, onMicro, onReaccionar, onSilenciarATodos }) {
     const { rol, taller, personas, yo } = sesion
     const esProfe = rol === 'profe'
+
+    // ── Quién se ve en grande ──────────────────────────────────────────
+    //
+    // La profe se ve a sí misma (así sabe qué está transmitiendo). El
+    // alumno debería ver siempre a LA PROFE — pero el contrato de hoy no
+    // dice quién, entre `personas`, es la profe (eso llega con T-05, la
+    // tabla de profesores). Mientras tanto: el primer remoto con cámara
+    // prendida. Con un profe + un salón chico de prueba da el resultado
+    // correcto; no es la regla final.
+    const pistaGrande = esProfe
+        ? pistasCamara?.[yo.id]
+        : pistasCamara?.[[...personas].find(p => p.camara)?.id]
 
     return (
         <section className="aula-ventana" style={{
@@ -185,18 +206,27 @@ function VentanaVideo({ sesion, onAbrirChat, chatAbierto, onMicro, onReaccionar 
                 background: 'var(--bg-dark)',
                 position: 'relative',
             }}>
-                {/* Aquí entra el <video> de LiveKit. El hueco ya está listo. */}
-                <div style={{ fontSize: 44, opacity: .5 }}>🎥</div>
-                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-                    {taller.instructor}
-                </div>
+                {pistaGrande ? (
+                    <PistaVideo track={pistaGrande} style={{
+                        width: '100%', height: '100%', objectFit: 'cover',
+                    }} />
+                ) : (
+                    <>
+                        <div style={{ fontSize: 44, opacity: .5 }}>🎥</div>
+                        <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                            {taller.instructor}
+                        </div>
+                    </>
+                )}
                 <span style={{
                     position: 'absolute', top: 10, left: 12,
                     fontSize: 'var(--text-xs)', color: 'var(--text-muted)',
                     background: 'rgba(0,0,0,0.35)', padding: '2px 8px',
                     borderRadius: 'var(--radius-full)',
                 }}>
-                    Sin video todavía
+                    {video?.conectado
+                        ? (pistaGrande ? 'En vivo' : 'Conectado · cámara apagada')
+                        : 'Sin video todavía'}
                 </span>
             </div>
 
@@ -221,6 +251,7 @@ function VentanaVideo({ sesion, onAbrirChat, chatAbierto, onMicro, onReaccionar 
                     <FichaPersona
                         key={p.id}
                         persona={p}
+                        pista={pistasCamara?.[p.id]}
                         esProfe={esProfe}
                         soyYo={p.id === yo.id}
                         onMicro={onMicro}
@@ -231,9 +262,11 @@ function VentanaVideo({ sesion, onAbrirChat, chatAbierto, onMicro, onReaccionar 
             {/* Controles */}
             <BarraControles
                 sesion={sesion}
+                video={video}
                 onAbrirChat={onAbrirChat}
                 chatAbierto={chatAbierto}
                 onReaccionar={onReaccionar}
+                onSilenciarATodos={onSilenciarATodos}
             />
         </section>
     )
@@ -247,7 +280,7 @@ function VentanaVideo({ sesion, onAbrirChat, chatAbierto, onMicro, onReaccionar 
  * en una clase — alguien levanta la mano, le abres solo a ella, contesta, y se
  * lo vuelves a cerrar. Silenciar a todos es el martillo; esto es la pinza.
  */
-function FichaPersona({ persona, esProfe, soyYo, onMicro }) {
+function FichaPersona({ persona, pista, esProfe, soyYo, onMicro }) {
     const { nombre, manoArriba, reaccion, micro, silenciadoPorProfe } = persona
     const puedeAbrirMicro = esProfe && !soyYo
     const tienePalabra = !silenciadoPorProfe
@@ -255,7 +288,7 @@ function FichaPersona({ persona, esProfe, soyYo, onMicro }) {
 
     const senales = (
         <>
-            <Avatar persona={persona} size={40} />
+            <Avatar persona={persona} pista={pista} size={40} />
 
             {/* La mano y la reacción van ENCIMA del avatar: son cosas que la
                 profe tiene que cachar de reojo, sin ponerse a leer. */}
@@ -269,24 +302,29 @@ function FichaPersona({ persona, esProfe, soyYo, onMicro }) {
                 </span>
             )}
 
-            {/* ── Solo se marca a quien TIENE la palabra ──────────────────
-                Como todos entran silenciados (ENTRAN_SILENCIADOS), estar
-                callado es el estado normal y marcarlo no informa nada: serían
-                veinte iconos rojos que la profe aprende a ignorar en dos
-                minutos, y que además hacen ver la clase como si algo anduviera
-                mal.
-                Lo que sí es noticia es lo contrario — quién puede hablar
-                ahorita. Eso son uno o dos, y por eso se ven. */}
-            {tienePalabra && (
-                <span style={{
-                    position: 'absolute', bottom: 16, right: 0,
-                    color: abierto ? 'var(--color-success)' : 'var(--color-amber-500)',
-                    background: 'var(--bg-dark)',
-                    borderRadius: '50%', display: 'flex', padding: 1,
-                }} title={abierto ? 'Está hablando' : 'Tiene la palabra, aún no prende'}>
-                    <Microphone size={11} weight="fill" />
-                </span>
-            )}
+            {/* Tres estados, siempre visibles (antes se ocultaba a quien
+                estaba silenciada — útil en clase real con 20+ personas, pero
+                mientras se prueba conexión real es más útil ver el estado de
+                cada quien sin excepción):
+                  🔴 rojo   → sin permiso (silenciada por la profe)
+                  🟡 ámbar  → CON permiso, pero todavía no prende su micro
+                  🟢 verde  → de verdad hablando (pista de LiveKit activa) */}
+            <span style={{
+                position: 'absolute', bottom: 16, right: 0,
+                color: !tienePalabra ? 'var(--color-error)'
+                     : abierto       ? 'var(--color-success)'
+                     :                 'var(--color-amber-500)',
+                background: 'var(--bg-dark)',
+                borderRadius: '50%', display: 'flex', padding: 1,
+            }} title={
+                !tienePalabra ? 'Silenciada por la profe'
+                : abierto     ? 'Está hablando'
+                :               'Tiene la palabra, aún no prende'
+            }>
+                {abierto
+                    ? <Microphone size={11} weight="fill" />
+                    : <MicrophoneSlash size={11} weight="fill" />}
+            </span>
 
             <span style={{
                 fontSize: 10, color: soyYo ? 'var(--color-jade-400)' : 'var(--text-muted)',
@@ -321,13 +359,21 @@ function FichaPersona({ persona, esProfe, soyYo, onMicro }) {
     )
 }
 
-/** Los botones de abajo. Cambian según de qué lado estés. */
-function BarraControles({ sesion, onAbrirChat, chatAbierto, onReaccionar }) {
+/**
+ * Los botones de abajo. Cambian según de qué lado estés.
+ *
+ * Micro y cámara ya son reales: pican directo al `Room` de LiveKit vía
+ * `video` (`useVideoAula`, ver `video/useVideoAula.js`). Si no hay servidor
+ * configurado (`video` viene `null` o desconectado), los botones simplemente
+ * no hacen nada — el hook ya se encarga de que `toggleMicro`/`toggleCamara`
+ * sean no-ops seguros en ese caso.
+ */
+function BarraControles({ sesion, video, onAbrirChat, chatAbierto, onReaccionar, onSilenciarATodos }) {
     const { rol, yo } = sesion
     const esProfe = rol === 'profe'
-    const [micro,  setMicro]  = useState(false)
-    const [camara, setCamara] = useState(false)
-    const [mano,   setMano]   = useState(false)
+    const [mano, setMano] = useState(false)
+    const micro  = video?.microActivo  ?? false
+    const camara = video?.camaraActiva ?? false
 
     // El silencio de la profe gana. Se comprueba también aquí, en la interfaz,
     // para que el botón se vea claramente bloqueado — pero la comprobación de
@@ -341,18 +387,18 @@ function BarraControles({ sesion, onAbrirChat, chatAbierto, onReaccionar }) {
         }}>
             <BotonIcono
                 titulo={bloqueada ? 'La profe te tiene silenciada' : micro ? 'Cerrar micrófono' : 'Abrir micrófono'}
-                activo={micro && !bloqueada}
+                estado={bloqueada ? null : (micro ? 'on' : 'off')}
                 peligro={bloqueada}
                 disabled={bloqueada}
-                onClick={() => setMicro(m => !m)}
+                onClick={() => video?.toggleMicro()}
             >
                 {micro && !bloqueada ? <Microphone size={17} /> : <MicrophoneSlash size={17} />}
             </BotonIcono>
 
             <BotonIcono
                 titulo={camara ? 'Apagar cámara' : 'Prender cámara'}
-                activo={camara}
-                onClick={() => setCamara(c => !c)}
+                estado={camara ? 'on' : 'off'}
+                onClick={() => video?.toggleCamara()}
             >
                 {camara ? <VideoCamera size={17} /> : <VideoCameraSlash size={17} />}
             </BotonIcono>
@@ -387,7 +433,7 @@ function BarraControles({ sesion, onAbrirChat, chatAbierto, onReaccionar }) {
             )}
 
             {esProfe && (
-                <button style={{
+                <button onClick={onSilenciarATodos} style={{
                     display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4,
                     padding: '6px 12px', background: 'rgba(220,38,38,0.12)',
                     border: '1px solid var(--color-error)', borderRadius: 'var(--radius-full)',
@@ -866,19 +912,71 @@ function Chat({ onCerrar }) {
 export default function Aula({ sesion }) {
     const [chatAbierto, setChatAbierto] = useState(false)
 
+    // ── La conexión real de video (T-01) ──────────────────────────────────
+    //
+    // `sesion.video` ya viene armado por `PageAula.jsx` (el token, no se pide
+    // aquí — ver la regla del contrato). Si viene `null` (sin servidor
+    // configurado, o sin acceso) el hook no conecta nada y todo sigue como
+    // antes: "Sin video todavía".
+    const video = useVideoAula(sesion.video)
+
     // ── El estado vivo de la clase ────────────────────────────────────────
     //
     // Vive aquí y no en cada pieza porque los sellos y los micrófonos los
     // cambia la profe desde el pizarrón y se ven en la tira de video: si cada
     // ventana guardara su propia copia, se desincronizarían.
     //
-    // Hoy es estado local para poder probarlo. Cuando entre LiveKit, estas dos
-    // funciones dejan de tocar el estado directamente y mandan el cambio al
-    // servidor, que lo replica a todos. **La forma de los datos no cambia** —
-    // por eso se construye así desde ahora.
+    // `personas` ya viene de LiveKit (ver el `useEffect` de abajo) en vez de
+    // estado inventado. Lo que TODAVÍA es local — sellos, mano arriba, avance
+    // de actividad — sigue siéndolo: es la siguiente pieza después de validar
+    // que cámara y micrófono funcionan bien. **La forma de los datos no
+    // cambia** cuando esa pieza también se conecte — por eso se construye así.
     const [personas, setPersonas] = useState(sesion.personas)
     const [yo, setYo] = useState(sesion.yo)
     const [actividadId, setActividadId] = useState(sesion.pizarron.actividadId ?? null)
+
+    // Quién está de verdad en la sala, según LiveKit. Se conserva el estado
+    // social (sellos, mano arriba, avance) de quien ya estaba; a quien llega
+    // nuevo se le da uno en blanco, y a quien LiveKit deja de listar se le
+    // deja de mostrar — LiveKit es la fuente de verdad de "quién está aquí".
+    useEffect(() => {
+        setPersonas(actuales => {
+            const porId = new Map(actuales.map(p => [p.id, p]))
+            return video.remotos
+                .filter(r => r.identity !== yo.id)
+                .map(r => ({
+                    id:                 r.identity,
+                    nombre:             r.nombre,
+                    avatarUrl:          porId.get(r.identity)?.avatarUrl ?? null,
+                    manoArriba:         porId.get(r.identity)?.manoArriba ?? false,
+                    reaccion:           porId.get(r.identity)?.reaccion ?? null,
+                    silenciadoPorProfe: porId.get(r.identity)?.silenciadoPorProfe ?? false,
+                    interactuando:      porId.get(r.identity)?.interactuando ?? false,
+                    insignias:          porId.get(r.identity)?.insignias ?? [],
+                    estadoActividad:    porId.get(r.identity)?.estadoActividad ?? null,
+                    // Cámara/micrófono SIEMPRE vienen de LiveKit, nunca se
+                    // conserva el valor viejo — es justo el dato que cambió.
+                    camara: r.camaraActiva,
+                    micro:  r.microActivo,
+                }))
+        })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [video.remotos, yo.id])
+
+    // Un mapa id → pista de video, para que la tira de personas y la ventana
+    // grande sepan qué pintar sin que cada componente tenga que ir a buscarlo
+    // en `video.remotos` por su cuenta.
+    const pistasCamara = {
+        [yo.id]: video.camaraTrack,
+        ...Object.fromEntries(video.remotos.map(r => [r.identity, r.camaraTrack])),
+    }
+
+    // El audio de los DEMÁS. Sin dueño visual propio (no hay "ventana" para el
+    // sonido) — por eso se renderiza aparte, no dentro de un avatar. El propio
+    // audio NUNCA se reproduce local: eso sería oírse a sí misma, puro eco.
+    // `identity` como key (no el índice): si alguien se va y otro llega, no
+    // queremos que React reuse el <audio> de uno para la pista del otro.
+    const pistasMicroRemoto = video.remotos.filter(r => r.microTrack)
 
     /** Le pone un sello a una persona. Sin repetir el mismo dos veces. */
     const sellar = (personaId, selloId) => {
@@ -953,13 +1051,48 @@ export default function Aula({ sesion }) {
      * palabra, prende, habla, y se la vuelves a quitar.
      */
     const alternarMicro = (personaId) => {
+        const objetivo = personas.find(p => p.id === personaId)
+        if (!objetivo) return
+        const leDabaLaPalabra = objetivo.silenciadoPorProfe === true
+
         setPersonas(lista => lista.map(p => {
             if (p.id !== personaId) return p
-            return p.silenciadoPorProfe
+            return leDabaLaPalabra
                 ? { ...p, silenciadoPorProfe: false }              // le das la palabra
                 : { ...p, silenciadoPorProfe: true, micro: false } // la silencias
         }))
+
+        // Esto es lo que de verdad viaja a la otra persona — lo de arriba
+        // solo actualiza lo que TÚ ves en tu propia pantalla.
+        video.enviarControl(leDabaLaPalabra ? 'dar_palabra' : 'silenciar', personaId)
     }
+
+    /** El botón "Silenciar a todos": mismo mecanismo, sin destinatario único. */
+    const silenciarMicrosATodos = () => {
+        setPersonas(lista => lista.map(p => ({ ...p, silenciadoPorProfe: true, micro: false })))
+        video.enviarControl('silenciar', null)
+    }
+
+    /**
+     * Lo que llega por el canal de datos de LiveKit (`useVideoAula.js`) desde
+     * la profe. Solo el propio interesado actualiza SU `yo` — un `silenciar`
+     * o `dar_palabra` dirigido a otra persona ya ni le llega (LiveKit filtra
+     * por `destinationIdentities` en el servidor), pero se revisa aquí
+     * también por si algún día se manda un broadcast sin destinatario.
+     */
+    useEffect(() => {
+        const msg = video.ultimoControl
+        if (!msg) return
+        if (msg.para && msg.para !== yo.id) return
+
+        if (msg.tipo === 'dar_palabra') {
+            setYo(a => ({ ...a, silenciadoPorProfe: false }))
+        } else if (msg.tipo === 'silenciar') {
+            setYo(a => ({ ...a, silenciadoPorProfe: true }))
+            video.apagarMicro()
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [video.ultimoControl])
 
     // ── El semáforo se apaga solo ─────────────────────────────────────────
     //
@@ -986,7 +1119,10 @@ export default function Aula({ sesion }) {
     const s = {
         ...sesion,
         marca: sesion.marca ?? MARCA_DESTELLO,
-        personas, yo,
+        personas,
+        // Cámara/micrófono de "yo" salen de LiveKit, no del estado que se usa
+        // para sellos/insignias — mismo criterio que `personas` arriba.
+        yo: { ...yo, camara: video.camaraActiva, micro: video.microActivo },
         pizarron: { ...sesion.pizarron, actividadId, actividad },
     }
 
@@ -997,6 +1133,11 @@ export default function Aula({ sesion }) {
         }}>
             <BarraSuperior sesion={s} />
 
+            {/* Audio de los demás — sin marcación visual, un <audio> sin
+                `controls` no ocupa espacio. Aparte de la tira/ventana porque
+                el sonido no tiene "dueño visual": se oye a todos a la vez. */}
+            {pistasMicroRemoto.map(r => <PistaVideo key={r.identity} track={r.microTrack} />)}
+
             <main style={{
                 flex: 1, minHeight: 0, display: 'grid', gap: 'var(--space-3)',
                 padding: 'var(--space-3)',
@@ -1005,10 +1146,13 @@ export default function Aula({ sesion }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', minHeight: 0 }}>
                     <VentanaVideo
                         sesion={s}
+                        video={video}
+                        pistasCamara={pistasCamara}
                         chatAbierto={chatAbierto}
                         onAbrirChat={() => setChatAbierto(v => !v)}
                         onMicro={alternarMicro}
                         onReaccionar={reaccionar}
+                        onSilenciarATodos={silenciarMicrosATodos}
                     />
                     {/* El chat empuja hacia arriba en lugar de taparlo todo */}
                     {chatAbierto && <Chat onCerrar={() => setChatAbierto(false)} />}

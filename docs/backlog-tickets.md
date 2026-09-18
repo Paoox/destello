@@ -18,8 +18,8 @@ Formato de cada ticket: **qué falta** · **por qué importa** · **dónde tocar
 
 | Área | Visión completa | Estado hoy | Brecha |
 |---|---|---|---|
-| Aula — video | Video en vivo real (profe + alumnos) vía OpenVidu/LiveKit | El aula dice "Sin video todavía"; todo lo demás (sellos, pizarrón, semáforo) ya funciona sin video | 🔴 Falta construir completo |
-| Aula — actividades | 4 tipos: quiz, memorama, armar, modelo3d, todas sobre el mismo contrato (`contrato.js`) | Solo **quiz** existe de punta a punta. Las otras 3 están declaradas pero no implementadas (`registro.js`) — por eso el 🚧 que viste el 25 ago | 🔴 3 de 4 actividades por construir |
+| Aula — video | Video en vivo real (profe + alumnos) vía OpenVidu/LiveKit | Cámara, micrófono, audio y "dar la palabra" reales, probados de punta a punta en local (T-01) ✅. Sellos/mano arriba/avance siguen sin viajar en tiempo real | 🟠 Solo falta el VPS para el lanzamiento — el código ya está |
+| Aula — actividades | 4 tipos: quiz, memorama, armar, modelo3d, todas sobre el mismo contrato (`contrato.js`) | Solo **quiz** existe de punta a punta. Las otras 3 están declaradas pero no implementadas (`registro.js`) | 🔴 3 de 4 por construir — las 3 bloqueadas hasta que Paola tenga el material real (T-02/T-03/T-04) |
 | Aula — profesores | Tabla `profesores` real, con permisos propios (solo su salón, no el panel financiero) | `esProfe` = `isAdminEmail()` — cualquier admin ve todo; no hay concepto de "profesor externo" | 🔴 Riesgo de seguridad, no solo pendiente |
 | Accesos | Login sin códigos, activación transaccional, relación por `usuario_id` | Login sin códigos ✅, activación unificada y transaccional ✅, modelo de Resplandor retirado por completo, `POST /auth/login` viejo retirado ✅ (T-14a/b/c + T-33, 18 sep, verificado en sitio real). Solo Google/WhatsApp para entrar. Queda: relación por email (T-13, diferida) | 🟠 Solo T-13 real, ver sección 4 |
 | Bot Faro | Menú completo, reporte de pago con foto, diagnóstico automático | Menú y opción 2 (talleres) funcionando ✅. Reporte de pago con foto: el bot **ignora imágenes por completo** | 🟡 Mitad implementado |
@@ -188,22 +188,85 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
 
 ## 3. 🔴 Bloquea el lanzamiento (meta 11 sep 2026, capas 1-2 del aula)
 
-### T-01 — Video real en el aula
-- **Qué falta:** integrar OpenVidu (fork de LiveKit), primero en local/1-a-1 para
-  perfilar comportamiento, luego VPS (Hostinger KVM 2, Phoenix).
-- **Por qué importa:** sin esto el aula no es un aula en vivo, es un pizarrón.
-- **Dónde tocar:** nuevo, no vive en `src/aula/` todavía. Cuidado: el aula sigue
-  sin poder hacer `fetch` directo — si video necesita tokens/señalización, ese
-  dato entra por el contrato (`sesion`), igual que todo lo demás.
-- **Criterio de terminado:** profe y alumnos se ven/escuchan en vivo dentro del
-  aula existente, sin romper sellos/pizarrón/semáforo.
+### T-01 — Video real en el aula — ✅ fase local CERRADA (18 sep 2026), falta el VPS
+- **Alcance de esta fase (aclarado con Paola, 18 sep 2026):** integrar
+  OpenVidu (LiveKit) **en local, para pruebas** — NO montarlo a un VPS
+  todavía. El VPS (Hostinger KVM 2, Phoenix) es parte del montaje de todo el
+  backend cuando se lance el proyecto al público general, es la fase
+  siguiente, fuera de este ticket.
+- **Qué se hizo:**
+  - **Infraestructura de prueba** (fuera del repo — `openvidu-local-deployment`
+    Community 3.8.0, clonado en `~/openvidu-local-deployment`, es una
+    herramienta externa, no código de Destello): `.env` con
+    `LAN_MODE=false`/`USE_HTTPS=false` (un solo equipo, sin certificados) +
+    `docker-compose.override.yml` local fijando `NODE_IP=127.0.0.1`.
+    **Gotcha real encontrado:** sin ese `NODE_IP`, LiveKit anuncia su IP
+    interna de Docker para el video/audio (ICE) — inalcanzable desde el
+    navegador. La señalización (WebSocket) conecta bien igual, pero el video
+    nunca llega: el síntoma exacto es "signal connected" seguido de "could
+    not establish pc connection". `127.0.0.1` funciona porque la prueba se
+    hizo con dos pestañas en la MISMA máquina que Docker Desktop.
+  - **Backend:** `apps/api/src/services/videoService.js`
+    (`livekit-server-sdk`) firma el token, sala por taller
+    (`sala-<tallerId>`, con `sala-` y no `taller-` para no duplicar el
+    prefijo que ya trae el slug del taller). Nuevo endpoint
+    `GET /users/me/aula/:tallerId/video-token`, mismo candado que ya usan
+    los latidos (`asistenciaService.tieneAcceso()`). `video: null` (200, no
+    error) si no hay servidor configurado.
+  - **Contrato extendido sin romper la regla:** `sesion.video = { serverUrl,
+    token } | null` en `aula/contrato.js` — lo pide `PageAula.jsx` (la única
+    pieza que puede hablar con la API de Destello) y se lo pasa al aula ya
+    armado.
+  - **Conexión real:** `aula/video/useVideoAula.js` (hook sobre
+    `livekit-client`) + `aula/video/PistaVideo.jsx`. Rellenó el hueco que
+    `Avatar.jsx` ya tenía marcado desde antes (`{camara && null}`).
+    `BarraControles` y la tira de personas dejaron de usar estado inventado.
+  - **"Dar la palabra"/"silenciar" en tiempo real** (agregado el mismo día,
+    a petición de Paola tras la primera prueba — antes ninguno de los dos
+    controles le llegaba de verdad a la otra persona): canal de datos de
+    LiveKit (`publishData()`/`RoomEvent.DataReceived`), sin backend nuevo.
+    Respeta el límite real del navegador: nadie puede prender el micrófono
+    de otra persona a la fuerza — "dar la palabra" solo desbloquea SU botón.
+  - **Indicador verde/rojo/ámbar** en avatar y botones (pedido por Paola en
+    plena prueba, para depurar): 🔴 sin permiso · 🟡 con permiso sin prender
+    · 🟢 hablando de verdad. Antes se ocultaba el badge a quien estaba
+    silenciada (buen criterio en clase real con 20+, poco útil depurando).
+  - **Bug real encontrado y corregido en la misma sesión:** el hook solo
+    refrescaba el estado propio con `LocalTrackPublished`/`Unpublished`
+    (disparan una sola vez), pero `setMicrophoneEnabled(false)` normalmente
+    silencia sin despublicar — el color se quedaba pegado en el primer
+    valor capturado sin importar cuántas veces se volviera a togglear.
+    Arreglado escuchando también `RoomEvent.TrackMuted`/`TrackUnmuted`.
+- **Pruebas:** `apps/api` — 19/19 (`videoService.test.js`, 3 casos:
+  nombre de sala, token nulo sin config, token válido). Sin test
+  automatizado para la parte LiveKit/React (necesita cámara/navegador real).
+  **Verificación funcional real:** Paola probó de punta a punta con dos
+  cuentas reales (una profe vía `ADMIN_EMAILS`, una alumna), dos pestañas,
+  cámaras físicas — cámara, micrófono, audio, y el control de palabra en
+  tiempo real, todo confirmado funcionando.
+- **Criterio de terminado (esta fase):** ✅ OpenVidu corriendo en local,
+  cámara/micrófono/audio reales confirmados por Paola con hardware real, sin
+  romper sellos/pizarrón/semáforo (siguen 100% funcionales, sin tocar).
+- **Falta para el lanzamiento (fase siguiente, fuera de este cierre):**
+  contratar y montar el VPS, apuntar `LIVEKIT_URL`/`LIVEKIT_API_KEY`/
+  `LIVEKIT_API_SECRET` de producción ahí. El código de la app no cambia.
+- **Deliberadamente fuera de esta fase (queda como estado local, no
+  networked):** sellos, mano levantada y avance de actividad siguen sin
+  viajar entre sesiones — mismo mecanismo (canal de datos de LiveKit) que
+  ya se usó para "dar la palabra", pendiente como su propio trabajo.
 
 ### T-02 — Actividad: Memorama
 - **Qué falta:** componente que exporte `Componente` + `resumen`, sumado a
   `TIPOS` en `apps/web/src/aula/actividades/registro.js`. Contenido = parejas a
-  destapar, viene de la plantilla del taller (no hardcodeado).
+  destapar, viene de la plantilla del taller (no hardcodeado) — pensado desde
+  el inicio para que el mismo componente sirva para cualquier taller, solo
+  cambia el contenido que le pasa la plantilla.
 - **Por qué importa:** es una de las 3 actividades que faltan para que el aula
   tenga variedad real de ejercicios.
+- **Dependencia (agregada 18 sep 2026):** Paola necesita armar primero el
+  material real (las parejas del memorama de al menos un taller) para poder
+  probarlo con contenido de verdad, no inventado — mismo criterio que ya
+  aplicaba a T-04. Bloqueante externo, no técnico.
 - **Dónde tocar:** nuevo archivo `apps/web/src/aula/actividades/Memorama.jsx`
   (copiar la forma de `Quiz.jsx` como plantilla), + 1 línea en `registro.js`.
 - **Criterio de terminado:** sigue las 5 reglas del contrato (`contrato.js`):
@@ -212,6 +275,9 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
 
 ### T-03 — Actividad: Armar (piezas tipo lego)
 - **Qué falta:** igual que T-02, pero con arrastre de piezas.
+- **Dependencia (agregada 18 sep 2026):** mismo caso que T-02 — necesita el
+  material real (las piezas de al menos un taller) antes de construirse.
+  Bloqueante externo, no técnico.
 - **Dónde tocar:** `apps/web/src/aula/actividades/Armar.jsx` + `registro.js`.
 - **Criterio de terminado:** mismo checklist del contrato que T-02.
 
@@ -252,14 +318,6 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
   "próximamente" hasta que exista gamificación real — no inventar números.
 - **Criterio de terminado:** el perfil muestra datos reales del usuario
   logueado; nada en pantalla es texto/número inventado.
-
-### T-06 — Respaldo de BD + ping diario
-- **Qué falta:** backup de Supabase (el plan free no incluye backups diarios) +
-  un ping diario para que el proyecto no se pause por inactividad.
-- **Por qué importa:** sin esto, un día sin tráfico puede pausar el proyecto o
-  perder datos sin aviso, justo antes de abrir a usuarios reales.
-- **Criterio de terminado:** backup corriendo con cadencia definida + cron/ping
-  configurado y verificado que evita la pausa automática.
 
 ---
 
@@ -628,6 +686,13 @@ se llama desde el manejador principal de mensajes.
 
 ## 5. 🟡 Pendiente (acordado, sin empezar / a medias)
 
+- **T-06 — Respaldo de BD + ping diario** *(movido aquí desde "Bloquea el
+  lanzamiento", 18 sep 2026)*. Backup de Supabase (el plan free no incluye
+  backups diarios) + un ping diario para que el proyecto no se pause por
+  inactividad. **Decisión de Paola:** todavía hay cambios frecuentes en la
+  BD (no está pulida), así que respaldarla ahora no es prioridad — se
+  retoma cuando la estructura ya esté más estable, antes de abrir a
+  usuarios reales.
 - **T-16** — Onboarding / visita guiada la primera vez en el aula.
 - **T-17** — `/aula-nueva` reconvertida por completo en salón de ensayo del
   profesor (hoy ya entra como `profe` por defecto, `?rol=alumno` para probar).

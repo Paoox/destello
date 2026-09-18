@@ -95,6 +95,9 @@ export default function PageAula() {
   // Control de acceso: solo entra quien tiene chispa canjeada para este taller.
   const [acceso, setAcceso] = useState('checking') // checking | allowed | denied
   const [taller, setTaller] = useState(null)
+  // `null` = sin video todavía (cargando, sin servidor configurado, o sin
+  // acceso). El aula ya sabe mostrarlo así — no hace falta un tercer estado.
+  const [video, setVideo] = useState(null)
 
   useEffect(() => {
     if (!token) { setAcceso('denied'); return }
@@ -107,6 +110,23 @@ export default function PageAula() {
       })
       .catch(() => setAcceso('denied'))
   }, [token, id])
+
+  // ── Token del servidor de video (T-01) ─────────────────────────────────
+  // Se pide UNA vez, junto con el resto del acceso — es el único lugar de
+  // todo `src/aula/` que puede hablar con la API de Destello (ver la regla
+  // del contrato en `aula/contrato.js`). El aula recibe el resultado ya
+  // armado y no sabe (ni le importa) que vino de aquí.
+  useEffect(() => {
+    if (acceso !== 'allowed' || !token || !id) return
+    let vivo = true
+    fetch(`/api/users/me/aula/${encodeURIComponent(id)}/video-token`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => { if (vivo) setVideo(res?.video ?? null) })
+      .catch(() => { if (vivo) setVideo(null) })
+    return () => { vivo = false }
+  }, [acceso, token, id])
 
   // ── Asistencia real ────────────────────────────────────────────────────
   // De esto sale el certificado: certifica quien asistió, no quien pagó.
@@ -181,9 +201,10 @@ export default function PageAula() {
       insignias: [],
       estadoActividad: null,
     },
-    // ⚠️ Vacío a propósito: las demás personas de la clase salen del servidor
-    // de video, que todavía no está conectado. Hasta entonces, cada quien se ve
-    // a sí mismo. Es preferible a inventar compañeros que no existen.
+    // Las demás personas de la clase salen del servidor de video real (T-01)
+    // — el aula (`Aula.jsx`) las arma sola a partir de `video` de aquí abajo,
+    // así que este arreglo se queda vacío a propósito: es solo el punto de
+    // partida antes de que LiveKit conteste.
     personas: [],
     pizarron: {
       // Igual: el material de la clase va a venir de la plantilla del taller.
@@ -191,6 +212,7 @@ export default function PageAula() {
       actividadId: null,
       liberado:    false,
     },
+    video,
   }
 
   return (

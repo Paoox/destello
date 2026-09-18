@@ -67,6 +67,20 @@
  * @property {Object}  pizarron
  * @property {string?} pizarron.actividadId  Qué se está mostrando
  * @property {boolean} pizarron.liberado     ¿Pueden tocarlo los alumnos?
+ * @property {VideoConexion?} video  Cómo conectarse al servidor de video en
+ *   vivo. `null` mientras no haya uno configurado — el aula lo sabe mostrar
+ *   ("Sin video todavía") sin caerse. Quien monta el aula es quien pide este
+ *   token (nunca el aula: sería una llamada directa a la API de Destello,
+ *   la regla que no se rompe — ver el encabezado de este archivo).
+ */
+
+/**
+ * @typedef {Object} VideoConexion
+ * Lo mínimo para que el aula pueda conectarse a una sala — ni Destello ni
+ * ninguna otra escuela que la rente necesitan mandar nada más que esto.
+ * @property {string} serverUrl  URL del servidor LiveKit/OpenVidu (`wss://…`)
+ * @property {string} token      JWT de corta duración, ya firmado por el
+ *   servidor de quien monta el aula, con permiso para ESA sala nada más.
  */
 
 /** Marca por defecto, para cuando el aula se monta sin configurar nada. */

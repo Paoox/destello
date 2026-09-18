@@ -13,6 +13,7 @@ import { sincronizarEstadoCupo } from '../services/cupoService.js'
 import { registrarEvento } from '../services/eventoService.js'
 import * as asistenciaService from '../services/asistenciaService.js'
 import * as certificadoService from '../services/certificadoService.js'
+import { crearTokenVideo } from '../services/videoService.js'
 
 const router = Router()
 
@@ -283,6 +284,40 @@ router.post('/me/aula/:tallerId/presencia', async (req, res, next) => {
     }
     res.json({ status: 'ok', asistencia: estado,
                cadaMinutos: asistenciaService.LATIDO_MINUTOS })
+  } catch (err) { next(err) }
+})
+
+/**
+ * GET /users/me/aula/:tallerId/video-token
+ *
+ * Token para conectar al servidor de video (LiveKit/OpenVidu) de ESTE taller.
+ * Mismo candado que la presencia: se revisa acceso real en el servidor, no
+ * solo lo que ya filtró el front.
+ *
+ * `video: null` en la respuesta (200, no error) cuando `LIVEKIT_URL`/llaves
+ * no están configuradas — así el aula sigue mostrando "Sin video todavía" sin
+ * que el front tenga que distinguir "no hay acceso" de "no hay servidor".
+ */
+router.get('/me/aula/:tallerId/video-token', async (req, res, next) => {
+  try {
+    const email = await emailDelUsuario(req.user.userId)
+    if (!email) return res.status(404).json({ status: 'error', message: 'Usuario no encontrado' })
+
+    if (!(await asistenciaService.tieneAcceso(email, req.params.tallerId))) {
+      return res.status(403).json({ status: 'error', message: 'No tienes acceso a este taller' })
+    }
+
+    const { rows } = await query(
+      'SELECT nombre, apellido FROM usuarios WHERE id = $1', [req.user.userId])
+    const nombre = [rows[0]?.nombre, rows[0]?.apellido].filter(Boolean).join(' ') || email
+
+    const video = await crearTokenVideo({
+      tallerId: req.params.tallerId,
+      identity: String(req.user.userId),
+      nombre,
+    })
+
+    res.json({ status: 'ok', video })
   } catch (err) { next(err) }
 })
 
