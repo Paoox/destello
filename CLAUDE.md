@@ -81,8 +81,7 @@ destello/
 │   │   └── src/
 │   │       ├── routes/               ← admin.js, auth.js, tallers.js, chispas.js,
 │   │       │                            users.js, health.js, bot.js
-│   │       ├── services/             ← chispaService.js, resplandorService.js,
-│   │       │                            listaEsperaService.js, mailService.js,
+│   │       ├── services/             ← chispaService.js, listaEsperaService.js, mailService.js,
 │   │       │                            tallerService.js, usuarioService.js,
 │   │       │                            adminAuthService.js, firebaseAdmin.js
 │   │       ├── middleware/           ← authenticate.js, errorHandler.js, requestLogger.js
@@ -122,44 +121,51 @@ Cómo entra la gente — `/login`, sin códigos:
 - **Número + OTP** de 6 dígitos que manda el bot Faro
   (requiere `estado = 'activo'` **y** `usuarios.whatsapp` lleno)
 
-`/acceso` (validar código) quedó huérfana en el router, sin enlazar. No usarla.
+`/acceso` ya no existe como pantalla — desde el 18 sep 2026 (T-14c) redirige
+directo a `/login`. No mencionarla como opción de entrada.
 
 **`usuarios.estado` = permiso, NO "cuenta creada":**
 - `activo` → Paola le dio acceso. `phoneAuthController` lo exige para el login.
 - `espera` → está en lista, todavía sin permiso.
 
-### Dos tipos de tokens (internos)
+### Chispa (`DEST-XXXX-XXXX`) — el único token que sigue vivo
 
-**Resplandor (`RESP-XXXX-XXXX`)**
-- Registro interno de que a esa persona se le autorizó crear cuenta
-- Solo 1 activo por usuario
-- Columna en BD: `resplandores.email`
-
-**Chispa (`DEST-XXXX-XXXX`)**
 - Vincula un usuario con un taller. **No hay canje**: al crearla, el taller
   aparece solo en `/home`. Por eso el usuario nunca elige ni reclama taller.
 - Un usuario puede tener muchas chispas (una por taller)
 - Al vencer → rooms y contenido del taller se bloquean automáticamente
 - **FK constraint `chispas_usuario_email_fkey`** es INTENCIONAL — NUNCA eliminar
-- Columna en BD: `chispas.usuario_email` (≠ de `resplandores.email`)
+- Columna en BD: `chispas.usuario_email`
 
 ⚠️ Para asignarle cualquier cosa (taller, demo, artilugio) la persona debe tener
 cuenta creada como todos: nombre, apellido, correo y WhatsApp.
 
-### Flujo completo
+**Resplandor (`RESP-XXXX-XXXX`) — retirado del código el 18 sep 2026 (T-14).**
+Era un registro interno para autorizar la creación de cuenta, de antes de que
+existiera el bot. La tabla `resplandores` sigue en la base (con su historial),
+pero **ningún código la lee ni la escribe ya** — ni el panel, ni el backend, ni
+el bot. No usarlo como referencia de cómo funciona el acceso hoy.
+
+### Flujo completo (vigente desde T-14/T-33, 18 sep 2026)
 
 ```
-1. Usuario llega por bot WA o publicidad → se anota en lista_espera
-2. Admin confirma cupo → envía correo con métodos de pago (sin código aún)
-3. Usuario paga → manda comprobante por WA al admin
-4. Admin verifica → genera Resplandor en panel
-5. Admin activa al usuario (`estado = 'activo'`) y le manda la LIGA de login
-6. Usuario entra en /login con Google o con su número + OTP — SIN código
-7. Admin genera Chispa → el taller aparece SOLO en /home (no hay canje)
+1. Usuario escribe al bot Faro → se crea su cuenta (`usuarios`, estado
+   'espera') y se anota en lista_espera. Pasa UNA vez, la primera compra.
+2. Admin confirma su lugar (ListaEsperaAdmin → "Confirmar lugar") → correo
+   con métodos de pago.
+3. Usuario paga → reporta el pago por WhatsApp al admin.
+4. Admin confirma el pago (ListaEsperaAdmin → "Confirmar pago") →
+   `activarAlumno()` activa la cuenta (`estado = 'activo'`) Y crea la
+   Chispa del taller, todo junto, en una transacción.
+5. Usuario entra a /login con Google o con su número + OTP — sin código.
+6. El taller ya aparece solo en /home (la chispa ya existía desde el paso 4).
 ```
 
-⚠️ Los pasos que decían "usuario usa su código en /acceso" ya no aplican.
-Ver `docs/flujo-acceso-bot.md` para el detalle del flujo actual.
+Compras siguientes del mismo usuario repiten los pasos 2-4 y 6 (la cuenta ya
+existe, así que el paso 1 no vuelve a pasar).
+
+Ver `docs/flujo-acceso-bot.md` para el detalle completo del árbol de
+decisión del bot.
 
 ---
 
@@ -176,11 +182,13 @@ Ver `docs/flujo-acceso-bot.md` para el detalle del flujo actual.
 | whatsapp | TEXT (10 dígitos sin código país) |
 | estado | TEXT (default 'espera') |
 
-**`resplandores`**
+**`resplandores`** — ⚠️ tabla histórica desde el 18 sep 2026 (T-14): ningún
+código la lee ni la escribe ya. Columnas dejadas de referencia por si hace
+falta consultar datos viejos:
 | columna | tipo | nota |
 |---------|------|------|
 | code | TEXT PK | `RESP-XXXX-XXXX` |
-| **email** | TEXT NOT NULL | ⚠️ es `email`, NO `usuario_email` |
+| email | TEXT NOT NULL | |
 | used | BOOLEAN | default FALSE |
 | revoked | BOOLEAN | default FALSE |
 | expires_at | TIMESTAMPTZ | |
@@ -262,8 +270,6 @@ router correspondiente en `apps/api/src/routes/`.
 ### Públicos (sin auth)
 ```
 GET  /health                          → status check
-POST /auth/login                      → login JWT usuario
-POST /auth/resplandor/validate        → valida resplandor y crea cuenta
 POST /auth/social                     → login Google (Firebase)
 POST /auth/phone/send-code            → OTP por WhatsApp
 POST /auth/phone/verify               → verifica OTP, login o liga número
@@ -287,7 +293,9 @@ POST /bot/registrar                   → crea/actualiza usuario (desde bot)
 GET  /bot/usuario/:email              → verifica si email tiene cuenta
 POST /bot/lista-espera                → registra en lista de espera
 GET  /bot/listas/:email               → listas de espera del usuario
-GET  /bot/pendientes/:email           → chispas + resplandores sin usar
+GET  /bot/pendientes/:email           → chispas sin usar (el campo `resplandores`
+                                         de la respuesta siempre viene vacío desde
+                                         T-14 — nada crea resplandores ya)
 GET  /bot/diagnostico/:email          → foto completa del acceso, para que el bot ramifique
 POST /bot/completar-whatsapp          → guarda el WhatsApp de quien ya tiene permiso pero no lo tenía
 POST /bot/reporte-acceso              → levanta reporte (abierto incluso a cuentas bloqueadas)
@@ -311,15 +319,12 @@ GET  /users/me/certificados             → certificados ya emitidos al usuario
 ```
 POST /admin/login                     → login admin → adminToken
 GET  /admin/chispas/all               → todas las chispas
-GET  /admin/resplandores/all          → todos los resplandores
 POST /admin/chispas/generate          → generar chispa
-POST /admin/resplandores/generate     → generar resplandor
 POST /admin/chispas/:code/revoke      → revocar chispa
-POST /admin/resplandores/:code/revoke → revocar resplandor
-GET  /admin/lista-espera              → con tiene_resplandor, precio, horario
+GET  /admin/lista-espera              → lista completa, precio, horario
 POST /admin/lista-espera/:id/confirmar-lugar → confirma + envía correo (Resend)
-POST /admin/lista-espera/:id/confirmar       → genera Chispa o Resplandor + correo
 POST /admin/lista-espera/:id/confirmar-pago  → activarAlumno() transaccional
+GET  /admin/usuarios/buscar?email=    → busca un usuario por correo (AccesosPanel)
 POST /admin/send-wa                   → envía mensaje WA directo desde bot Faro
 GET  /admin/talleres                  → CRUD de talleres
 GET  /admin/talleres/:id/asistencia   → asistencia registrada de un taller
@@ -332,6 +337,8 @@ GET  /admin/usuarios                  → lista para el tab Usuarios (bloqueo)
 GET  /admin/usuarios/:email/historial → historial de bloqueos de una cuenta
 PATCH /admin/usuarios/:email/bloqueo  → bloquea/desbloquea acceso o compras (reversible, con motivo)
 ```
+⚠️ Los endpoints `/admin/resplandores/*` y `POST /admin/lista-espera/:id/confirmar`
+(sin sufijo) se retiraron el 18 sep 2026 (T-14b) — no existen más.
 
 ---
 
@@ -339,7 +346,7 @@ PATCH /admin/usuarios/:email/bloqueo  → bloquea/desbloquea acceso o compras (r
 
 - FROM: `Destello ✦ <hola@destello.courses>`
 - Templates activos en `mailService.js`:
-  - `sendResplandor` — código de acceso para crear cuenta
+  - `sendBienvenida` — invita a crear cuenta en `/login` tras confirmar el pago
   - `sendConfirmacionTaller` — chispa + detalles del taller
   - `sendConfirmacionLugar` — confirmación de lugar + métodos de pago
 
@@ -358,8 +365,12 @@ Métodos de pago incluidos en templates:
 ### Menú del bot (5 opciones)
 1. Registrarte a taller → captura datos → lista de espera
 2. Ver talleres (falta: inscripción desde aquí)
-3. No me llegó mi acceso → busca por email → devuelve chispa o avisa del resplandor
-   (el copy visible al usuario NO usa "chispa"/"resplandor" — son nombres internos)
+3. No me llegó mi acceso → busca por email → devuelve chispa pendiente si hay
+   (el copy visible al usuario NO usa "chispa" — es nombre interno). El código
+   del bot (`flujo.js`) puede seguir teniendo una rama para "avisar del
+   resplandor" — desde T-14 (18 sep 2026) esa rama nunca se dispara, porque
+   `GET /bot/pendientes` siempre devuelve el arreglo de resplandores vacío.
+   No se tocó `flujo.js` para confirmarlo/limpiarlo — pendiente si hace falta.
 4. Medios de pago → SPEI + efectivo
 5. Dudas → "próximamente"
 
@@ -386,7 +397,7 @@ Métodos de pago incluidos en templates:
 7 tabs en `PageAdmin.jsx`: **Accesos** · **Talleres** · **Lista de espera** ·
 **Reportes** · **Asistencia** · **Usuarios** · **Métricas**.
 
-**Accesos (`AccesosPanel.jsx`)** — búsqueda por email, historial de resplandores + chispas, lógica visual: sin cuenta → card Resplandor activa / con cuenta → card Chispa activa
+**Accesos (`AccesosPanel.jsx`)** — búsqueda por email, historial de chispas del usuario y tabla global de todas las chispas; genera Chispas nuevas para cuentas ya activas (uso principal: demos). Ya no maneja Resplandores — retirado el 18 sep 2026 (T-14a).
 
 **Lista de espera (`ListaEsperaAdmin.jsx`)** ✅ completo
 - Tabla con filtros por estado (pendiente / cupo_confirmado / pagado / rechazado)
@@ -428,7 +439,9 @@ Métodos de pago incluidos en templates:
 
 1. **`PageLanding.jsx` está CONGELADO** — nunca modificarlo sin permiso explícito de Paola.
 2. **FK constraint en `chispas.usuario_email`** — es intencional y correcta, NUNCA eliminarla.
-3. **`resplandores.email` ≠ `chispas.usuario_email`** — columnas con nombres distintos, no confundirlas.
+3. **La tabla `resplandores` es histórica desde el 18 sep 2026 (T-14)** —
+   ningún código la lee ni la escribe ya. Se conserva por su historial, no
+   como referencia de cómo funciona el acceso hoy (ver "Sistema de Accesos").
 4. **Los archivos de config de systemd/cloudflared viven solo en el servidor**, no en el repo.
 5. **Después de cualquier cambio en `apps/api/`** → reconstruir Docker: `docker compose up --build -d api`
 6. **Las tablas de PostgreSQL ya existen** (creadas en pgAdmin por Paola) — no usar scripts SQL de creación.
@@ -478,14 +491,16 @@ Detalle completo y cómo diagnosticarlo en `docs/backlog-tickets.md` (T-S1).
   diarios) y un ping diario para que el proyecto no se pause por inactividad.
 
 ### 🟠 Deuda técnica — las tablas se relacionan por CORREO, no por id
-Detectado por Paola el 21 jul 2026. Hoy `chispas.usuario_email`, `resplandores.email`
-y `lista_espera.email` ligan por texto. Consecuencias: si alguien cambia de correo
-se rompe la cadena, y todas las queries hacen `LOWER(email) = LOWER($1)` para
-compensar mayúsculas.
+Detectado por Paola el 21 jul 2026. Hoy `chispas.usuario_email` y
+`lista_espera.email` ligan por texto (la tercera tabla que originalmente
+tenía este mismo problema, `resplandores.email`, ya no aplica: esa tabla es
+histórica desde el 18 sep 2026, T-14, y nada la consulta). Consecuencias: si
+alguien cambia de correo se rompe la cadena, y todas las queries hacen
+`LOWER(email) = LOWER($1)` para compensar mayúsculas.
 
 Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etapas
 (NO hacerlo de un tirón):
-1. Agregar `usuario_id` nullable a las tres tablas
+1. Agregar `usuario_id` nullable a las dos tablas
 2. Rellenarlo desde el correo actual (`UPDATE ... FROM usuarios WHERE LOWER(email)...`)
 3. Migrar las consultas de los servicios una por una, dejando el email como respaldo
 4. Recién entonces poner NOT NULL y quitar `chispas_usuario_email_fkey`
@@ -510,7 +525,6 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
 - **Limpieza env** — agregar `MAIL_FROM` y `BOT_HTTP_URL` al `.env` de la Toshiba (salen WARN); regenerar `package-lock.json` de la api con `resend`
 
 ### 🔮 Futuro
-- **Toggle "registrarse con Google"** en la pantalla de Resplandor (`RegisterForm`) — dejar elegir formulario vs Google al crear cuenta. Requiere endpoint backend social-register (verifica token Google + consume Resplandor + crea cuenta). Diferido: el flujo actual (registrar con formulario → luego Google login) ya cubre el caso.
 - Pasarela de pago (Stripe/Conekta) → automatizar flujo manual del admin
 - Multi-tenant (cada institución con su propio espacio)
 - Traducción automática
@@ -519,25 +533,42 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
 
 ## Lo que Está Terminado y Funciona
 
-- ✅ **T-14a/b — Modelo viejo de Resplandor retirado del lado admin**
-  (18 sep 2026). El panel `/admin` tab Accesos era, en el código,
-  "Resplandores y Chispas" unificados — pero el botón de crear/enviar
-  Resplandor no se usa desde que el bot registra cuentas directo
-  (confirmado con Paola: lo que sí se usa ahí es "Crear Chispa", para
-  demos, que no se tocó). Se quitó toda esa UI/lógica del panel (T-14a) y
-  del backend: los 5 endpoints `/admin/resplandores/*`, `POST
-  /admin/mail/resplandor`, la ruta huérfana `POST
-  /admin/lista-espera/:id/confirmar`, y dos funciones de
-  `adminController.js` que nunca estuvieron enrutadas (T-14b). De paso
-  aparecieron y se borraron **3 componentes de React huérfanos**
-  (`ListaEsperaPanel.jsx`, `RespladorAdmin.jsx`, `ResplandoresPanel.jsx` —
-  ~1,247 líneas que ninguna página importaba). Nuevo endpoint limpio:
-  `GET /admin/usuarios/buscar?email=`. Verificado por Paola en el panel
-  real tras cada redeploy — todo correcto. `resplandorService.js` y
-  `resplandorController.js` siguen intactos a propósito: los usa el lado
-  `/auth` (T-14c, pendiente). Detalle completo en `docs/backlog-tickets.md`
-  (T-14). Sin test automatizado nuevo — `apps/web` no tiene ningún
-  framework de pruebas configurado todavía.
+- ✅ **T-14 (a/b/c) + T-33 — Modelo viejo de Resplandor y login por
+  código/contraseña retirados por completo** (18 sep 2026). Hoy solo se
+  entra por Google o WhatsApp OTP — todo lo demás se quitó:
+  - **T-14a (panel admin):** el botón de crear/enviar Resplandor en
+    `AccesosPanel.jsx` no se usaba (confirmado con Paola — lo que sí se
+    usa ahí es "Crear Chispa", para demos, que no se tocó). Se quitó toda
+    esa UI/lógica; el panel quedó solo con Chispas.
+  - **T-14b (backend admin):** los 5 endpoints `/admin/resplandores/*`,
+    `POST /admin/mail/resplandor`, la ruta huérfana `POST
+    /admin/lista-espera/:id/confirmar`, y dos funciones de
+    `adminController.js` que nunca estuvieron enrutadas. Nuevo endpoint
+    limpio `GET /admin/usuarios/buscar?email=`. De paso aparecieron y se
+    borraron **3 componentes de React huérfanos**
+    (`ListaEsperaPanel.jsx`, `RespladorAdmin.jsx`, `ResplandoresPanel.jsx`
+    — ~1,247 líneas que ninguna página importaba).
+  - **T-14c (lado usuario):** `/acceso` ahora redirige a `/login` en vez
+    de mostrar el formulario viejo; se borraron `PageAcceso.jsx`,
+    `RegisterForm`, `resplandorController.js`, `resplandorService.js`,
+    `POST /auth/register`, `/auth/resplandor/*`, y `sendResplandor()` +
+    su plantilla en `mailService.js` — todo confirmado en cero llamadores
+    antes de borrarlo.
+  - **T-33 (login viejo):** al cerrar T-14c se encontró que
+    `POST /auth/login` (email+contraseña **y** código de Chispa) tampoco
+    lo llamaba nadie en el frontend — se retiró la ruta completa,
+    `loginWithCode()` y la acción `login()` del store.
+  - `usuarios.password` y la tabla `resplandores` **no se tocaron** —
+    siguen con su historial completo, tal como pedía el criterio de
+    terminado original.
+  - Verificado por Paola en el sitio y panel reales tras cada redeploy —
+    todo correcto. Sin test automatizado nuevo — `apps/web` no tiene
+    ningún framework de pruebas configurado todavía. Detalle completo en
+    `docs/backlog-tickets.md` (T-14, T-33).
+  - **Pendiente, no de este cierre:** T-34 — `PageLanding.jsx` (🔒
+    CONGELADA) sigue mencionando "Resplandor y Chispa" en su copy de
+    marketing; Paola decidió actualizarla al final, cuando haya contenido
+    nuevo listo para montar — no es una decisión de código.
 
 - ✅ **T-15 — un solo schema en el repo** (18 sep 2026). Se borraron los dos
   archivos del MVP pre-Supabase (`db/schema.sql` y
@@ -584,10 +615,14 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
 - ✅ Correos personalizados con nombre real del usuario
 - ✅ `ListaEsperaAdmin.jsx` — tabla, filtros, botón WA, botón correo, toasts
 - ✅ `chispaService.js` migrado a PostgreSQL
-- ✅ `AccesosPanel.jsx` — panel unificado Chispas + Resplandores
+- ✅ `AccesosPanel.jsx` — panel unificado Chispas + Resplandores *(histórico:
+  desunificado el 18 sep 2026, T-14a — hoy solo maneja Chispas)*
 - ✅ `TalleresPanel.jsx` — CRUD con columnas reales
-- ✅ `PageAcceso.jsx` → endpoint `/api/auth/resplandor/validate`
-- ✅ Login dual + `registerUser` en `authController.js`
+- ✅ `PageAcceso.jsx` → endpoint `/api/auth/resplandor/validate` *(histórico:
+  `PageAcceso.jsx` se borró el 18 sep 2026, T-14c — `/acceso` redirige a `/login`)*
+- ✅ Login dual + `registerUser` en `authController.js` *(histórico:
+  `registerUser` se borró el 18 sep 2026, T-14c — ya no hay registro con
+  contraseña, solo Google/WhatsApp)*
 - ✅ CORS incluye `destello.courses`
 - ✅ Proxy Vercel `/api/*` → túnel en `vercel.json`
 - ✅ Talleres dinámicos desde BD en PageLanding y PageHabitat

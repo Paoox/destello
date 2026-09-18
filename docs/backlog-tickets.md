@@ -21,7 +21,7 @@ Formato de cada ticket: **qué falta** · **por qué importa** · **dónde tocar
 | Aula — video | Video en vivo real (profe + alumnos) vía OpenVidu/LiveKit | El aula dice "Sin video todavía"; todo lo demás (sellos, pizarrón, semáforo) ya funciona sin video | 🔴 Falta construir completo |
 | Aula — actividades | 4 tipos: quiz, memorama, armar, modelo3d, todas sobre el mismo contrato (`contrato.js`) | Solo **quiz** existe de punta a punta. Las otras 3 están declaradas pero no implementadas (`registro.js`) — por eso el 🚧 que viste el 25 ago | 🔴 3 de 4 actividades por construir |
 | Aula — profesores | Tabla `profesores` real, con permisos propios (solo su salón, no el panel financiero) | `esProfe` = `isAdminEmail()` — cualquier admin ve todo; no hay concepto de "profesor externo" | 🔴 Riesgo de seguridad, no solo pendiente |
-| Accesos | Login sin códigos, activación transaccional, relación por `usuario_id` | Login sin códigos ✅, activación unificada y transaccional ✅, modelo de Resplandor retirado por completo (código, panel, tabla se conserva) ✅ (T-14a/b/c, 18 sep, T-14c pendiente de probar en el sitio real). Queda: relación por email (T-13, diferida) | 🟠 Solo T-13 real, ver sección 4 |
+| Accesos | Login sin códigos, activación transaccional, relación por `usuario_id` | Login sin códigos ✅, activación unificada y transaccional ✅, modelo de Resplandor retirado por completo, `POST /auth/login` viejo retirado ✅ (T-14a/b/c + T-33, 18 sep, verificado en sitio real). Solo Google/WhatsApp para entrar. Queda: relación por email (T-13, diferida) | 🟠 Solo T-13 real, ver sección 4 |
 | Bot Faro | Menú completo, reporte de pago con foto, diagnóstico automático | Menú y opción 2 (talleres) funcionando ✅. Reporte de pago con foto: el bot **ignora imágenes por completo** | 🟡 Mitad implementado |
 | Panel Admin | 7 tabs completos, métricas por vistas SQL | Los 7 tabs existen y funcionan ✅. Una métrica de stats está rota (cuenta mal un estado) | 🟠 Bug puntual |
 | Certificados | Emisión automática al cumplir criterio | Criterio automático, **disparo manual** — nadie se entera cuando ya calificó | 🟡 Falta automatizar el envío/aviso |
@@ -319,16 +319,18 @@ rehidrata con `restaurarConversacion()` al arrancar en frío — confirmado que
 se llama desde el manejador principal de mensajes.
 
 ### T-13 — Migrar relaciones de email a `usuario_id`
-- **Qué falta:** agregar `usuario_id` nullable a `chispas`, `resplandores`,
-  `lista_espera`; rellenarlo desde el email actual; migrar las queries de a una
-  dejando el email como respaldo; recién entonces `NOT NULL` y quitar
+- **Qué falta:** agregar `usuario_id` nullable a `chispas` y `lista_espera`
+  (originalmente eran 3 tablas incluyendo `resplandores`, pero esa ya es
+  histórica desde T-14 — 18 sep 2026 — y nada la consulta, así que no hace
+  falta migrarla); rellenarlo desde el email actual; migrar las queries de a
+  una dejando el email como respaldo; recién entonces `NOT NULL` y quitar
   `chispas_usuario_email_fkey`.
 - **Por qué importa:** hoy si alguien cambia de correo se rompe la cadena, y
   todas las queries hacen `LOWER(email) = LOWER($1)` para compensar mayúsculas.
 - ⚠️ **NO hacerlo de un tirón** — es la migración por etapas que ya está descrita
   en `CLAUDE.md`. Mientras no esté hecha, la FK sigue siendo intencional.
 - **Criterio de terminado:** cada etapa se cierra y verifica antes de pasar a la
-  siguiente; el `NOT NULL` final solo se pone cuando las 3 tablas ya tienen
+  siguiente; el `NOT NULL` final solo se pone cuando las 2 tablas ya tienen
   `usuario_id` poblado al 100%.
 
 ### T-14 — Limpiar el modelo viejo de códigos (Resplandor)
@@ -416,7 +418,7 @@ se llama desde el manejador principal de mensajes.
 - **La tabla `resplandores` NO se tocó** — sigue con todo su historial, tal
   como pedía el criterio de terminado original.
 
-#### T-14c — ✅ código listo, ⚠️ pendiente probar en el sitio real — Lado usuario: `PageAcceso.jsx`, registro con contraseña
+#### ~~T-14c — Lado usuario: `PageAcceso.jsx`, registro con contraseña~~ ✅ CERRADO (18 sep 2026)
 - **Qué se hizo:**
   - **Backend:** `routes/auth.js` — quitados `POST /auth/register`,
     `POST /auth/resplandor/validate` y `/consume`. `authController.js` —
@@ -460,10 +462,10 @@ se llama desde el manejador principal de mensajes.
      una decisión de contenido/marketing, no de código — queda anotada
      para cuando Paola quiera revisarla.
 - **Pruebas:** `apps/api` — `npm test` sigue en 8/8. `apps/web` —
-  verificado con `esbuild` en cada archivo tocado (sintaxis). ⚠️ **Falta
-  la prueba real:** entrar a `/login` normal (Google o WhatsApp) y
-  confirmar que sigue funcionando igual, y probar que `/acceso` redirige
-  en vez de dar error.
+  verificado con `esbuild` en cada archivo tocado (sintaxis), y confirmado
+  por Paola en el sitio real (18 sep 2026) tras el redeploy: Google y
+  WhatsApp siguen funcionando igual, `/acceso` redirige a `/login` sin
+  error.
 - **Criterio de terminado:** ✅ la ruta `/acceso` ya no muestra el
   formulario viejo (redirige a `/login`), y los endpoints
   correspondientes ya no existen.
@@ -554,8 +556,8 @@ se llama desde el manejador principal de mensajes.
   - La columna `usuarios.password` NO se tocó — sigue en la tabla, sin
     ningún código que la lea o escriba ya.
 - **Pruebas:** `npm test` en `apps/api` sigue en 8/8. `apps/web` verificado
-  con `esbuild`. Pendiente probar en el sitio real que Google y WhatsApp
-  siguen funcionando igual (mismo checklist que T-14c).
+  con `esbuild`, y confirmado por Paola en el sitio real (18 sep 2026) tras
+  el mismo redeploy que T-14c: Google y WhatsApp siguen funcionando igual.
 
 ### T-34 — `PageLanding.jsx` con copy de marketing desactualizado
 - `PageLanding.jsx` (🔒 CONGELADA) tiene una sección de marketing
@@ -564,6 +566,19 @@ se llama desde el manejador principal de mensajes.
 - **Decisión de Paola (18 sep 2026):** se actualiza al final, cuando haya
   contenido nuevo listo para montar en la página. No es una decisión de
   código — queda en espera, no bloquea nada.
+
+### T-35 — Revisar si `apps/bot/src/flujo.js` tiene una rama muerta de Resplandor
+- **Qué falta:** confirmar si el código del bot (opción 3, "No me llegó mi
+  acceso") todavía tiene una rama para "avisar del resplandor pendiente".
+  Si la tiene, desde T-14 (18 sep 2026) nunca se dispara —
+  `GET /bot/pendientes/:email` siempre devuelve el arreglo `resplandores`
+  vacío, porque nada crea resplandores ya.
+- **Por qué no se hizo ya:** `flujo.js` está explícitamente marcado en
+  `CLAUDE.md` como "lo que YA funciona (NO tocar)" — no se revisó a fondo
+  en esta sesión para no arriesgar el flujo real del bot sin pruebas.
+- **Criterio de terminado:** si existe la rama muerta, se quita (o se deja
+  documentada como inofensiva); si no existe, se cierra el ticket sin
+  cambios.
 
 ---
 
