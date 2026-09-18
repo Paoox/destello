@@ -768,9 +768,19 @@ se llama desde el manejador principal de mensajes.
   BD (no está pulida), así que respaldarla ahora no es prioridad — se
   retoma cuando la estructura ya esté más estable, antes de abrir a
   usuarios reales.
-- **T-16** — Onboarding / visita guiada la primera vez en el aula.
+- **T-16** — Onboarding / visita guiada la primera vez en el aula. **Nota
+  (18 sep 2026, surgió al cerrar T-05):** aplica igual para un profesor
+  nuevo, no solo para alumnos — mismo tour, adaptado a la vista de profe,
+  corriendo en el aula de prueba (T-17).
 - **T-17** — `/aula-nueva` reconvertida por completo en salón de ensayo del
-  profesor (hoy ya entra como `profe` por defecto, `?rol=alumno` para probar).
+  profesor (hoy ya entra como `profe` por defecto, `?rol=alumno` para
+  probar). **Nota (18 sep 2026, surgió al cerrar T-05):** con profesores
+  reales ya existiendo (`taller_profesores`), esta aula de prueba cobra
+  más sentido — un profesor nuevo debería poder entrar aquí a practicar
+  con el **material real** de SU taller (no datos inventados, que es lo
+  que tiene hoy), antes de dar su primera clase de verdad. Ver también
+  T-39 (el material real tiene que venir de algún lado — el dashboard es
+  quien se lo muestra).
 - **T-18** — Ilustraciones reales de sellos y reacciones (las hace Paola,
   quedan en `catalogo.js` cuando estén listas).
 - **T-19** — Corregir talleres con horario `12:00 PM – 12:00 PM` cargado mal
@@ -1016,6 +1026,34 @@ se llama desde el manejador principal de mensajes.
   sin bloquear el cierre: forzar el choque de números en el paso
   `REG_WHATSAPP` (JID `@lid` sin `senderPn`) para ver la capa de red de
   seguridad en acción — caso más raro de topar en el uso normal.
+
+### T-39 — Dashboard de profesores
+- **Surgió al cerrar T-05 (18 sep 2026):** ahora que existe una tabla real
+  de profesores (`taller_profesores`), falta dónde VER esa información —
+  hoy un profesor recién asignado no tiene ninguna pantalla propia.
+- **Qué falta:** una vista para el profesor (no el panel `/admin` — eso
+  sigue siendo solo de Paola) donde vea:
+  - Qué talleres tiene asignados.
+  - Fecha y horario de cada uno.
+  - El material de cada taller (lo mismo que ve en el pizarrón del aula al
+    dar la clase — `pizarron.materiales` del contrato del aula).
+- **Por qué importa:** sin esto, "ser profesora de un taller" (T-05) no le
+  sirve de nada a un profesor real hasta el momento exacto de la clase —
+  no puede prepararse, revisar fechas, ni ver qué le toca dar.
+- **Relacionado — mismo tema, tickets separados:**
+  - **T-17** (aula de prueba) — el profesor debería poder practicar con
+    ESE material real antes de su primera clase, no solo verlo en una
+    lista.
+  - **T-16** (tour guiado) — aplicado también a profesores nuevos, no solo
+    a alumnos, corriendo en la aula de prueba de T-17.
+- **Dónde tocar:** página nueva en `apps/web/src/pages/` (ej.
+  `PageMisTalleresProfe.jsx`), reutilizando
+  `chispaService.getTalleresDelUsuario(email, usuarioId)` — ya trae
+  `esProfe` por taller desde T-05, solo faltaría filtrar a los que
+  `esProfe === true` y exponer el material.
+- **Criterio de terminado:** un profesor recién asignado (sin ser admin)
+  entra a esa vista y ve sus talleres, fechas/horarios y material, sin
+  pasar por `/admin`.
 
 ---
 
