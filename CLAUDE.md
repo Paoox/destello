@@ -254,14 +254,28 @@ GET  /tallers                         → lista talleres activos
 GET  /supernovas                      → catálogo de premios canjeables
 GET  /certificados/:folio             → verificación pública de un certificado
                                          (a donde lleva el QR impreso; sin auth)
+```
 
+### Bot (requieren header `X-Bot-Key`, ver `BOT_API_KEY`)
+⚠️ Hasta el 17 sep 2026 estas rutas eran públicas sin ninguna verificación —
+cualquiera en internet podía llamarlas directo (sin pasar por CORS) y, por
+ejemplo, pisar el WhatsApp de una cuenta ajena vía `/bot/registrar` para
+robársela por OTP. Ver T-S1 en `docs/backlog-tickets.md`. Ahora
+`verificarBotKey` (middleware, `router.use()` en `routes/bot.js`) exige que
+el caller mande el mismo secreto que tiene la API en `BOT_API_KEY` — el bot
+Faro lo manda automático en cada llamada (`apiFetch()` en `flujo.js`).
+```
 POST /bot/registrar                   → crea/actualiza usuario (desde bot)
 GET  /bot/usuario/:email              → verifica si email tiene cuenta
 POST /bot/lista-espera                → registra en lista de espera
 GET  /bot/listas/:email               → listas de espera del usuario
 GET  /bot/pendientes/:email           → chispas + resplandores sin usar
 GET  /bot/diagnostico/:email          → foto completa del acceso, para que el bot ramifique
+POST /bot/completar-whatsapp          → guarda el WhatsApp de quien ya tiene permiso pero no lo tenía
 POST /bot/reporte-acceso              → levanta reporte (abierto incluso a cuentas bloqueadas)
+POST /bot/reporte-pago                → reporta un pago (foto o datos) para que Paola lo coteje
+PUT  /bot/conversacion/:jid           · GET /bot/conversacion/:jid → persistencia de la charla del bot
+POST /bot/evento                      → bitácora del embudo del bot
 ```
 
 ### Protegidos con JWT de usuario (`/users`, vía `authenticate`)
@@ -411,6 +425,24 @@ Métodos de pago incluidos en templates:
 ---
 
 ## Lo que Falta (Próximas Sesiones)
+
+> **A partir del 17 sep 2026, el backlog vivo y detallado es
+> `docs/backlog-tickets.md`** (tickets cortos, un tema por ticket, con qué
+> falta / por qué importa / dónde tocar / criterio de terminado). Esta
+> sección se mantiene como resumen de alto nivel; para el detalle o el
+> estado real de un pendiente, ir al backlog.
+
+### 🔒 Seguridad — ver `docs/backlog-tickets.md` sección 2
+Detectado en la revisión del 17 sep 2026, más urgente que lo de abajo porque
+es explotable en producción hoy, no solo pendiente de construir.
+- **T-S1 ✅ código listo / ⚠️ falta configurar en la Toshiba** — los endpoints
+  `/bot/*` no verificaban que quien llamara fuera el bot Faro; cualquiera en
+  internet podía pisar el WhatsApp de una cuenta ajena vía `/bot/registrar` y
+  robársela por OTP. Ya está cerrado con `verificarBotKey` +
+  `BOT_API_KEY` — falta generar la clave real y ponerla en el `.env` de la
+  Toshiba (API y bot) + redeploy. Ver sección "Bot" en Endpoints, arriba.
+- **T-S2** — sin rate limiting por IP en `/admin/login` ni en
+  `/auth/phone/send-code`. Pendiente.
 
 ### 🔴 Bloquea el lanzamiento (meta: 11 sep 2026, capas 1-2 del aula)
 - **Video real en el aula.** Plan: primero probar OpenVidu (fork de LiveKit) en

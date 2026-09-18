@@ -28,7 +28,20 @@
 
 import fetch from 'node-fetch'
 
-const API_URL = process.env.API_URL || 'http://localhost:3001'
+const API_URL     = process.env.API_URL || 'http://localhost:3001'
+const BOT_API_KEY = process.env.BOT_API_KEY || ''
+
+/**
+ * fetch hacia la API de Destello, con el secreto compartido que identifica al
+ * bot Faro. Todas las llamadas a `/bot/*` pasan por aquí — ver T-S1 en
+ * docs/backlog-tickets.md: sin este header la API rechaza con 401.
+ */
+function apiFetch(path, options = {}) {
+    return fetch(`${API_URL}${path}`, {
+        ...options,
+        headers: { ...options.headers, 'X-Bot-Key': BOT_API_KEY },
+    })
+}
 
 const PAGO_TEXTO =
     '💳 *Medios de pago*\n\n' +
@@ -123,7 +136,7 @@ function persistir(jid, conv) {
     // El listado de talleres se recarga solo en cada mensaje; guardarlo sería
     // ocupar espacio con algo que caduca enseguida.
     delete datos.talleres
-    fetch(`${API_URL}/bot/conversacion/${encodeURIComponent(jid)}`, {
+    apiFetch(`/bot/conversacion/${encodeURIComponent(jid)}`, {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
@@ -146,7 +159,7 @@ const conversaciones = {
 /** Rehidrata una conversación tras un reinicio del bot. Silencioso si falla. */
 async function restaurarConversacion(jid) {
     try {
-        const res  = await fetch(`${API_URL}/bot/conversacion/${encodeURIComponent(jid)}`)
+        const res  = await apiFetch(`/bot/conversacion/${encodeURIComponent(jid)}`)
         const data = await res.json()
         const c    = data?.conversacion
         if (!c || !c.paso) return null
@@ -156,7 +169,7 @@ async function restaurarConversacion(jid) {
 
 /** Deja un renglón en la bitácora. Sin await, nunca estorba. */
 function registrarEvento(tipo, { email = null, tallerId = null, ...metadata } = {}) {
-    fetch(`${API_URL}/bot/evento`, {
+    apiFetch(`/bot/evento`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ tipo, email, tallerId, metadata }),
@@ -206,7 +219,7 @@ async function getTalleresActivos() {
 
 async function buscarUsuario(email) {
     try {
-        const res  = await fetch(`${API_URL}/bot/usuario/${encodeURIComponent(email)}`)
+        const res  = await apiFetch(`/bot/usuario/${encodeURIComponent(email)}`)
         const data = await res.json()
         return data
     } catch { return { existe: false } }
@@ -223,7 +236,7 @@ async function buscarUsuario(email) {
 async function estadoBloqueo(email) {
     if (!email) return { acceso: false, compras: false }
     try {
-        const res  = await fetch(`${API_URL}/bot/usuario/${encodeURIComponent(email)}`)
+        const res  = await apiFetch(`/bot/usuario/${encodeURIComponent(email)}`)
         const data = await res.json()
         return { acceso: data.bloqueado === true, compras: data.comprasBloqueadas === true }
     } catch { return { acceso: false, compras: false } }
@@ -231,7 +244,7 @@ async function estadoBloqueo(email) {
 
 async function registrarUsuario({ email, nombre, apellido, whatsapp }) {
     try {
-        const res = await fetch(`${API_URL}/bot/registrar`, {
+        const res = await apiFetch(`/bot/registrar`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ email, nombre, apellido, whatsapp }),
@@ -242,7 +255,7 @@ async function registrarUsuario({ email, nombre, apellido, whatsapp }) {
 
 async function agregarALista({ email, tallerId, nombre, whatsapp }) {
     try {
-        const res = await fetch(`${API_URL}/bot/lista-espera`, {
+        const res = await apiFetch(`/bot/lista-espera`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ email, tallerId, nombre, whatsapp }),
@@ -254,7 +267,7 @@ async function agregarALista({ email, tallerId, nombre, whatsapp }) {
 /** Listas de espera del usuario, con el estado de cada una. */
 async function getListas(email) {
     try {
-        const res  = await fetch(`${API_URL}/bot/listas/${encodeURIComponent(email)}`)
+        const res  = await apiFetch(`/bot/listas/${encodeURIComponent(email)}`)
         const data = await res.json()
         return data.listas || []
     } catch { return [] }
@@ -263,7 +276,7 @@ async function getListas(email) {
 /** Foto completa del acceso: si tiene permiso, sus talleres y sus listas. */
 async function getDiagnostico(email) {
     try {
-        const res = await fetch(`${API_URL}/bot/diagnostico/${encodeURIComponent(email)}`)
+        const res = await apiFetch(`/bot/diagnostico/${encodeURIComponent(email)}`)
         return await res.json()
     } catch { return { status: 'error' } }
 }
@@ -275,7 +288,7 @@ async function getDiagnostico(email) {
  */
 async function completarWhatsapp(email, whatsapp) {
     try {
-        const res = await fetch(`${API_URL}/bot/completar-whatsapp`, {
+        const res = await apiFetch(`/bot/completar-whatsapp`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ email, whatsapp }),
@@ -290,7 +303,7 @@ async function completarWhatsapp(email, whatsapp) {
  */
 async function reportarPago({ email, nombre, whatsapp, tipo, datos, comprobanteBase64, comprobanteMime }) {
     try {
-        const res = await fetch(`${API_URL}/bot/reporte-pago`, {
+        const res = await apiFetch(`/bot/reporte-pago`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({
@@ -305,7 +318,7 @@ async function reportarPago({ email, nombre, whatsapp, tipo, datos, comprobanteB
 /** Levanta un reporte para que la admin lo revise. NO libera nada. */
 async function reportarAcceso({ email, nombre, whatsapp, motivo, detalle }) {
     try {
-        const res = await fetch(`${API_URL}/bot/reporte-acceso`, {
+        const res = await apiFetch(`/bot/reporte-acceso`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ email, nombre, whatsapp, motivo, detalle }),

@@ -19,8 +19,15 @@ import {
     registrarEventoBot,
 } from '../controllers/botController.js'
 import { rechazarBloqueados, rechazarSinCompras } from '../middleware/bloqueoBot.js'
+import { verificarBotKey } from '../middleware/verificarBotKey.js'
 
 const router = Router()
+
+// ── Quién puede llamar aquí ──────────────────────────────────
+// Solo el bot Faro, identificado por un secreto compartido (BOT_API_KEY).
+// Antes de esto, cualquiera en internet podía llamar estos endpoints directo
+// (ver T-S1 en docs/backlog-tickets.md).
+router.use(verificarBotKey)
 
 // ── Bloqueos ──────────────────────────────────────────────────
 // Casi todo el flujo de Destello pasa por Faro, no por el navegador. Un
