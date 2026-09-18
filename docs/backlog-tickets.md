@@ -330,7 +330,7 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
 - **Criterio de terminado:** mismo checklist del contrato; además valida que la
   miniatura de la rejilla del profe (20 en vivo) no se sienta lenta.
 
-### ~~T-05 — Tabla de profesores real~~ ✅ código listo (18 sep 2026), falta correr la migración
+### ~~T-05 — Tabla de profesores real~~ ✅ CERRADO (18 sep 2026)
 - **Lo que se encontró al investigar (antes de tocar nada):** el riesgo
   real NO era que un profesor externo viera el panel `/admin` — ese ya
   estaba bien protegido con su propio login de contraseña
@@ -367,17 +367,30 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
     busca una cuenta por correo (mismo patrón que Accesos), la asigna a
     un taller desde un `<select>`, lista las asignaciones agrupadas por
     profesor con botón para quitar una en particular.
-- **⚠️ Pendiente antes de poder usarlo:** correr `018_profesores.sql` en
-  Supabase → SQL Editor, igual que las migraciones anteriores. Sin las
-  tablas, `/admin/profesores` y `/users/me/talleres` truenan.
+- **Migración `018_profesores.sql` corrida en Supabase y confirmada por
+  Paola (18 sep 2026).**
+- **Verificado con datos reales, directo contra la base de producción**
+  (script aparte, sin tocar el panel): se asignó a una cuenta de prueba
+  (`paoox.dev@gmail.com`) como profesora de un taller — apareció en su
+  `GET /users/me/talleres` con `esProfe: true`. Se probaron los DOS
+  caminos: con chispa real de ese taller (trae su código real) y SIN
+  chispa de otro taller distinto (fila sintética, `code: null`, pero
+  igual `esProfe: true` y con acceso) — confirmando que dar la clase no
+  depende de estar inscrita a tu propio taller. Se limpiaron las
+  asignaciones de prueba al terminar (`taller_profesores` quedó vacía).
+- **Bug encontrado y resuelto de paso, sin relación con T-05:** al
+  redesplegar la API en la Toshiba, toda la API (no solo lo nuevo)
+  empezó a dar 502 — `DB_PASSWORD` en el `.env` de la Toshiba había
+  quedado desactualizado porque se usó "Reset database password" en
+  Supabase durante la sesión (para conseguir la contraseña y configurar
+  la API local). Corregido actualizando esa línea del `.env` y
+  reiniciando el contenedor.
 - **Pruebas:** `apps/api` — `npm test`: 19/19 sin regresiones. Sin test
-  automatizado nuevo (depende de BD real, mismo caso que T-13 3a/3b).
-  Verificación funcional real (crear una asignación de prueba, confirmar
-  que esa cuenta entra como profe SOLO a ese taller) diferida hasta correr
-  la migración.
-- **Criterio de terminado:** un profesor puede entrar a SU salón sin ver
-  métricas/finanzas de otros talleres — código listo, verificación con
-  datos reales pendiente de la migración.
+  automatizado nuevo para `profesorService.js` (depende de BD real,
+  mismo caso que T-13 3a/3b) — cubierto por la verificación manual de
+  arriba.
+- **Criterio de terminado:** ✅ un profesor puede entrar a SU salón sin ver
+  métricas/finanzas de otros talleres — verificado con datos reales.
 
 ### T-32 — Página de Perfil: construir desde cero
 - **Qué falta:** todo. `PagePerfil.jsx` hoy es 100% datos inventados

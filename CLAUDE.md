@@ -508,11 +508,6 @@ Detalle completo y cómo diagnosticarlo en `docs/backlog-tickets.md` (T-S1).
   de cada una (parejas, piezas, modelos 3D) — construirlas con contenido
   inventado invalidaría la prueba del contrato, mismo criterio que ya
   aplicaba solo a `modelo3d` y ahora se extiende a las tres.
-- **Tabla de profesores (T-05) — ✅ código listo, falta correr la migración.**
-  Ver el detalle completo en "Lo que Está Terminado y Funciona" — falta que
-  Paola corra `018_profesores.sql` en Supabase antes de poder usarlo (sin
-  eso, `/admin/profesores` y `/users/me/talleres` truenan). Destraba
-  también, para después: nombre en los diplomas, firma, y ForYou.
 
 ### 🟠 Deuda técnica — las tablas se relacionan por CORREO, no por id
 Detectado por Paola el 21 jul 2026. `chispas.usuario_email` y
@@ -584,8 +579,7 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
 
 ## Lo que Está Terminado y Funciona
 
-- ⚠️ **T-05 — Tabla de profesores real, código listo** (18 sep 2026)
-  **— falta correr la migración en Supabase antes de usarlo.** Hoy "profe"
+- ✅ **T-05 — Tabla de profesores real** (18 sep 2026). Hoy "profe"
   era `isAdminEmail()`, una lista fija de un solo correo en el frontend
   (`apps/web/src/constants.js`) — la misma que decide quién ve el nav
   "Admin" (ojo: el panel `/admin` en sí ya estaba bien protegido, con su
@@ -621,14 +615,21 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
     Accesos) y la asigna a un taller desde un `<select>`. Lista las
     asignaciones agrupadas por profesor, con botón para quitar una
     asignación puntual.
-  - **⚠️ Pendiente antes de poder usarlo:** correr
-    `018_profesores.sql` en Supabase → SQL Editor (mismo procedimiento que
-    las migraciones anteriores) — sin las tablas, `/admin/profesores` y
-    `/users/me/talleres` truenan.
+  - **Migración `018_profesores.sql` corrida en Supabase y confirmada por
+    Paola.** Verificado con datos reales directo contra producción: una
+    cuenta de prueba asignada como profesora aparece en su
+    `GET /users/me/talleres` con `esProfe: true`, tanto con chispa real
+    del taller como sin ella (fila sintética vía `taller_profesores`) —
+    confirma que dar la clase no depende de tener chispa de tu propio
+    taller. Asignaciones de prueba limpiadas al terminar.
+  - **De paso (sin relación con T-05):** al redesplegar la API en la
+    Toshiba, toda la API empezó a dar 502 — `DB_PASSWORD` del `.env`
+    quedó vieja porque se usó "Reset database password" en Supabase
+    durante la sesión. Corregido actualizando esa línea y reiniciando.
   - **Pruebas:** `apps/api` — `npm test`: 19/19 sin regresiones (no hay
     lógica pura nueva que aislar en `profesorService.js` — depende de BD
-    real, mismo caso que T-13 3a/3b). Verificación funcional real
-    diferida hasta correr la migración.
+    real, mismo caso que T-13 3a/3b; cubierto por la verificación manual
+    de arriba).
 
 - ✅ **T-01 — Video real en el aula, fase local** (18 sep 2026). Cámara,
   micrófono, audio y el control de palabra ya son de verdad — probado de
