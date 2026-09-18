@@ -21,7 +21,7 @@ Formato de cada ticket: **qué falta** · **por qué importa** · **dónde tocar
 | Aula — video | Video en vivo real (profe + alumnos) vía OpenVidu/LiveKit | El aula dice "Sin video todavía"; todo lo demás (sellos, pizarrón, semáforo) ya funciona sin video | 🔴 Falta construir completo |
 | Aula — actividades | 4 tipos: quiz, memorama, armar, modelo3d, todas sobre el mismo contrato (`contrato.js`) | Solo **quiz** existe de punta a punta. Las otras 3 están declaradas pero no implementadas (`registro.js`) — por eso el 🚧 que viste el 25 ago | 🔴 3 de 4 actividades por construir |
 | Aula — profesores | Tabla `profesores` real, con permisos propios (solo su salón, no el panel financiero) | `esProfe` = `isAdminEmail()` — cualquier admin ve todo; no hay concepto de "profesor externo" | 🔴 Riesgo de seguridad, no solo pendiente |
-| Accesos | Login sin códigos, activación transaccional, relación por `usuario_id` | Login sin códigos ✅, activación unificada y transaccional ✅, panel de Chispas limpio de Resplandor ✅ (T-14a, 18 sep). Queda: relación por email (T-13, diferida), backend/frontend del modelo viejo de códigos (T-14b/c) | 🟠 T-13/T-14b/T-14c reales, ver sección 4 |
+| Accesos | Login sin códigos, activación transaccional, relación por `usuario_id` | Login sin códigos ✅, activación unificada y transaccional ✅, backend/panel admin limpios de Resplandor ✅ (T-14a/b, 18 sep). Queda: relación por email (T-13, diferida) y lado usuario del modelo viejo (T-14c) | 🟠 T-13/T-14c reales, ver sección 4 |
 | Bot Faro | Menú completo, reporte de pago con foto, diagnóstico automático | Menú y opción 2 (talleres) funcionando ✅. Reporte de pago con foto: el bot **ignora imágenes por completo** | 🟡 Mitad implementado |
 | Panel Admin | 7 tabs completos, métricas por vistas SQL | Los 7 tabs existen y funcionan ✅. Una métrica de stats está rota (cuenta mal un estado) | 🟠 Bug puntual |
 | Certificados | Emisión automática al cumplir criterio | Criterio automático, **disparo manual** — nadie se entera cuando ya calificó | 🟡 Falta automatizar el envío/aviso |
@@ -365,7 +365,7 @@ se llama desde el manejador principal de mensajes.
 - **Pendiente futuro, no de este ticket:** meter Vitest + Testing Library a
   `apps/web` para que el frontend deje de depender 100% de pruebas manuales.
 
-#### T-14b — ✅ código listo, ⚠️ pendiente probar en el panel real — Backend admin: retirar endpoints y paneles muertos
+#### ~~T-14b — Backend admin: retirar endpoints y paneles muertos~~ ✅ CERRADO (18 sep 2026)
 - **Qué se hizo:**
   - `routes/admin.js` — se quitaron los 5 endpoints `/admin/resplandores/*`,
     `POST /admin/mail/resplandor` (tampoco lo llamaba nada), y la ruta
@@ -403,10 +403,12 @@ se llama desde el manejador principal de mensajes.
   archivo completo de una vez, en vez de tocarlo en dos ratos distintos.
 - **Pruebas:** `apps/api` — `npm test` sigue en 8/8 (sin tests nuevos, este
   ticket no agregó lógica propia, solo quitó código y renombró una ruta).
-  `apps/web` — verificado con `esbuild` (sintaxis). ⚠️ **Pendiente**: probar
-  a mano en el panel real que la búsqueda de usuario en `AccesosPanel.jsx`
-  sigue funcionando con el endpoint nuevo `/usuarios/buscar` (cambió de
-  endpoint, aunque el comportamiento debería verse idéntico).
+  `apps/web` — verificado con `esbuild` (sintaxis) y confirmado por Paola en
+  el panel real tras el redeploy (18 sep 2026): la búsqueda de usuario en
+  `AccesosPanel.jsx` funciona con el endpoint nuevo `/usuarios/buscar`. En
+  el camino se detectó un 404-como-HTML esperable (contenedor viejo sin la
+  ruta nueva antes del `docker compose up --build`) — resuelto con el
+  redeploy normal, no era un bug del código.
 - **Por qué importaba:** peso muerto activo desde el 20 jul 2026 — confundía
   a cualquiera que leyera el código sin el contexto, y era superficie de
   ataque extra sin necesidad (T-S1/T-S2 ya habían señalado algo parecido

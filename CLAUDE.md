@@ -519,17 +519,25 @@ Lo correcto es `usuario_id UUID/INT` con FK a `usuarios.id`. Migración por etap
 
 ## Lo que Está Terminado y Funciona
 
-- ✅ **T-14a — `AccesosPanel.jsx` limpio de Resplandor** (18 sep 2026). El
-  panel de `/admin` tab Accesos era, en el código, "Resplandores y Chispas"
-  unificados — pero el botón de crear/enviar Resplandor no se usa desde que
-  el bot registra cuentas directo (confirmado con Paola: lo que sí se usa
-  ahí es "Crear Chispa", para demos, que no se tocó). Se quitó toda esa UI
-  y lógica; el panel quedó solo con Chispas. Sin test automatizado —
-  `apps/web` no tiene ningún framework de pruebas configurado todavía;
-  verificado con `esbuild` (sintaxis) y a mano por Paola en el panel real
-  (checklist en `docs/backlog-tickets.md`, T-14) — todo correcto. El
-  backend (`resplandorService.js`, endpoints `/admin/resplandores/*`) sigue
-  vivo a propósito — es T-14b, pendiente.
+- ✅ **T-14a/b — Modelo viejo de Resplandor retirado del lado admin**
+  (18 sep 2026). El panel `/admin` tab Accesos era, en el código,
+  "Resplandores y Chispas" unificados — pero el botón de crear/enviar
+  Resplandor no se usa desde que el bot registra cuentas directo
+  (confirmado con Paola: lo que sí se usa ahí es "Crear Chispa", para
+  demos, que no se tocó). Se quitó toda esa UI/lógica del panel (T-14a) y
+  del backend: los 5 endpoints `/admin/resplandores/*`, `POST
+  /admin/mail/resplandor`, la ruta huérfana `POST
+  /admin/lista-espera/:id/confirmar`, y dos funciones de
+  `adminController.js` que nunca estuvieron enrutadas (T-14b). De paso
+  aparecieron y se borraron **3 componentes de React huérfanos**
+  (`ListaEsperaPanel.jsx`, `RespladorAdmin.jsx`, `ResplandoresPanel.jsx` —
+  ~1,247 líneas que ninguna página importaba). Nuevo endpoint limpio:
+  `GET /admin/usuarios/buscar?email=`. Verificado por Paola en el panel
+  real tras cada redeploy — todo correcto. `resplandorService.js` y
+  `resplandorController.js` siguen intactos a propósito: los usa el lado
+  `/auth` (T-14c, pendiente). Detalle completo en `docs/backlog-tickets.md`
+  (T-14). Sin test automatizado nuevo — `apps/web` no tiene ningún
+  framework de pruebas configurado todavía.
 
 - ✅ **T-15 — un solo schema en el repo** (18 sep 2026). Se borraron los dos
   archivos del MVP pre-Supabase (`db/schema.sql` y
