@@ -21,7 +21,7 @@ Formato de cada ticket: **qué falta** · **por qué importa** · **dónde tocar
 | Aula — video | Video en vivo real (profe + alumnos) vía OpenVidu/LiveKit | El aula dice "Sin video todavía"; todo lo demás (sellos, pizarrón, semáforo) ya funciona sin video | 🔴 Falta construir completo |
 | Aula — actividades | 4 tipos: quiz, memorama, armar, modelo3d, todas sobre el mismo contrato (`contrato.js`) | Solo **quiz** existe de punta a punta. Las otras 3 están declaradas pero no implementadas (`registro.js`) — por eso el 🚧 que viste el 25 ago | 🔴 3 de 4 actividades por construir |
 | Aula — profesores | Tabla `profesores` real, con permisos propios (solo su salón, no el panel financiero) | `esProfe` = `isAdminEmail()` — cualquier admin ve todo; no hay concepto de "profesor externo" | 🔴 Riesgo de seguridad, no solo pendiente |
-| Accesos | Login sin códigos, activación transaccional, relación por `usuario_id` | Login sin códigos ✅ funcionando. Pero: 2 caminos para activar pagos (uno roto), relaciones aún por email, `confirmar-pago` sin transacción | 🟠 Deuda técnica documentada en `revision-flujo-registro.md` |
+| Accesos | Login sin códigos, activación transaccional, relación por `usuario_id` | Login sin códigos ✅, activación unificada y transaccional ✅ (verificado 18 sep). Queda: relación por email (T-13, a propósito diferida) y limpiar el modelo viejo de códigos (T-14) | 🟠 Solo T-13/T-14/T-15 reales, ver sección 4 |
 | Bot Faro | Menú completo, reporte de pago con foto, diagnóstico automático | Menú y opción 2 (talleres) funcionando ✅. Reporte de pago con foto: el bot **ignora imágenes por completo** | 🟡 Mitad implementado |
 | Panel Admin | 7 tabs completos, métricas por vistas SQL | Los 7 tabs existen y funcionan ✅. Una métrica de stats está rota (cuenta mal un estado) | 🟠 Bug puntual |
 | Certificados | Emisión automática al cumplir criterio | Criterio automático, **disparo manual** — nadie se entera cuando ya calificó | 🟡 Falta automatizar el envío/aviso |
@@ -265,57 +265,58 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
 
 ## 4. 🟠 Deuda técnica (de `docs/revision-flujo-registro.md`, 22 ago 2026)
 
-### T-07 — Unificar activación de alumno (bug "pagado sin taller")
-- **Qué falta:** que el selector de estado (`PATCH /admin/lista-espera/:id`)
-  llame al mismo `activarAlumno()` que usa "Confirmar pago", en vez de tener
-  lógica propia que nunca crea la chispa.
-- **Por qué importa:** hoy alguien puede quedar `activo` + `pagado` **sin que su
-  taller aparezca en ningún lado** — paga, entra, y no hay nada. `v_alertas` ya
-  lo detecta como `pagado_sin_taller`, pero el bug sigue vivo.
-- **Dónde tocar:** `routes/admin.js:148-176` (el PATCH), `inscripcionService.js`
-  (`activarAlumno`).
-- **Criterio de terminado:** las dos rutas comparten un solo camino
-  transaccional; `v_alertas` deja de generar `pagado_sin_taller` para casos nuevos.
+> ⚠️ **Corrección del 18 sep 2026:** esta sección se armó copiando el
+> diagnóstico de `revision-flujo-registro.md` (22 ago) sin comparar contra el
+> código actual. Al ir a empezar T-08, se verificó cada ticket contra el
+> código real: **5 de los 9 ya estaban resueltos** desde antes (varios el
+> mismo 22 ago, en el commit `46a4a31 fix revisar y validar cupo de taller`,
+> y CLAUDE.md ya los tenía documentados en "Lo que Está Terminado" — solo
+> nunca se sincronizó esta lista). Quedan abajo como referencia histórica,
+> tachados, para que quede constancia de qué se verificó y cuándo.
 
-### T-08 — Fix conteo de talleres confirmados
-- **Qué falta:** un carácter. `adminController.js:88` filtra por
-  `estado = 'confirmado'`, pero el código vivo escribe `'cupo_confirmado'` — la
-  métrica siempre da 0.
-- **Criterio de terminado:** el stat de confirmados en el panel refleja datos
-  reales (o se reemplaza por `v_metricas_taller`, que ya cuenta bien).
+### ~~T-07 — Unificar activación de alumno (bug "pagado sin taller")~~ ✅ ya resuelto
+Verificado 18 sep 2026: `inscripcionService.js` tiene `activarAlumno()`, y
+tanto `PATCH /admin/lista-espera/:id` como `POST .../confirmar-pago`
+(`routes/admin.js`) ya lo llaman — un solo camino, no dos.
 
-### T-09 — Validar cupo máximo antes de inscribir
-- **Qué falta:** un `IF` antes del INSERT en el flujo de inscripción/chispa que
-  compare contra `talleres.cupo_maximo`.
-- **Por qué importa:** hoy se puede sobrevender un taller sin ninguna alerta en
-  el momento (`v_alertas` lo detecta después, como `taller_sobrevendido`, pero
-  no lo previene).
-- **Criterio de terminado:** un taller lleno no acepta más inscripciones/chispas.
+### ~~T-08 — Fix conteo de talleres confirmados~~ ✅ ya resuelto
+Verificado 18 sep 2026: `adminController.js` (`getTalleresStats`) ya filtra
+con `estado IN ('cupo_confirmado', 'confirmado')`.
 
-### T-10 — Nombre y apellido en un solo lugar
-- **Qué falta:** que `lista_espera` deje de guardar el nombre completo
-  concatenado (`flujo.js:362`) y lo lea de `usuarios` con un JOIN.
-- **Por qué importa:** produce `usuarios.nombre = "Ana Ruiz García"` con
-  `apellido = NULL`, y el nombre es lo que se imprime en el certificado.
-- **Criterio de terminado:** el certificado siempre imprime nombre + apellido
-  correctamente separados, sin importar por qué camino entró la persona.
+### ~~T-09 — Validar cupo máximo antes de inscribir~~ ✅ ya resuelto
+Verificado 18 sep 2026: `cupoService.hayCupo()` existe y ya se llama desde
+`listaEsperaService.js` (antes de anotar en lista de espera) y desde
+`chispaService.js` (antes de crear una chispa).
 
-### T-11 — Transacción en `confirmar-pago`
-- **Qué falta:** envolver las 6 operaciones sueltas (buscar/crear usuario,
-  activar, crear chispa, cambiar estado) en `BEGIN/COMMIT`. Correo y WhatsApp
-  van después del commit, nunca dentro.
-- **Por qué importa:** si falla a la mitad, el estado queda inconsistente — es
-  la causa raíz del desfase que el bot ya reporta (`diagnosticoService.js:48-50`).
-- **Criterio de terminado:** una falla a mitad de camino no deja registros a medias.
+### 🟡 T-10 — Nombre y apellido en un solo lugar (reducido a un caso borde)
+- **Estado verificado 18 sep 2026:** el problema original ya no existe en el
+  camino normal — `apps/bot/src/flujo.js` (paso `REG_NOMBRE`) ya separa
+  nombre y apellido al capturar el mensaje y los manda por separado a
+  `/bot/registrar`. El comentario en el propio código dice explícito: *"antes
+  eran concatenados, que era el bug que metía el apellido dentro del
+  nombre"*.
+- **Lo que sí queda:** `activarAlumno()` (`inscripcionService.js`) solo suma
+  `nombre = COALESCE(nombre, reg.nombre)` al activar desde `lista_espera` —
+  si la cuenta se crea por ESE camino (nunca pasó por el registro del bot) y
+  no tenía nombre, copia el nombre completo concatenado de `lista_espera` sin
+  partirlo, dejando `apellido` vacío. Caso angosto (alguien que el admin dio
+  de alta directo en lista de espera, no por el bot), pero real.
+- **Dónde tocar:** `inscripcionService.js` — partir `reg.nombre` en
+  nombre/apellido con la misma regla que ya usa el bot (primera palabra =
+  nombre, resto = apellido) antes de escribirlo, solo si el usuario es nuevo.
+- **Criterio de terminado:** una cuenta activada desde `lista_espera` sin
+  pasar por el bot también termina con `nombre` y `apellido` separados.
 
-### T-12 — Persistir conversación del bot
-- **Qué falta:** usar la tabla `bot_conversaciones` (ya existe por la migración
-  de métricas) en vez del `Map()` en memoria de `flujo.js:99`.
-- **Por qué importa:** hoy, si el bot se reinicia, **toda la gente a media
-  captura pierde su conversación** — es una mala experiencia real, no solo una
-  métrica faltante.
-- **Criterio de terminado:** un reinicio del bot no interrumpe una conversación
-  en curso.
+### ~~T-11 — Transacción en `confirmar-pago`~~ ✅ ya resuelto
+Verificado 18 sep 2026: `activarAlumno()` corre completo dentro de
+`withTransaction()` (`db.js`) — correo y WhatsApp se mandan después, fuera de
+la transacción, a propósito.
+
+### ~~T-12 — Persistir conversación del bot~~ ✅ ya resuelto
+Verificado 18 sep 2026: `flujo.js` ya escribe cada cambio de conversación a
+`bot_conversaciones` vía `PUT /bot/conversacion/:jid` (sin bloquear) y la
+rehidrata con `restaurarConversacion()` al arrancar en frío — confirmado que
+se llama desde el manejador principal de mensajes.
 
 ### T-13 — Migrar relaciones de email a `usuario_id`
 - **Qué falta:** agregar `usuario_id` nullable a `chispas`, `resplandores`,
