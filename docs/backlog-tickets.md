@@ -728,7 +728,7 @@ se llama desde el manejador principal de mensajes.
   contar contra `v_cupo_taller` (o algún estado intermedio nuevo), y
   ajustar `cupoService.js` + lo que dependa de esa regla.
 
-### T-37 — ✅ código listo, ⚠️ pendiente probar en WhatsApp real — El bot dice "registro guardado" aunque falle silenciosamente
+### ~~T-37 — El bot dice "registro guardado" aunque falle silenciosamente~~ ✅ CERRADO (18 sep 2026)
 - **Encontrado:** al verificar T-13 paso 3a con una inscripción real por el
   bot (18 sep 2026), un registro nuevo (`paoxx.dev@gmail.com`) quedó con
   `usuario_id: null` en `lista_espera` aun con la API ya redesplegada.
@@ -802,13 +802,14 @@ se llama desde el manejador principal de mensajes.
 - **Pruebas:** `npm test` en `apps/api`: 12/12, sin regresiones (no hay
   lógica pura nueva que valga la pena aislar — el endpoint nuevo es una
   reutilización directa de `cuentaConWhatsapp()`, ya usada en otro lado).
-  No existe infraestructura de pruebas para el bot tampoco. **Pendiente:**
-  probar por WhatsApp real: (1) registrar una cuenta nueva y confirmar que
-  sigue funcionando igual que siempre, (2) intentar registrar un correo
-  nuevo desde un WhatsApp que ya tiene cuenta y confirmar que te reconoce
-  en vez de pedir correo, (3) forzar el choque de números en el paso
-  `REG_WHATSAPP` (JID `@lid` sin `senderPn`) y confirmar que ahora sí avisa
-  en vez de fingir éxito.
+  No existe infraestructura de pruebas para el bot tampoco.
+- **Verificado por Paola en WhatsApp real (18 sep 2026), tras redeploy de
+  `apps/api` y `apps/bot`:** la capa preventiva funciona — al escribirle al
+  bot desde un número que ya tenía cuenta, la saluda por su nombre de una
+  vez y **no vuelve a pedir correo**. Pendiente de probar más adelante,
+  sin bloquear el cierre: forzar el choque de números en el paso
+  `REG_WHATSAPP` (JID `@lid` sin `senderPn`) para ver la capa de red de
+  seguridad en acción — caso más raro de topar en el uso normal.
 
 ---
 
