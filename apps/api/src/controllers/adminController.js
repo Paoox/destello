@@ -1,11 +1,9 @@
 /**
  * Destello API — Admin Controller
  * Maneja: login admin, chispas, talleres, lista de espera.
- * Los resplandores tienen su propio controller → resplandorController.js
  */
 import { verifyAdminPassword, signAdminToken } from '../services/adminAuthService.js'
 import * as chispaService      from '../services/chispaService.js'
-import * as resplandorService  from '../services/resplandorService.js'
 import * as tallerService      from '../services/tallerService.js'
 import * as listaEsperaService from '../services/listaEsperaService.js'
 import { query }               from '../db/db.js'
@@ -140,54 +138,3 @@ export async function confirmarLugar(req, res, next) {
     } catch (err) { next(err) }
 }
 
-export async function listEspera(_req, res, next) {
-    try {
-        const lista = await listaEsperaService.listTodas()
-        res.json({ status: 'ok', lista })
-    } catch (err) { next(err) }
-}
-
-/**
- * Confirmar cupo desde lista de espera.
- * tipo = 'chispa'     → usuario ya tiene cuenta, genera chispa de taller
- * tipo = 'resplandor' → usuario sin cuenta, genera resplandor de invitación
- */
-export async function confirmarCupo(req, res, next) {
-    try {
-        const { id } = req.params
-        const { expiresInDays = 30, tipo = 'chispa' } = req.body
-
-        const { rows } = await query('SELECT * FROM lista_espera WHERE id = $1', [id])
-        const registro  = rows[0]
-        if (!registro) return next(new AppError('Registro no encontrado', 404, 'NOT_FOUND'))
-
-        if (tipo === 'resplandor') {
-            if (!registro.email) throw new AppError('El registro no tiene email', 400, 'BAD_REQUEST')
-            const resplandor = await resplandorService.createResplandor({
-                email:         registro.email,
-                nombre:        registro.nombre,
-                tallerId:      registro.taller_id,
-                expiresInDays: 7,
-                createdBy:     'admin',
-            })
-            await listaEsperaService.actualizarEstado(id, 'confirmado')
-            res.json({
-                status:    'ok',
-                tipo:      'resplandor',
-                resplandor,
-                mensaje:   'Cupo confirmado. Resplandor: ' + resplandor.code,
-            })
-        } else {
-            const chispa = await chispaService.createChispa({
-                tallerId: registro.taller_id, expiresInDays, createdBy: 'admin',
-            })
-            await listaEsperaService.actualizarEstado(id, 'confirmado')
-            res.json({
-                status:  'ok',
-                tipo:    'chispa',
-                chispa,
-                mensaje: 'Cupo confirmado. Chispa: ' + chispa.code,
-            })
-        }
-    } catch (err) { next(err) }
-}

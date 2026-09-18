@@ -5,21 +5,6 @@ import { query } from '../db/db.js'
 import { hayCupo, sincronizarEstadoCupo } from './cupoService.js'
 import { estadoDe as bloqueoDe } from './bloqueoService.js'
 
-export async function listTodas() {
-    const { rows } = await query(
-        `SELECT le.*,
-                t.nombre AS taller_nombre,
-                EXISTS (
-                    SELECT 1 FROM resplandores r
-                    WHERE LOWER(r.email) = LOWER(le.email)
-                ) AS tiene_resplandor
-         FROM lista_espera le
-                  JOIN talleres t ON t.id = le.taller_id
-         ORDER BY le.created_at DESC`
-    )
-    return rows
-}
-
 export async function listPorTaller(tallerId) {
     const { rows } = await query(
         `SELECT le.*, t.nombre AS taller_nombre

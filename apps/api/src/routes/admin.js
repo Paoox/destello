@@ -19,6 +19,7 @@
  * POST   /admin/send-wa            → envía WA desde el bot (admin)
  *
  * GET    /admin/usuarios                  → lista con estado de bloqueo (admin)
+ * GET    /admin/usuarios/buscar?email=    → busca un usuario por correo (admin)
  * GET    /admin/usuarios/:email/historial → bitácora de bloqueos (admin)
  * PATCH  /admin/usuarios/:email/bloqueo   → bloquea/desbloquea acceso o compras
  */
@@ -29,7 +30,7 @@ import * as chispaCtrl       from '../controllers/chispasController.js'
 import { crearTaller, actualizarTaller, getTallerById } from '../services/tallerService.js'
 import { AppError }          from '../middleware/errorHandler.js'
 import { query }             from '../db/db.js'
-import { sendConfirmacionTaller, sendConfirmacionLugar, sendResplandor, sendBienvenida } from '../services/mailService.js'
+import { sendConfirmacionTaller, sendConfirmacionLugar, sendBienvenida } from '../services/mailService.js'
 import { sendWhatsapp }      from '../services/botService.js'
 import { cuentaConWhatsapp, normalizarWhatsapp } from '../services/usuarioService.js'
 import { listReportes, resolverReporte } from '../services/reporteService.js'
@@ -40,7 +41,6 @@ import * as certificadoService from '../services/certificadoService.js'
 import * as bloqueoService      from '../services/bloqueoService.js'
 import { sincronizarEstadoCupo } from '../services/cupoService.js'
 import { rateLimit }          from '../middleware/rateLimit.js'
-import crypto                from 'node:crypto'
 
 const router = Router()
 
@@ -132,11 +132,6 @@ router.get('/lista-espera', async (_req, res, next) => {
                     t.horario      AS taller_horario,
                     t.fecha_inicio AS taller_fecha,
                     t.descripcion  AS taller_descripcion,
-                    EXISTS (
-                        SELECT 1 FROM resplandores r
-                        WHERE LOWER(r.email) = LOWER(le.email)
-                          AND r.used = FALSE AND r.revoked = FALSE
-                    ) AS tiene_resplandor,
                     -- Cuándo se le apartó el lugar. La tabla no lo guarda, pero
                     -- la chispa ES la reserva: su fecha de creación es el momento
                     -- exacto en que se apartó. De aquí sale el reloj de 48 h.
@@ -263,89 +258,6 @@ router.post('/lista-espera/:id/confirmar-lugar', async (req, res, next) => {
 })
 
 /**
- * POST /admin/lista-espera/:id/confirmar
- * Genera resplandor o chispa y envía el código por correo.
- * Body: { tipo: 'resplandor' | 'chispa', expiresInDays?: number }
- */
-router.post('/lista-espera/:id/confirmar', async (req, res, next) => {
-    try {
-        const { tipo = 'resplandor', expiresInDays = 30 } = req.body
-
-        // Obtener el registro con info del taller
-        const { rows } = await query(
-            `SELECT le.*, t.nombre AS taller_nombre, t.descripcion AS taller_descripcion,
-                    t.fecha_inicio AS taller_fecha, t.horario AS taller_horario,
-                    t.precio AS taller_precio
-             FROM lista_espera le
-                      LEFT JOIN talleres t ON t.id = le.taller_id
-             WHERE le.id = $1`,
-            [req.params.id]
-        )
-        if (!rows.length) throw new AppError('Registro no encontrado', 404, 'NOT_FOUND')
-        const reg = rows[0]
-
-        const taller = {
-            id:               reg.taller_id,
-            nombre:           reg.taller_nombre      ?? reg.taller_id,
-            descripcion:      reg.taller_descripcion ?? null,
-            fecha_disponible: reg.taller_fecha       ?? null,
-            horario:          reg.taller_horario     ?? null,
-            precio:           reg.taller_precio      ?? 0,
-        }
-
-        const seg = () => crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 4)
-
-        if (tipo === 'chispa') {
-            // Generar chispa
-            const code      = `DEST-${seg()}-${seg()}`
-            const expiresAt = expiresInDays
-                ? new Date(Date.now() + expiresInDays * 86400000)
-                : null
-
-            await query(
-                `INSERT INTO chispas
-                    (code, taller_id, expires_at, usuario_nombre, usuario_email, usuario_wa)
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
-                [code, reg.taller_id, expiresAt, reg.nombre, reg.email, reg.whatsapp]
-            )
-
-            // Enviar correo con chispa
-            try {
-                await sendConfirmacionTaller({ to: reg.email, nombre: reg.nombre ?? '', taller, chispaCode: code })
-            } catch (mailErr) {
-                console.error('[mail] Error al enviar chispa:', mailErr.message)
-            }
-
-            return res.status(201).json({ status: 'ok', chispa: { code } })
-        }
-
-        // Generar resplandor
-        const { rows: existentes } = await query(
-            `SELECT * FROM resplandores WHERE email = $1 AND revoked = FALSE AND used = FALSE`,
-            [reg.email]
-        )
-        if (existentes.length > 0) {
-            throw new AppError('El usuario ya tiene un resplandor activo.', 409, 'CONFLICT')
-        }
-
-        const code = `RES-${seg()}-${seg()}`
-        await query(
-            `INSERT INTO resplandores (code, email, created_at) VALUES ($1, $2, NOW())`,
-            [code, reg.email]
-        )
-
-        // Enviar correo con resplandor
-        try {
-            await sendResplandor({ to: reg.email, nombre: reg.nombre ?? '', code })
-        } catch (mailErr) {
-            console.error('[mail] Error al enviar resplandor:', mailErr.message)
-        }
-
-        res.status(201).json({ status: 'ok', resplandor: { code } })
-    } catch (err) { next(err) }
-})
-
-/**
  * POST /admin/lista-espera/:id/confirmar-pago
  *
  * Confirma el pago de un alumno. Delega TODO el trabajo de datos en
@@ -419,137 +331,25 @@ router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
     } catch (err) { next(err) }
 })
 
-router.get('/resplandores/all', async (_req, res, next) => {
-    try {
-        const { rows } = await query(
-            `SELECT r.*, u.nombre AS usuario_nombre, u.whatsapp AS usuario_whatsapp
-             FROM resplandores r
-             LEFT JOIN usuarios u ON u.email = r.email
-             ORDER BY r.created_at DESC`
-        )
-        res.json({ status: 'ok', resplandores: rows })
-    } catch (err) { next(err) }
-})
-
-// ── Resplandores (admin) ──────────────────────────────────
-
+// ── Usuarios (admin) ───────────────────────────────────────
 
 /**
- * GET /admin/resplandores?email=xxx
- * Lista los resplandores de un usuario por correo.
+ * GET /admin/usuarios/buscar?email=xxx
+ * Busca un usuario por correo — lo usa AccesosPanel.jsx antes de generar
+ * una Chispa. Reemplaza al viejo GET /admin/resplandores?email=, que hacía
+ * lo mismo pero de paso consultaba la tabla resplandores (T-14b, ver
+ * docs/backlog-tickets.md).
  */
-router.get('/resplandores', async (req, res, next) => {
+router.get('/usuarios/buscar', async (req, res, next) => {
     try {
         const { email } = req.query
         if (!email) throw new AppError('email es requerido', 400, 'BAD_REQUEST')
 
-        const { rows: users } = await query(
+        const { rows } = await query(
             `SELECT id, email, nombre, whatsapp, estado FROM usuarios WHERE email = $1`,
             [email.toLowerCase().trim()]
         )
-        const usuario = users[0] ?? null
-
-        const { rows: resplandores } = await query(
-            `SELECT * FROM resplandores WHERE email = $1 ORDER BY created_at DESC`,
-            [email.toLowerCase().trim()]
-        )
-
-        res.json({ status: 'ok', usuario, resplandores })
-    } catch (err) { next(err) }
-})
-
-/**
- * POST /admin/resplandores
- * Crea un nuevo resplandor para el usuario (email debe existir).
- * Solo permite crear si no tiene uno activo/expirado sin revocar.
- * Body: { email }
- */
-router.post('/resplandores', async (req, res, next) => {
-    try {
-        const { email } = req.body
-        if (!email) throw new AppError('email es requerido', 400, 'BAD_REQUEST')
-        const emailNorm = email.toLowerCase().trim()
-
-        // Verificar si ya tiene un resplandor activo o expirado (no revocado, no usado)
-        const { rows: existentes } = await query(
-            `SELECT * FROM resplandores
-             WHERE email = $1 AND revoked = FALSE AND used = FALSE`,
-            [emailNorm]
-        )
-        if (existentes.length > 0) {
-            throw new AppError(
-                'El usuario ya tiene un resplandor activo. Revócalo primero para crear uno nuevo.',
-                409, 'CONFLICT'
-            )
-        }
-
-        // Generar código: RES-XXXX-XXXX
-        const seg  = () => crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 4)
-        const code = `RES-${seg()}-${seg()}`
-
-        // Buscar datos del usuario para el correo
-        const { rows: users } = await query(
-            `SELECT nombre FROM usuarios WHERE email = $1`,
-            [emailNorm]
-        )
-        const nombre = users[0]?.nombre ?? ''
-
-        // Guardar resplandor
-        const { rows } = await query(
-            `INSERT INTO resplandores (code, email, created_at)
-             VALUES ($1, $2, NOW())
-             RETURNING *`,
-            [code, emailNorm]
-        )
-        const resplandor = rows[0]
-
-        // Enviar correo automáticamente
-        try {
-            await sendResplandor({ to: emailNorm, nombre, code })
-            resplandor.enviado = true
-        } catch { resplandor.enviado = false }
-
-        res.status(201).json({ status: 'ok', code, resplandor })
-    } catch (err) { next(err) }
-})
-
-/**
- * POST /admin/resplandores/:code/reenviar
- * Reenvía un resplandor existente al correo del usuario.
- */
-router.post('/resplandores/:code/reenviar', async (req, res, next) => {
-    try {
-        const { rows } = await query(
-            `SELECT r.*,
-                    COALESCE(u.nombre, le.nombre) AS nombre
-             FROM resplandores r
-             LEFT JOIN usuarios    u  ON u.email  = r.email
-             LEFT JOIN lista_espera le ON le.email = r.email
-             WHERE r.code = $1
-             LIMIT 1`,
-            [req.params.code]
-        )
-        if (!rows.length) throw new AppError('Resplandor no encontrado', 404, 'NOT_FOUND')
-        const r = rows[0]
-
-        await sendResplandor({ to: r.email, nombre: r.nombre ?? '', code: r.code })
-        res.json({ status: 'ok', message: `Resplandor reenviado a ${r.email}` })
-    } catch (err) { next(err) }
-})
-
-/**
- * DELETE /admin/resplandores/:code
- * Revoca un resplandor. Queda en historial pero no puede usarse.
- * Al revocar, el admin puede crear uno nuevo.
- */
-router.delete('/resplandores/:code', async (req, res, next) => {
-    try {
-        const { rows } = await query(
-            `UPDATE resplandores SET revoked = TRUE WHERE code = $1 RETURNING *`,
-            [req.params.code]
-        )
-        if (!rows.length) throw new AppError('Resplandor no encontrado', 404, 'NOT_FOUND')
-        res.json({ status: 'ok', message: `Resplandor ${req.params.code} revocado` })
+        res.json({ status: 'ok', usuario: rows[0] ?? null })
     } catch (err) { next(err) }
 })
 
@@ -571,21 +371,6 @@ router.post('/mail/confirmacion-taller', async (req, res, next) => {
 
         await sendConfirmacionTaller({ to, nombre: nombre || '', taller, chispaCode })
         res.json({ status: 'ok', message: `Correo enviado a ${to}` })
-    } catch (err) { next(err) }
-})
-
-/**
- * POST /admin/mail/resplandor
- * Envía un resplandor (código de acceso para crear cuenta) por correo.
- * Body: { to, nombre, code }
- */
-router.post('/mail/resplandor', async (req, res, next) => {
-    try {
-        const { to, nombre, code } = req.body
-        if (!to || !code) throw new AppError('to y code son requeridos', 400, 'BAD_REQUEST')
-
-        await sendResplandor({ to, nombre: nombre || '', code })
-        res.json({ status: 'ok', message: `Resplandor enviado a ${to}` })
     } catch (err) { next(err) }
 })
 

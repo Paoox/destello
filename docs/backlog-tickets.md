@@ -365,19 +365,54 @@ se llama desde el manejador principal de mensajes.
 - **Pendiente futuro, no de este ticket:** meter Vitest + Testing Library a
   `apps/web` para que el frontend deje de depender 100% de pruebas manuales.
 
-#### T-14b — Backend admin: retirar `resplandorService.js` y endpoints
-- **Qué falta:** una vez que ninguna pantalla llame a `/admin/resplandores/*`
-  (confirmado con T-14a), retirar `resplandorService.js`,
-  `resplandorController.js`, los endpoints `/admin/resplandores/*`, y
-  `POST /admin/lista-espera/:id/confirmar` (la ruta huérfana que manda
-  resplandor o chispa por correo — confirmado que `ListaEsperaAdmin.jsx`
-  nunca la llama).
-- **Por qué importa:** es peso muerto activo desde el 20 jul 2026; confunde
-  a cualquiera que lea el código sin el contexto, y es superficie de ataque
-  extra sin necesidad.
-- **Criterio de terminado:** las rutas dejan de existir (o quedan marcadas
-  deprecadas si Paola prefiere no borrar el histórico); la tabla
-  `resplandores` NO se toca — sigue con su historial.
+#### T-14b — ✅ código listo, ⚠️ pendiente probar en el panel real — Backend admin: retirar endpoints y paneles muertos
+- **Qué se hizo:**
+  - `routes/admin.js` — se quitaron los 5 endpoints `/admin/resplandores/*`,
+    `POST /admin/mail/resplandor` (tampoco lo llamaba nada), y la ruta
+    huérfana `POST /admin/lista-espera/:id/confirmar` (confirmado que
+    `ListaEsperaAdmin.jsx` nunca la llama — la usaba un panel viejo, ver
+    abajo). También se quitó el `EXISTS (...) AS tiene_resplandor` de la
+    query viva de `GET /lista-espera`: se calculaba en cada carga del panel
+    y nada lo leía.
+  - Nuevo endpoint limpio `GET /admin/usuarios/buscar?email=` — reemplaza al
+    viejo `GET /admin/resplandores?email=` que `AccesosPanel.jsx` (T-14a)
+    seguía usando solo por el dato de `usuario`; ahora ya no toca la tabla
+    `resplandores` para nada.
+  - `adminController.js` — se quitaron `confirmarCupo()` y `listEspera()`,
+    dos funciones que **nunca estuvieron enrutadas** (código muerto desde
+    antes, no solo por esto): `confirmarCupo` llamaba
+    `resplandorService.createResplandor`, `listEspera` llamaba a
+    `listaEsperaService.listTodas()` — que también se quitó (misma
+    `tiene_resplandor` muerta, sin más consumidores).
+  - **Se encontraron 3 componentes de React huérfanos** que ninguna página
+    importaba (verificado con grep contra todo `apps/web/src`, no solo
+    contra `PageAdmin.jsx`): `ListaEsperaPanel.jsx` (551 líneas — una
+    versión vieja de la lista de espera, previa a `ListaEsperaAdmin.jsx`,
+    que sí llamaba la ruta `/confirmar` huérfana), `RespladorAdmin.jsx`
+    (267 líneas, nombre con typo) y `ResplandoresPanel.jsx` (429 líneas) —
+    los tres se borraron. En total, ~1,247 líneas de frontend muerto que no
+    aparecían en ningún flujo real.
+- **`resplandorService.js` y `resplandorController.js` NO se tocaron** — se
+  descubrió que casi todas las funciones de `resplandorService.js`
+  (`createResplandor`, `listResplandores`, `getStats`, `revokeResplandor`,
+  `getResplandoresPorEmail`, `validateResplandor`, `consumeResplandor`) las
+  sigue llamando `resplandorController.js`, que es de `routes/auth.js`
+  (T-14c) — no de `routes/admin.js`. Tocar ese archivo aquí habría invadido
+  el alcance de T-14c. Única excepción: `getResplandor()` no tiene ningún
+  llamador en todo el repo, pero se dejó igual para que T-14c limpie el
+  archivo completo de una vez, en vez de tocarlo en dos ratos distintos.
+- **Pruebas:** `apps/api` — `npm test` sigue en 8/8 (sin tests nuevos, este
+  ticket no agregó lógica propia, solo quitó código y renombró una ruta).
+  `apps/web` — verificado con `esbuild` (sintaxis). ⚠️ **Pendiente**: probar
+  a mano en el panel real que la búsqueda de usuario en `AccesosPanel.jsx`
+  sigue funcionando con el endpoint nuevo `/usuarios/buscar` (cambió de
+  endpoint, aunque el comportamiento debería verse idéntico).
+- **Por qué importaba:** peso muerto activo desde el 20 jul 2026 — confundía
+  a cualquiera que leyera el código sin el contexto, y era superficie de
+  ataque extra sin necesidad (T-S1/T-S2 ya habían señalado algo parecido
+  del lado de `/acceso`).
+- **La tabla `resplandores` NO se tocó** — sigue con todo su historial, tal
+  como pedía el criterio de terminado original.
 
 #### T-14c — Lado usuario: `PageAcceso.jsx`, registro con contraseña
 - **Qué falta:** `PageAcceso.jsx` (ruta `/acceso`, navegable a mano aunque

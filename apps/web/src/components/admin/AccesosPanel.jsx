@@ -188,14 +188,10 @@ export default function AccesosPanel({ adminToken }) {
 
     const [searchError, setSearchError] = useState(null)
 
-    // Reutiliza /admin/resplandores?email= solo por el `usuario` que trae en
-    // la respuesta — es el único lugar del backend que ya hace esa búsqueda.
-    // El arreglo `resplandores` que también devuelve se ignora a propósito:
-    // ver el encabezado de este archivo (T-14).
     const recargarUsuario = useCallback(async (email) => {
         setSearchError(null)
         try {
-            const data = await API(`/resplandores?email=${encodeURIComponent(email)}`, adminToken)
+            const data = await API(`/usuarios/buscar?email=${encodeURIComponent(email)}`, adminToken)
             if (data.usuario) {
                 setUsuario(data.usuario)
                 setUsuarioStatus(data.usuario.estado === 'activo' ? 'found' : 'espera')
