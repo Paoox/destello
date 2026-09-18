@@ -1,15 +1,12 @@
 /**
  * Destello API — Auth Controller
- * Login de usuario con chispa, registro con resplandor, OAuth social, refresh y logout.
- * Resplandores (validar/consumir) → resplandorController.js
+ * Login de usuario con chispa o email+password, OAuth social, refresh y logout.
  */
 import jwt      from 'jsonwebtoken'
 import bcrypt   from 'bcryptjs'
 import { registrarLogin } from '../services/eventoService.js'
 import { AppError }               from '../middleware/errorHandler.js'
 import { validateChispa }         from '../services/chispaService.js'
-import * as resplandorService     from '../services/resplandorService.js'
-import * as referralService       from '../services/referralService.js'
 import { query }                  from '../db/db.js'
 import { verifyFirebaseToken }    from '../services/firebaseAdmin.js'
 import * as bloqueoService        from '../services/bloqueoService.js'
@@ -185,110 +182,6 @@ export async function loginWithSocial(req, res, next) {
         whatsapp: usuario.whatsapp,   // el front decide si pedir onboarding
         role:     'alumno',
         provider,
-      },
-    })
-  } catch (err) {
-    next(err)
-  }
-}
-
-/**
- * POST /auth/register
- * Crea una cuenta nueva usando un Resplandor válido.
- * Body: { email, password, nombre, resplandorCode }
- */
-export async function registerUser(req, res, next) {
-  try {
-    const { email, password, nombre, resplandorCode, codigoInvitado } = req.body
-
-    if (!email || !password || !resplandorCode) {
-      throw new AppError('email, password y resplandorCode son requeridos', 400, 'BAD_REQUEST')
-    }
-    if (password.length < 8) {
-      throw new AppError('La contraseña debe tener al menos 8 caracteres', 400, 'BAD_REQUEST')
-    }
-
-    // 1. Validar resplandor
-    const validation = await resplandorService.validateResplandor(resplandorCode)
-    if (!validation.valid) {
-      const messages = {
-        INVALID_CODE: 'Resplandor no reconocido',
-        REVOKED:      'Este resplandor ha sido revocado',
-        ALREADY_USED: 'Este resplandor ya fue utilizado — si ya tienes cuenta, inicia sesión',
-        EXPIRED:      'Este resplandor ha expirado',
-      }
-      throw new AppError(
-          messages[validation.reason] ?? 'Resplandor inválido',
-          401,
-          validation.reason,
-      )
-    }
-
-    // 2. Verificar si ya existe cuenta con ese email
-    const { rows: existing } = await query(
-        `SELECT id, password FROM usuarios WHERE email = $1`,
-        [email.toLowerCase().trim()]
-    )
-
-    let user
-
-    if (existing.length > 0) {
-      if (existing[0].password) {
-        throw new AppError(
-            'Ya existe una cuenta con ese correo. Inicia sesión.',
-            409,
-            'EMAIL_ALREADY_EXISTS',
-        )
-      }
-      // Sin contraseña → completar registro
-      const hash = await bcrypt.hash(password, 12)
-      const { rows } = await query(
-          `UPDATE usuarios
-           SET nombre   = COALESCE($2, nombre),
-               password = $3,
-               estado   = 'activo'
-           WHERE email = $1
-           RETURNING id, email, nombre, estado`,
-          [email.toLowerCase().trim(), nombre?.trim() || null, hash]
-      )
-      user = rows[0]
-    } else {
-      // Usuario nuevo
-      const hash = await bcrypt.hash(password, 12)
-      const { rows } = await query(
-          `INSERT INTO usuarios (email, nombre, password, estado)
-           VALUES ($1, $2, $3, 'activo')
-           RETURNING id, email, nombre, estado`,
-          [email.toLowerCase().trim(), nombre?.trim() || null, hash]
-      )
-      user = rows[0]
-    }
-
-    // 4. Consumir resplandor
-    await resplandorService.consumeResplandor(resplandorCode, user.email)
-
-    // 4b. Referidos: genera el código propio y, si vino código de invitado,
-    //     acredita Estrellas al referidor. No bloquea el registro si falla.
-    try {
-      await referralService.ensureCodigoReferido(user.id)
-      if (codigoInvitado) {
-        await referralService.registrarReferido(codigoInvitado, user.email)
-      }
-    } catch (e) {
-      console.error('[referidos] no se pudo procesar el referido:', e.message)
-    }
-
-    // 5. Emitir JWT
-    const token = signToken({ userId: user.id, role: 'alumno' })
-
-    res.status(201).json({
-      status: 'ok',
-      token,
-      user: {
-        id:     user.id,
-        email:  user.email,
-        nombre: user.nombre,
-        role:   'alumno',
       },
     })
   } catch (err) {

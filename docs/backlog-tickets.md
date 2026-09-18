@@ -21,7 +21,7 @@ Formato de cada ticket: **qué falta** · **por qué importa** · **dónde tocar
 | Aula — video | Video en vivo real (profe + alumnos) vía OpenVidu/LiveKit | El aula dice "Sin video todavía"; todo lo demás (sellos, pizarrón, semáforo) ya funciona sin video | 🔴 Falta construir completo |
 | Aula — actividades | 4 tipos: quiz, memorama, armar, modelo3d, todas sobre el mismo contrato (`contrato.js`) | Solo **quiz** existe de punta a punta. Las otras 3 están declaradas pero no implementadas (`registro.js`) — por eso el 🚧 que viste el 25 ago | 🔴 3 de 4 actividades por construir |
 | Aula — profesores | Tabla `profesores` real, con permisos propios (solo su salón, no el panel financiero) | `esProfe` = `isAdminEmail()` — cualquier admin ve todo; no hay concepto de "profesor externo" | 🔴 Riesgo de seguridad, no solo pendiente |
-| Accesos | Login sin códigos, activación transaccional, relación por `usuario_id` | Login sin códigos ✅, activación unificada y transaccional ✅, backend/panel admin limpios de Resplandor ✅ (T-14a/b, 18 sep). Queda: relación por email (T-13, diferida) y lado usuario del modelo viejo (T-14c) | 🟠 T-13/T-14c reales, ver sección 4 |
+| Accesos | Login sin códigos, activación transaccional, relación por `usuario_id` | Login sin códigos ✅, activación unificada y transaccional ✅, modelo de Resplandor retirado por completo (código, panel, tabla se conserva) ✅ (T-14a/b/c, 18 sep, T-14c pendiente de probar en el sitio real). Queda: relación por email (T-13, diferida) | 🟠 Solo T-13 real, ver sección 4 |
 | Bot Faro | Menú completo, reporte de pago con foto, diagnóstico automático | Menú y opción 2 (talleres) funcionando ✅. Reporte de pago con foto: el bot **ignora imágenes por completo** | 🟡 Mitad implementado |
 | Panel Admin | 7 tabs completos, métricas por vistas SQL | Los 7 tabs existen y funcionan ✅. Una métrica de stats está rota (cuenta mal un estado) | 🟠 Bug puntual |
 | Certificados | Emisión automática al cumplir criterio | Criterio automático, **disparo manual** — nadie se entera cuando ya calificó | 🟡 Falta automatizar el envío/aviso |
@@ -416,15 +416,57 @@ se llama desde el manejador principal de mensajes.
 - **La tabla `resplandores` NO se tocó** — sigue con todo su historial, tal
   como pedía el criterio de terminado original.
 
-#### T-14c — Lado usuario: `PageAcceso.jsx`, registro con contraseña
-- **Qué falta:** `PageAcceso.jsx` (ruta `/acceso`, navegable a mano aunque
-  sin link — ver hallazgo de seguridad del 17 sep), el `RegisterForm` con
-  contraseña en `PageLogin.jsx`, `POST /auth/register`,
-  `POST /auth/resplandor/validate` y `/consume`.
-- **Por qué importa:** mismo peso muerto que T-14b, del lado del usuario
-  final — y reduce la superficie de ataque que ya se señaló en T-S1/T-S2.
-- **Criterio de terminado:** la ruta `/acceso` deja de estar disponible (o
-  redirige a `/login`), y los endpoints correspondientes dejan de existir.
+#### T-14c — ✅ código listo, ⚠️ pendiente probar en el sitio real — Lado usuario: `PageAcceso.jsx`, registro con contraseña
+- **Qué se hizo:**
+  - **Backend:** `routes/auth.js` — quitados `POST /auth/register`,
+    `POST /auth/resplandor/validate` y `/consume`. `authController.js` —
+    quitada `registerUser()` completa (109 líneas: validaba el resplandor,
+    creaba/activaba la cuenta con contraseña, lo consumía, y de paso
+    generaba código de referido — nada de eso vuelve a pasar).
+    `resplandorController.js` y `resplandorService.js` — **borrados por
+    completo**: al quitar las dos rutas de arriba quedaron en cero
+    llamadores en todo el repo (confirmado con grep antes de tocar nada).
+    `mailService.js` — quitados `sendResplandor()` y su plantilla HTML
+    (`templateResplandor`), sin ningún llamador desde T-14b.
+  - **Frontend:** `App.jsx` — `/acceso` ahora redirige a `/login` (no
+    404, por si alguna liga vieja de correo o QR sigue apuntando ahí).
+    Borrados: `PageAcceso.jsx`, y `RegisterForm` completo dentro de
+    `PageLogin.jsx` (con `PasswordRules`/`passwordIsStrong`, que solo esa
+    forma usaba). `useAuthStore.js` — quitada la acción `register()`.
+    `publicApi.js` — quitadas `apiValidarResplandor`/`apiConsumirResplandor`
+    (exportadas pero sin ningún llamador — `PageAcceso.jsx` hacía su propio
+    `fetch` en vez de usarlas). `adminApi.js` — quitada `apiConfirmarCupo()`
+    (llamaba a la ruta `/lista-espera/:id/confirmar` que T-14b ya había
+    retirado). Borrado `AccessCodeInput.jsx` (huérfano — solo lo usaba
+    `PageAcceso.jsx`, confirmado con grep que nada más lo importaba).
+  - **La tabla `resplandores` NO se tocó** — sigue con su historial, tal
+    como pedía el criterio de terminado original.
+- **Dos hallazgos relacionados, dejados fuera a propósito** (no forman
+  parte de este ticket, decisión consciente para no ampliar el alcance sin
+  confirmarlo primero):
+  1. **El login con correo+contraseña también está muerto.** `LoginForm`
+     en `PageLogin.jsx` solo ofrece Google o WhatsApp OTP — no existe
+     ningún campo de contraseña en la UI de login. La rama
+     "email+password" de `authController.loginWithCode()` (backend) y la
+     acción `login()` de `useAuthStore.js` (frontend, cero llamadores)
+     siguen ahí, alcanzables solo llamando la API directo. Es la otra
+     mitad del mismo modelo viejo (login, no solo registro) — decidir si
+     se retira necesita su propio ticket, porque tocar login es más
+     sensible que tocar un registro ya confirmado inalcanzable.
+  2. **`PageLanding.jsx` (🔒 CONGELADA) sigue explicándole "Resplandor y
+     Chispa" a las visitas** en una sección de marketing — no se tocó por
+     la regla de "nunca modificar sin permiso explícito de Paola", pero
+     ahora describe un mecanismo que ya no existe del lado del código. Es
+     una decisión de contenido/marketing, no de código — queda anotada
+     para cuando Paola quiera revisarla.
+- **Pruebas:** `apps/api` — `npm test` sigue en 8/8. `apps/web` —
+  verificado con `esbuild` en cada archivo tocado (sintaxis). ⚠️ **Falta
+  la prueba real:** entrar a `/login` normal (Google o WhatsApp) y
+  confirmar que sigue funcionando igual, y probar que `/acceso` redirige
+  en vez de dar error.
+- **Criterio de terminado:** ✅ la ruta `/acceso` ya no muestra el
+  formulario viejo (redirige a `/login`), y los endpoints
+  correspondientes ya no existen.
 
 ### ~~T-15 — Resolver los dos schemas contradictorios~~ ✅ CERRADO (18 sep 2026)
 - **Qué falta (original):** `db/schema.sql` y `db/schema.supabase.sql` diferían
@@ -493,6 +535,18 @@ se llama desde el manejador principal de mensajes.
   `resend`.
 - **T-23** — Automatizar el aviso de certificado emitido (hoy "emitir" solo lo
   pone en el Home del alumno, nadie le avisa).
+- **T-33** *(encontrado al cerrar T-14c, 18 sep 2026)* — Decidir qué hacer con
+  el login por correo+contraseña: `LoginForm` (`PageLogin.jsx`) no tiene
+  ningún campo para eso — solo Google y WhatsApp OTP — pero la rama
+  "email+password" de `authController.loginWithCode()` sigue viva en el
+  backend, inalcanzable desde la UI actual. Es la otra mitad del modelo
+  viejo que T-14 no cubrió (T-14 solo hablaba de *registro*, no de login).
+  Antes de tocarlo: confirmar con Paola si alguna cuenta vieja todavía
+  necesita entrar así, o si ya es 100% seguro retirarlo.
+- **T-34** *(mismo hallazgo)* — `PageLanding.jsx` (🔒 CONGELADA) tiene una
+  sección de marketing "RESPLANDOR & CHISPA" explicándole el concepto viejo
+  a las visitas — no se tocó por la regla de no modificar esa página sin
+  permiso explícito. Decisión de contenido para Paola, no de código.
 
 ---
 

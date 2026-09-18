@@ -1,18 +1,16 @@
 /**
  * Destello — PageLogin
  *
- * MODO REGISTRO (viene de /acceso con resplandor válido):
- *   - Sin OAuth, solo formulario: nombre, email (bloqueado), contraseña, confirmar
- *   - Llama a POST /api/auth/register y consume el resplandor
+ * Solo login, sin registro con contraseña (retirado 18 sep 2026, T-14c —
+ * ver docs/backlog-tickets.md). Dos caminos:
+ *   - Google OAuth via Firebase popup → POST /api/auth/social
+ *   - Número de WhatsApp + código OTP → POST /api/auth/phone/send-code y /verify
  *
- * MODO LOGIN (acceso directo a /login):
- *   - Google OAuth via Firebase popup
- *   - Email + contraseña
- *   - Llama a POST /api/auth/social (Google) o POST /api/auth/login (email)
+ * La cuenta se crea siempre desde el bot Faro, nunca desde aquí.
  */
 import { useState, useEffect, useRef }           from 'react'
-import { useNavigate, useLocation }              from 'react-router-dom'
-import { Eye, EyeSlash, ArrowRight, ArrowLeft, CheckCircle, XCircle, WhatsappLogo, DeviceMobile } from '@phosphor-icons/react'
+import { useNavigate }                           from 'react-router-dom'
+import { ArrowRight, ArrowLeft, CheckCircle, WhatsappLogo, DeviceMobile } from '@phosphor-icons/react'
 import { useAuthStore }                          from '@store/useAuthStore.js'
 import { signInWithGoogle }                      from '@services/firebase.js'
 import { WA_INSCRIBIRME_URL }                     from '../constants.js'
@@ -102,33 +100,6 @@ function Field({ label, type = 'text', placeholder, value, onChange, right, read
     )
 }
 
-// ── Validación de contraseña ──────────────────────────────────────────────────
-function PasswordRules({ password }) {
-    const rules = [
-        { label: 'Mínimo 8 caracteres',   ok: password.length >= 8 },
-        { label: 'Al menos una mayúscula', ok: /[A-Z]/.test(password) },
-        { label: 'Al menos un número',     ok: /[0-9]/.test(password) },
-    ]
-    if (!password) return null
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>
-            {rules.map(r => (
-                <div key={r.label} style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    fontSize: 'var(--text-xs)', color: r.ok ? '#10B981' : 'var(--text-disabled)',
-                }}>
-                    {r.ok ? <CheckCircle size={13} weight="fill"/> : <XCircle size={13} weight="fill"/>}
-                    {r.label}
-                </div>
-            ))}
-        </div>
-    )
-}
-
-function passwordIsStrong(p) {
-    return p.length >= 8 && /[A-Z]/.test(p) && /[0-9]/.test(p)
-}
-
 // ── CSS responsive (media queries no se pueden con estilos inline) ─────────────
 const LOGIN_CSS = `
 .login-shell { padding: 20px; overflow-x: hidden; }
@@ -182,118 +153,6 @@ function PageShell({ children }) {
                 </div>
             </div>
         </div>
-    )
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// FORMULARIO DE REGISTRO (viene de /acceso con Resplandor)
-// ══════════════════════════════════════════════════════════════════════════════
-function RegisterForm({ email, nombre: nombreInicial, resplandorCode }) {
-    const navigate = useNavigate()
-    const { register, isLoading } = useAuthStore()
-
-    const [nombre,          setNombre]          = useState(nombreInicial || '')
-    const [password,        setPassword]        = useState('')
-    const [confirmPassword, setConfirmPassword] = useState('')
-    const [showPass,        setShowPass]        = useState(false)
-    const [showConfirm,     setShowConfirm]     = useState(false)
-    const [codigoInvitado,  setCodigoInvitado]  = useState('')
-    const [error,           setError]           = useState(null)
-
-    const canSubmit = nombre.trim() && passwordIsStrong(password) && password === confirmPassword && !isLoading
-
-    const handleSubmit = async (e) => {
-        e.preventDefault()
-        setError(null)
-        if (password !== confirmPassword) { setError('Las contraseñas no coinciden.'); return }
-        if (!passwordIsStrong(password))  { setError('La contraseña no cumple los requisitos.'); return }
-
-        const result = await register({
-            email, password, nombre: nombre.trim(), resplandorCode,
-            codigoInvitado: codigoInvitado.trim() || undefined,
-        })
-        if (result.ok) {
-            navigate('/home')
-        } else {
-            setError(result.error || 'Error al crear cuenta. Intenta de nuevo.')
-        }
-    }
-
-    return (
-        <PageShell>
-            <div style={{
-                background: 'rgba(13,115,119,0.08)', border: '1px solid rgba(13,115,119,0.25)',
-                borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)',
-                marginBottom: 'var(--space-5)', fontSize: 'var(--text-xs)',
-                color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5,
-            }}>
-                ✨ Resplandor válido — Crea tu cuenta para acceder
-            </div>
-
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                <Field label="Nombre" placeholder="Tu nombre" value={nombre} onChange={e => setNombre(e.target.value)}/>
-                <Field label="Correo electrónico" type="email" value={email} readOnly hint="Vinculado a tu Resplandor"/>
-                <div>
-                    <Field
-                        label="Contraseña"
-                        type={showPass ? 'text' : 'password'}
-                        placeholder="Mínimo 8 caracteres, 1 mayúscula y 1 número"
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        right={
-                            <button type="button" onClick={() => setShowPass(p => !p)}
-                                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0, display: 'flex' }}>
-                                {showPass ? <EyeSlash size={17}/> : <Eye size={17}/>}
-                            </button>
-                        }
-                    />
-                    <PasswordRules password={password}/>
-                </div>
-                <Field
-                    label="Confirmar contraseña"
-                    type={showConfirm ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    right={
-                        <button type="button" onClick={() => setShowConfirm(p => !p)}
-                                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0, display: 'flex' }}>
-                            {showConfirm ? <EyeSlash size={17}/> : <Eye size={17}/>}
-                        </button>
-                    }
-                />
-
-                {confirmPassword && (
-                    <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: password === confirmPassword ? '#10B981' : 'var(--color-error)' }}>
-                        {password === confirmPassword ? '✓ Las contraseñas coinciden' : '✗ Las contraseñas no coinciden'}
-                    </p>
-                )}
-
-                <Field
-                    label="Código de invitado (opcional)"
-                    placeholder="Ej. PAOLA-9F2A"
-                    value={codigoInvitado}
-                    onChange={e => setCodigoInvitado(e.target.value.toUpperCase())}
-                    hint="¿Un amigo te invitó? Escribe su código de polvo estelar y gana Estrellas juntos"
-                />
-
-                {error && <p style={{ color: 'var(--color-error)', fontSize: 'var(--text-xs)', margin: 0 }}>{error}</p>}
-
-                <button type="submit" disabled={!canSubmit} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    width: '100%', marginTop: 'var(--space-1)', padding: 'var(--space-3)',
-                    background: canSubmit ? 'var(--color-jade-500)' : 'var(--bg-surface)',
-                    border: '1px solid transparent', borderRadius: 'var(--radius-lg)',
-                    color: canSubmit ? '#FAF7F2' : 'var(--text-muted)',
-                    fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 'var(--text-sm)',
-                    cursor: canSubmit ? 'pointer' : 'not-allowed',
-                    opacity: isLoading ? 0.7 : 1, transition: 'background 0.2s',
-                }}>
-                    {isLoading ? 'Creando tu cuenta...' : 'Crear mi cuenta'}
-                    {!isLoading && <ArrowRight size={16}/>}
-                </button>
-            </form>
-        </PageShell>
     )
 }
 
@@ -768,22 +627,5 @@ function LoginForm() {
 
 // ── Exportación principal ─────────────────────────────────────────────────────
 export default function PageLogin() {
-    const location = useLocation()
-
-    const resplandorEmail  = location.state?.email  || ''
-    const resplandorNombre = location.state?.nombre || ''
-    const resplandorCode   = sessionStorage.getItem('destello_resplandor') || ''
-    const vieneDeAcceso    = !!resplandorCode
-
-    if (vieneDeAcceso) {
-        return (
-            <RegisterForm
-                email={resplandorEmail}
-                nombre={resplandorNombre}
-                resplandorCode={resplandorCode}
-            />
-        )
-    }
-
     return <LoginForm/>
 }

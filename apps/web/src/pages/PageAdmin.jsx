@@ -154,7 +154,7 @@ export default function PageAdmin() {
 
                 {/* Contenido del tab activo */}
 
-                {/* Tab: Accesos (Resplandores + Chispas unificados) */}
+                {/* Tab: Accesos (Chispas — asigna talleres a cuentas ya activas) */}
                 {activeTab === 'accesos' && isAuthenticated && (
                     <AccesosPanel
                         key={refreshKey}

@@ -44,12 +44,6 @@ export async function sendConfirmacionTaller({ to, nombre, taller, chispaCode })
     return sendMail({ to, subject, html })
 }
 
-export async function sendResplandor({ to, nombre, code }) {
-    const subject = `Tu Resplandor de acceso a Destello ✦`
-    const html    = templateResplandor({ nombre, code })
-    return sendMail({ to, subject, html })
-}
-
 /**
  * Bienvenida tras confirmar el pago. Ya no lleva código: invita a crear la
  * cuenta en /login (por Google o número). Incluye botón + QR a /login.
@@ -142,55 +136,6 @@ function templateBase(content) {
   </div>
 </body>
 </html>`
-}
-
-// ── Template: Resplandor ──────────────────────────────────────────────────────
-
-function templateResplandor({ nombre, code }) {
-    const nombreCorto = nombre?.trim().split(' ')[0] || 'bienvenido/a'
-
-    return templateBase(`
-    <div class="header">
-      <div class="logo-mark">✦</div>
-      <div class="logo-name">Destello</div>
-      <div class="logo-sub">Plataforma de aprendizaje inmersivo 3D</div>
-    </div>
-    <div class="body">
-      <div class="greeting">¡Hola, ${nombreCorto}! ✨</div>
-      <p class="text">
-        Estás a un paso de entrar a Destello. Te enviamos tu <strong style="color:#FAF7F2;">Resplandor</strong> —
-        el código único con el que crearás tu cuenta y accederás a tus talleres.
-      </p>
-
-      <div class="code-box">
-        <div class="code">${code}</div>
-        <div class="code-hint">Código de un solo uso &nbsp;·&nbsp; No lo compartas</div>
-      </div>
-
-      <p class="section-label">Cómo usar tu Resplandor</p>
-
-      <table class="step-table">
-        <tr><td class="step-num-cell"><span class="step-num">1</span></td>
-            <td class="step-text">Entra a <strong style="color:#FAF7F2;">destello.courses/acceso</strong></td></tr>
-      </table>
-      <table class="step-table">
-        <tr><td class="step-num-cell"><span class="step-num">2</span></td>
-            <td class="step-text">Ingresa el código cuando se te pida.</td></tr>
-      </table>
-      <table class="step-table">
-        <tr><td class="step-num-cell"><span class="step-num">3</span></td>
-            <td class="step-text">Crea tu perfil y ¡listo! Ya eres parte de Destello. ✦</td></tr>
-      </table>
-
-      <div class="btn-wrap">
-        <a href="https://destello.courses/acceso" class="btn">Activar mi Resplandor →</a>
-      </div>
-    </div>
-    <div class="footer">
-      <p class="footer-text">
-        ¿Tienes dudas? Escríbenos por WhatsApp al <strong style="color:#9CA3B0;">+52 55 7788 8800</strong>
-      </p>
-    </div>`)
 }
 
 // ── Template: Bienvenida (pago confirmado, sin código) ───────────────────────

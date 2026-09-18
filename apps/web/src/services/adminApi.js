@@ -195,22 +195,6 @@ export async function apiConfirmarLugar(adminToken, id) {
 }
 
 /**
- * Confirma el cupo de un registro en lista de espera.
- * Genera una chispa automáticamente.
- * @param {string} adminToken
- * @param {string} id  — ID del registro en lista_espera
- * @param {{ expiresInDays?: number, tipo?: 'chispa' | 'resplandor' }} body
- */
-export async function apiConfirmarCupo(adminToken, id, body = {}) {
-    const res = await fetch(`/api/admin/lista-espera/${id}/confirmar`, {
-        method:  'POST',
-        headers: authHeaders(adminToken),
-        body:    JSON.stringify(body),
-    })
-    return handleResponse(res)
-}
-
-/**
  * Confirma el pago (flujo nuevo). Crea/activa la cuenta, genera la chispa del
  * taller y envía la bienvenida por WhatsApp + correo (con URL/QR a /login).
  * @param {string} adminToken
