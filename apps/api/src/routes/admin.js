@@ -147,7 +147,8 @@ router.get('/lista-espera', async (_req, res, next) => {
                       LEFT JOIN LATERAL (
                           SELECT c.created_at, c.is_demo, c.expires_at
                           FROM chispas c
-                          WHERE LOWER(c.usuario_email) = LOWER(le.email)
+                          WHERE (c.usuario_id = le.usuario_id
+                                 OR LOWER(c.usuario_email) = LOWER(le.email))
                             AND c.taller_id = le.taller_id
                             AND c.revoked = FALSE
                           ORDER BY c.created_at DESC

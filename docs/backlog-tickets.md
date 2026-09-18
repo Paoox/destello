@@ -379,7 +379,7 @@ se llama desde el manejador principal de mensajes.
 > (mismo criterio que T-14): 3a es aditivo y de bajo riesgo, 3b toca
 > consultas que ya funcionan.
 
-#### ~~Paso 3a — que las inserciones nuevas guarden `usuario_id`~~ ✅ código listo, ⚠️ pendiente probar (18 sep 2026)
+#### ~~Paso 3a — que las inserciones nuevas guarden `usuario_id`~~ ✅ CERRADO (18 sep 2026)
 - **Qué se hizo:** los 4 lugares del código que insertan en `chispas` o
   `lista_espera` ahora también guardan `usuario_id` (antes ninguno lo hacía
   — con eso, el trabajo del paso 2 se habría ido quedando atrás con cada
@@ -404,9 +404,45 @@ se llama desde el manejador principal de mensajes.
   una base de datos real (INSERT/UPDATE con `RETURNING`), y este proyecto
   no tiene infraestructura de pruebas de integración con Postgres todavía.
   `npm test` (unitarias, sin tocar BD): sigue en 12/12, sin regresiones.
-  Verificación real pendiente: crear una chispa o registrarse por el bot
-  después del deploy, y confirmar en Supabase que la fila nueva ya trae
-  `usuario_id`.
+- **Verificado por Paola (18 sep 2026) con una inscripción real por el
+  bot.** El primer intento dio `usuario_id: null` — investigado a fondo,
+  **no era un bug de este paso**: la cuenta nunca se creó porque el número
+  de WhatsApp ya estaba ligado a otra cuenta de prueba, y el bot no revisa
+  si `/bot/registrar` falló antes de seguir adelante. Confirmado sin fila
+  en `usuarios` para ese correo. Documentado como **T-37** (más abajo) —
+  es un bug real de `flujo.js`, no de este paso, y quedó fuera del alcance
+  de T-13.
+
+#### ~~Paso 3b — los `JOIN` cruzados prefieren `usuario_id`, con el correo de respaldo~~ ✅ código listo, ⚠️ pendiente probar (18 sep 2026)
+- **Qué se hizo:** los 4 lugares donde el código cruza `chispas` y
+  `lista_espera` comparando `LOWER(usuario_email) = LOWER(email)` ahora
+  agregan `usuario_id_a = usuario_id_b OR` antes de esa comparación —
+  **sin quitar la comparación por correo**. En SQL, si cualquiera de los
+  dos `usuario_id` es `NULL`, esa parte de la condición no es verdadera ni
+  falsa (es `NULL`), así que la comparación cae sola al correo — es
+  exactamente "correo de respaldo" sin necesitar un `CASE` ni duplicar la
+  consulta.
+  - `services/asistenciaService.js` (`tieneAcceso`) — el `EXISTS` que
+    valida que el pago ya esté confirmado antes de dejar registrar
+    asistencia.
+  - `services/chispaService.js` (`getTalleresDelUsuario`) — el mismo
+    `EXISTS`, usado por `/users/me/talleres` (lo que arma el Home).
+  - `routes/admin.js` (`GET /lista-espera`) — el `LEFT JOIN LATERAL` que
+    trae la chispa más reciente de cada registro (de ahí sale el reloj de
+    48h y la etiqueta de demo en `ListaEsperaAdmin.jsx`).
+  - `routes/metricas.js` (ficha de alumno) — mismo patrón, para mostrar la
+    chispa junto con cada renglón de su historial.
+- **Lo que NO se tocó a propósito:** los filtros donde `usuario_email` se
+  compara contra un correo que **viene de un parámetro** (JWT, query string)
+  — eso no es un cruce entre `chispas` y `lista_espera`, es "¿esto es de
+  esta persona?", y cambiarlo significa decidir cómo identificar a un
+  usuario en toda la API (un tema más grande, no parte de T-13). Tampoco se
+  toca la FK vieja (paso 4).
+- **Pruebas:** mismo caso que 3a — no es posible un test automatizado sin
+  una base real. `npm test`: 12/12, sin regresiones (estas pruebas no
+  tocan las consultas modificadas). Verificación real pendiente: revisar
+  que la Lista de espera y la Ficha de alumno en el panel se sigan viendo
+  igual que antes del cambio.
 
 ### T-14 — Limpiar el modelo viejo de códigos (Resplandor)
 
@@ -658,6 +694,91 @@ se llama desde el manejador principal de mensajes.
   verificación funcional que quedó diferida en T-10 (activar desde
   `lista_espera` a alguien que nunca escribió al bot, y revisar que
   `usuarios.nombre`/`apellido` queden bien separados).
+
+### T-36 — `pendiente` no cuenta contra el cupo, pero el bot ya promete el lugar
+- **Encontrado:** Paola probó el registro por el bot (18 sep 2026) y, en
+  cuanto eligió taller, el bot le mandó de inmediato "¡Registro completado!
+  Quedaste inscrito" + los medios de pago — sin pasar por que el admin
+  confirme el lugar a mano. Esto **no es un bug introducido hoy**: es un
+  comportamiento intencional y ya documentado dentro del propio
+  `flujo.js` (comentario explícito: mandar el precio de una vez en cuanto
+  hay cupo, en vez de hacer esperar a la persona a que el admin conteste).
+- **El detalle que sí vale la pena resolver:** `cupoService.js` dice,
+  textual, *"Ocupa lugar quien está en `cupo_confirmado` o `pagado`. Los
+  `pendiente` NO."* — o sea, cuando el bot le dice a alguien "quedaste
+  inscrito", su registro sigue en `pendiente` y **no está contando contra
+  el cupo real todavía**. Si varias personas se registran casi al mismo
+  tiempo para un taller con poco cupo, a todas se les puede prometer lugar
+  aunque el taller ya esté, en los hechos, lleno — el primero que paga se
+  queda, a los demás se les prometió algo que el sistema no les estaba
+  apartando.
+- **Lo que Paola está evaluando** (18 sep 2026): que el lugar se **asigne**
+  de verdad al detectar disponibilidad (contando ya contra el cupo desde
+  ese momento) y se mande el medio de pago; la confirmación al 100% llega
+  cuando se paga; si no paga a tiempo, la liberación automática que ya
+  existe (48h + 24h de gracia) se encarga de soltar el lugar. Dos de las
+  tres piezas (mandar medios de pago de inmediato, liberar si no paga) ya
+  existen — falta la primera (que "pendiente" cuente contra el cupo desde
+  que se asigna, no hasta `cupo_confirmado`).
+- **Por qué no se resolvió ya:** es una decisión de negocio (qué tan
+  temprano se "reserva" un lugar) más que un bug — se revisa junto con
+  T-35 en la próxima sesión completa del flujo del bot, no a media
+  conversación de otro ticket.
+- **Criterio de terminado:** decidir junto con Paola si `pendiente` debe
+  contar contra `v_cupo_taller` (o algún estado intermedio nuevo), y
+  ajustar `cupoService.js` + lo que dependa de esa regla.
+
+### 🔴 T-37 — El bot dice "registro guardado" aunque falle silenciosamente
+- **Encontrado:** al verificar T-13 paso 3a con una inscripción real por el
+  bot (18 sep 2026), un registro nuevo (`paoxx.dev@gmail.com`) quedó con
+  `usuario_id: null` en `lista_espera` aun con la API ya redesplegada.
+  Investigando la causa: **no es un bug del código de hoy** — es que la
+  cuenta en `usuarios` nunca se creó, y el bot nunca avisó.
+- **La causa exacta:** `registrarUsuario()` en `apps/bot/src/flujo.js`
+  llama a `POST /bot/registrar` y hace `return await res.json()` **sin
+  revisar el status code ni el campo `status` de la respuesta**. Quien lo
+  llama (paso `REG_NOMBRE`, línea ~1220) tampoco revisa nada — solo sigue
+  adelante y responde "✅ ¡Registro guardado!" pase lo que pase.
+  `usuarioService.upsertUsuario()` (backend) puede rechazar la creación con
+  `409 WA_EN_USO` si el WhatsApp ya está ligado a otra cuenta — en ese caso
+  **no crea ni actualiza nada**, pero el bot nunca se entera y sigue el
+  flujo como si hubiera funcionado.
+- **Por qué importa — es más que un detalle de datos:** si le pasa a un
+  usuario real (ej. dos personas de la misma familia comparten WhatsApp, o
+  alguien vuelve a registrarse con otro correo desde el mismo número), esa
+  persona cree que tiene cuenta, puede llegar a **pagar un taller**, y
+  después **no puede entrar nunca** — ni por Google (no existe cuenta con
+  ese correo) ni por WhatsApp (su número ya es de alguien más). Se descubre
+  hasta que reclama por soporte.
+- **Por qué no se arregló ya:** es código de `flujo.js`, marcado
+  explícitamente en `CLAUDE.md` como "NO tocar" sin revisión a fondo — se
+  deja para la misma sesión de revisión completa del bot (T-35), junto con
+  el hallazgo del cupo (T-36) y la posible rama muerta de Resplandor.
+- **Diseño mejor, aportado por Paola (18 sep 2026):** en vez de solo
+  atrapar el error después de que ya truena, **prevenirlo desde el
+  principio**. El bot ya tiene el WhatsApp desde el JID del mensaje, antes
+  de pedir nada — y una cuenta no puede tener dos WhatsApp ni un WhatsApp
+  puede estar en dos cuentas (regla ya vigente, `usuarios.whatsapp` único).
+  Verificado en el código: el paso `REG_CORREO` (`flujo.js` línea ~1150)
+  **solo** busca por el correo que la persona escribe (`buscarUsuario()`)
+  — nunca pregunta "¿este WhatsApp ya tiene cuenta?", aunque el dato ya
+  está disponible desde el primer mensaje. Por eso alguien puede llegar
+  hasta el final del registro con un correo "nuevo" y solo hasta el final
+  (silenciosamente) chocar por el número repetido.
+  - Hoy no existe ningún endpoint para buscar un usuario por WhatsApp desde
+    el bot (solo por correo, `GET /bot/usuario/:email`) — haría falta uno
+    nuevo, ej. `GET /bot/usuario-por-whatsapp/:numero`.
+  - Con eso, el bot podría reconocer a la persona por su número **antes**
+    de pedirle el correo, y decirle algo como "ya tienes un registro con el
+    correo x@x.com" en vez de dejarla avanzar por un camino que sabemos que
+    va a chocar.
+- **Criterio de terminado (actualizado):** dos capas, no una sola —
+  1. **Preventivo:** antes de iniciar el registro de una cuenta nueva, el
+     bot revisa si el WhatsApp de la conversación ya tiene cuenta, y si la
+     tiene, la reconoce en vez de pedirle correo como si fuera nueva.
+  2. **Red de seguridad:** si aun así `/bot/registrar` falla (por lo que
+     sea), `registrarUsuario()` revisa la respuesta y el bot le dice a la
+     persona la verdad, en vez de fingir que todo salió bien.
 
 ---
 

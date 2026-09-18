@@ -577,7 +577,8 @@ export async function getTalleresDelUsuario(email) {
                  c.is_demo = TRUE
                  OR EXISTS (
                      SELECT 1 FROM lista_espera le
-                     WHERE LOWER(le.email) = LOWER(c.usuario_email)
+                     WHERE (le.usuario_id = c.usuario_id
+                            OR LOWER(le.email) = LOWER(c.usuario_email))
                        AND le.taller_id = c.taller_id
                        AND le.estado = 'pagado'
                  )

@@ -58,7 +58,8 @@ export async function tieneAcceso(email, tallerId) {
             AND (c.expires_at IS NULL OR c.expires_at > NOW())
             AND ( c.is_demo = TRUE
                   OR EXISTS (SELECT 1 FROM lista_espera le
-                              WHERE LOWER(le.email) = LOWER(c.usuario_email)
+                              WHERE (le.usuario_id = c.usuario_id
+                                     OR LOWER(le.email) = LOWER(c.usuario_email))
                                 AND le.taller_id = c.taller_id
                                 AND le.estado = 'pagado') )
           LIMIT 1`,

@@ -257,7 +257,8 @@ router.get('/alumno/:email', async (req, res, next) => {
                  LEFT JOIN talleres t ON t.id = le.taller_id
                  LEFT JOIN LATERAL (
                      SELECT ch.code, ch.is_demo, ch.expires_at FROM chispas ch
-                     WHERE LOWER(ch.usuario_email) = LOWER(le.email)
+                     WHERE (ch.usuario_id = le.usuario_id
+                            OR LOWER(ch.usuario_email) = LOWER(le.email))
                        AND ch.taller_id = le.taller_id AND ch.revoked = FALSE
                      ORDER BY ch.created_at DESC LIMIT 1
                  ) c ON TRUE
