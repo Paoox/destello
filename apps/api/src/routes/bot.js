@@ -7,6 +7,7 @@ import { Router } from 'express'
 import {
     registrarUsuario,
     buscarUsuario,
+    buscarUsuarioPorWhatsapp,
     agregarALista,
     listasDeUsuario,
     pendientesDeUsuario,
@@ -39,6 +40,7 @@ router.use(verificarBotKey)
 // cierra son las ACCIONES.
 router.post('/registrar',            rechazarBloqueados, registrarUsuario)
 router.get('/usuario/:email',        buscarUsuario)
+router.get('/usuario-por-whatsapp/:numero', buscarUsuarioPorWhatsapp)
 router.post('/lista-espera',         rechazarSinCompras, agregarALista)
 router.get('/listas/:email',         listasDeUsuario)
 router.get('/pendientes/:email',     pendientesDeUsuario)

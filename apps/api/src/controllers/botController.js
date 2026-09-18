@@ -3,7 +3,7 @@
  * Endpoints públicos que consume Faro (bot de WhatsApp).
  */
 
-import { upsertUsuario, findByEmail } from '../services/usuarioService.js'
+import { upsertUsuario, findByEmail, cuentaConWhatsapp } from '../services/usuarioService.js'
 import { registrarEnLista, getListasPorEmail, getPendientesPorEmail } from '../services/listaEsperaService.js'
 import { diagnosticar, completarWhatsapp } from '../services/diagnosticoService.js'
 import { crearReporte, MOTIVOS } from '../services/reporteService.js'
@@ -45,6 +45,24 @@ export async function buscarUsuario(req, res, next) {
             bloqueado:         usuario.acceso_bloqueado   === true,
             comprasBloqueadas: usuario.compras_bloqueadas === true,
         })
+    } catch (err) {
+        next(err)
+    }
+}
+
+/**
+ * GET /bot/usuario-por-whatsapp/:numero
+ * ¿Este número ya tiene cuenta? Un WhatsApp no puede estar en dos cuentas
+ * (usuarios.whatsapp único), así que el bot puede reconocer a alguien por su
+ * número ANTES de pedirle correo — evita que llegue hasta el final de un
+ * registro con un correo "nuevo" y solo hasta ahí choque en silencio contra
+ * el número repetido (T-37, ver docs/backlog-tickets.md).
+ */
+export async function buscarUsuarioPorWhatsapp(req, res, next) {
+    try {
+        const usuario = await cuentaConWhatsapp(req.params.numero)
+        if (!usuario) return res.json({ status: 'ok', existe: false })
+        res.json({ status: 'ok', existe: true, usuario })
     } catch (err) {
         next(err)
     }

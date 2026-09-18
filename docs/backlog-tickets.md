@@ -728,7 +728,7 @@ se llama desde el manejador principal de mensajes.
   contar contra `v_cupo_taller` (o algún estado intermedio nuevo), y
   ajustar `cupoService.js` + lo que dependa de esa regla.
 
-### 🔴 T-37 — El bot dice "registro guardado" aunque falle silenciosamente
+### T-37 — ✅ código listo, ⚠️ pendiente probar en WhatsApp real — El bot dice "registro guardado" aunque falle silenciosamente
 - **Encontrado:** al verificar T-13 paso 3a con una inscripción real por el
   bot (18 sep 2026), un registro nuevo (`paoxx.dev@gmail.com`) quedó con
   `usuario_id: null` en `lista_espera` aun con la API ya redesplegada.
@@ -779,6 +779,36 @@ se llama desde el manejador principal de mensajes.
   2. **Red de seguridad:** si aun así `/bot/registrar` falla (por lo que
      sea), `registrarUsuario()` revisa la respuesta y el bot le dice a la
      persona la verdad, en vez de fingir que todo salió bien.
+- **Qué se hizo (18 sep 2026):**
+  - **Backend:** nuevo endpoint `GET /bot/usuario-por-whatsapp/:numero`
+    (`botController.buscarUsuarioPorWhatsapp`, reutiliza
+    `usuarioService.cuentaConWhatsapp()` que ya existía) — mismo candado
+    `BOT_API_KEY` que el resto de `/bot/*`.
+  - **Bot, capa preventiva:** nueva función `iniciarRegistro()` en
+    `flujo.js` — antes de pedir correo, si hay WhatsApp extraíble, busca si
+    ya tiene cuenta; si la tiene, la reconoce y la manda directo a
+    `continuarTrasDatos()` (nunca le pregunta el correo). Reemplaza el
+    "pedir correo" en los dos puntos donde arrancaba el registro (menú
+    opción 1, y elegir taller desde "Ver talleres") — cada uno conservando
+    su propio comportamiento original de qué guardar en la conversación
+    (uno arrancaba en blanco, el otro conservaba `conv` + el taller
+    preseleccionado; se respetó esa diferencia en vez de unificarla).
+  - **Bot, red de seguridad:** en los dos lugares que llaman a
+    `registrarUsuario()` (pasos `REG_NOMBRE` y `REG_WHATSAPP`), ahora se
+    revisa `resultado.status === 'error'` — si falló, el bot le muestra a
+    la persona el mensaje real del error (ej. el de `WA_EN_USO`, que ya
+    viene redactado y con el correo enmascarado) en vez de decir que todo
+    salió bien.
+- **Pruebas:** `npm test` en `apps/api`: 12/12, sin regresiones (no hay
+  lógica pura nueva que valga la pena aislar — el endpoint nuevo es una
+  reutilización directa de `cuentaConWhatsapp()`, ya usada en otro lado).
+  No existe infraestructura de pruebas para el bot tampoco. **Pendiente:**
+  probar por WhatsApp real: (1) registrar una cuenta nueva y confirmar que
+  sigue funcionando igual que siempre, (2) intentar registrar un correo
+  nuevo desde un WhatsApp que ya tiene cuenta y confirmar que te reconoce
+  en vez de pedir correo, (3) forzar el choque de números en el paso
+  `REG_WHATSAPP` (JID `@lid` sin `senderPn`) y confirmar que ahora sí avisa
+  en vez de fingir éxito.
 
 ---
 

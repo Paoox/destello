@@ -291,6 +291,9 @@ Faro lo manda automático en cada llamada (`apiFetch()` en `flujo.js`).
 ```
 POST /bot/registrar                   → crea/actualiza usuario (desde bot)
 GET  /bot/usuario/:email              → verifica si email tiene cuenta
+GET  /bot/usuario-por-whatsapp/:numero → verifica si ese WhatsApp ya tiene cuenta
+                                         (para reconocer a alguien ANTES de
+                                         pedirle correo — ver T-37 en backlog)
 POST /bot/lista-espera                → registra en lista de espera
 GET  /bot/listas/:email               → listas de espera del usuario
 GET  /bot/pendientes/:email           → chispas sin usar (el campo `resplandores`

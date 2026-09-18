@@ -226,6 +226,21 @@ async function buscarUsuario(email) {
 }
 
 /**
+ * ¿Este WhatsApp ya tiene cuenta? Un número no puede estar en dos cuentas
+ * (usuarios.whatsapp único), así que si ya existe se puede reconocer a la
+ * persona ANTES de pedirle correo, en vez de dejarla registrar uno "nuevo"
+ * que más adelante choca en silencio contra su propio número (T-37, ver
+ * docs/backlog-tickets.md).
+ */
+async function buscarUsuarioPorWhatsapp(numero) {
+    try {
+        const res  = await apiFetch(`/bot/usuario-por-whatsapp/${encodeURIComponent(numero)}`)
+        const data = await res.json()
+        return data
+    } catch { return { existe: false } }
+}
+
+/**
  * ¿Esta cuenta está bloqueada? Usa el GET, que la API nunca cierra justo para
  * esto: el bot necesita poder preguntar aunque la persona esté suspendida.
  *
@@ -719,6 +734,43 @@ async function inscribirEnTaller(jid, conv, taller) {
 }
 
 /**
+ * Arranca el registro: si el WhatsApp de la conversación ya tiene cuenta,
+ * reconoce a la persona de una vez (nunca le pide correo) — si no, sigue el
+ * camino de siempre y lo pide.
+ *
+ * `nuevoEstado` es exactamente lo que el llamador habría puesto con
+ * `conversaciones.set` para pedir el correo — cada punto de entrada decide
+ * qué conservar (uno arranca en blanco, el otro conserva `conv` + el taller
+ * preseleccionado). Aquí solo se le suma `paso: REG_CORREO` en ese camino, o
+ * se usa como base para reconocer a la persona en el otro.
+ */
+async function iniciarRegistro(jid, waDelJid, encabezado, nuevoEstado = {}) {
+    if (waDelJid) {
+        const { existe, usuario } = await buscarUsuarioPorWhatsapp(waDelJid)
+        if (existe) {
+            const base = {
+                ...nuevoEstado,
+                correo:      usuario.email,
+                nombre:      usuario.nombre,
+                whatsapp:    waDelJid,
+                tienePerfil: usuario.estado === 'activo',
+            }
+            const saludo = usuario.estado === 'espera'
+                ? `¡Te reconocí, *${usuario.nombre?.split(' ')[0]}*! 👋`
+                : `¡Hola de nuevo, *${usuario.nombre?.split(' ')[0]}*! 😊`
+            return await continuarTrasDatos(jid, base, saludo)
+        }
+    }
+
+    conversaciones.set(jid, { ...nuevoEstado, paso: PASO.REG_CORREO })
+    return (
+        `${encabezado}\n\n` +
+        '¿Cuál es tu *correo electrónico*?\n\n' +
+        '_Lo usamos para identificar tu perfil en Destello._'
+    )
+}
+
+/**
  * Paso siguiente una vez que ya tenemos correo + nombre + whatsapp:
  *   - si venía un taller preseleccionado (opción 2) → inscribir directo
  *   - si no → mostrar la lista para que elija
@@ -1052,12 +1104,7 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
                 if (conv.correo) {
                     return await continuarTrasDatos(jid, datosUsuario(conv), '¡Perfecto! 😊')
                 }
-                conversaciones.set(jid, { paso: PASO.REG_CORREO })
-                return (
-                    '¡Perfecto! 😊\n\n' +
-                    '¿Cuál es tu *correo electrónico*?\n\n' +
-                    '_Lo usamos para identificar tu perfil en Destello._'
-                )
+                return await iniciarRegistro(jid, waDelJid, '¡Perfecto! 😊')
 
             case '2': {
                 const talleres = await getTalleresActivos()
@@ -1131,16 +1178,9 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
                    await inscribirEnTaller(jid, { ...conv, tallerPre: null }, taller)
         }
 
-        conversaciones.set(jid, {
-            ...conv,
-            paso:      PASO.REG_CORREO,
-            tallerPre: taller,
-            talleres,
-        })
-        return (
-            `¡Excelente elección! 📚 *${taller.nombre}*\n\n` +
-            '¿Cuál es tu *correo electrónico*?\n\n' +
-            '_Lo usamos para identificar tu perfil en Destello._'
+        return await iniciarRegistro(
+            jid, waDelJid, `¡Excelente elección! 📚 *${taller.nombre}*`,
+            { ...conv, tallerPre: taller, talleres }
         )
     }
 
@@ -1217,12 +1257,28 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
             return `Gracias, *${nombre}* 🙌\n\n` + PEDIR_WHATSAPP_TEXTO
         }
 
-        await registrarUsuario({
+        const resultado = await registrarUsuario({
             email:    conv.correo,
             nombre,
             apellido,
             whatsapp: waDelJid,
         })
+
+        // T-37: antes esto se ignoraba por completo y el bot decía "registro
+        // guardado" pasara lo que pasara — incluido el caso real de un
+        // WhatsApp ya ligado a otra cuenta (`WA_EN_USO`), que dejaba a la
+        // persona creyendo que tenía cuenta cuando no se había creado nada.
+        if (resultado.status === 'error') {
+            registrarEvento('bot_registro_fallido', {
+                email: conv.correo, paso: 'nombre', code: resultado.code ?? null,
+            })
+            conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
+            return (
+                `😕 ${resultado.message || 'No pudimos completar tu registro. Intenta de nuevo o escríbenos.'}\n\n` +
+                POST_ACCION_TEXTO
+            )
+        }
+
         registrarEvento('bot_registro_completo', { email: conv.correo, paso: 'nombre' })
 
         return await continuarTrasDatos(jid, base, '✅ *¡Registro guardado!*')
@@ -1238,12 +1294,27 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
             )
         }
 
-        await registrarUsuario({
+        const resultado = await registrarUsuario({
             email:    conv.correo,
             nombre:   conv.nombre,
             apellido: conv.apellido,
             whatsapp: numero,
         })
+
+        // T-37: mismo caso que en REG_NOMBRE — aquí es incluso más probable,
+        // porque este paso solo se dispara cuando el número no se pudo sacar
+        // del JID y la persona lo escribe a mano (más chance de repetir un
+        // número que ya usó en otra cuenta de prueba, o de una persona real).
+        if (resultado.status === 'error') {
+            registrarEvento('bot_registro_fallido', {
+                email: conv.correo, paso: 'whatsapp', code: resultado.code ?? null,
+            })
+            conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION })
+            return (
+                `😕 ${resultado.message || 'No pudimos completar tu registro. Intenta de nuevo o escríbenos.'}\n\n` +
+                POST_ACCION_TEXTO
+            )
+        }
 
         const base = { ...conv, whatsapp: numero }
         return await continuarTrasDatos(jid, base, '✅ *¡Listo!* 📱')
