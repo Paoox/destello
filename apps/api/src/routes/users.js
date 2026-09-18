@@ -115,7 +115,7 @@ router.get('/me/talleres', async (req, res, next) => {
   try {
     const email = await emailDelUsuario(req.user.userId)
     if (!email) return res.json({ status: 'ok', talleres: [] })
-    const talleres = await chispaService.getTalleresDelUsuario(email)
+    const talleres = await chispaService.getTalleresDelUsuario(email, req.user.userId)
     res.json({ status: 'ok', talleres })
   } catch (err) {
     next(err)
@@ -303,7 +303,7 @@ router.get('/me/aula/:tallerId/video-token', async (req, res, next) => {
     const email = await emailDelUsuario(req.user.userId)
     if (!email) return res.status(404).json({ status: 'error', message: 'Usuario no encontrado' })
 
-    if (!(await asistenciaService.tieneAcceso(email, req.params.tallerId))) {
+    if (!(await asistenciaService.tieneAcceso(email, req.params.tallerId, req.user.userId))) {
       return res.status(403).json({ status: 'error', message: 'No tienes acceso a este taller' })
     }
 

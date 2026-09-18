@@ -562,29 +562,64 @@ function estadoTaller({ fecha_inicio, fecha_fin, hora_inicio, hora_fin }) {
  * `DISTINCT ON (t.id)` evita tarjetas duplicadas si tuviera más de una chispa
  * del mismo taller (p. ej. una demo y luego la compra): gana la más reciente.
  */
-export async function getTalleresDelUsuario(email) {
+/**
+ * @param {string} email
+ * @param {number|null} usuarioId  Opcional (T-05) — si se manda:
+ *   1. cada taller trae `esProfe` (¿esta cuenta da ESTE taller?)
+ *   2. los talleres donde es profesora ENTRAN A LA LISTA aunque no tenga
+ *      chispa — dar una clase no debería depender de estar "inscrita" a
+ *      tu propio taller. Si además tiene chispa de ese mismo taller (ej.
+ *      también lo tomó como alumna), gana la fila de la chispa — sus datos
+ *      reales (código, vigencia) no se pierden.
+ *   Sin `usuarioId`, el comportamiento es idéntico al de antes (solo
+ *   chispas) — los llamadores que no lo necesitan (ej. el bot) no tienen
+ *   que conseguir el id solo para pedir la lista.
+ */
+export async function getTalleresDelUsuario(email, usuarioId = null) {
     const { rows } = await query(
-        `SELECT DISTINCT ON (t.id)
-                c.code, c.used_at, c.created_at, c.expires_at, c.is_demo,
-                t.id   AS taller_id, t.nombre, t.descripcion, t.categoria,
-                t.horario, t.hora_inicio, t.hora_fin, t.fecha_inicio, t.fecha_fin, t.imagen_url
-         FROM chispas c
-         JOIN talleres t ON t.id = c.taller_id
-         WHERE LOWER(c.usuario_email) = LOWER($1)
-           AND c.revoked = FALSE
-           AND (c.expires_at IS NULL OR c.expires_at > NOW())
-           AND (
-                 c.is_demo = TRUE
-                 OR EXISTS (
-                     SELECT 1 FROM lista_espera le
-                     WHERE (le.usuario_id = c.usuario_id
-                            OR LOWER(le.email) = LOWER(c.usuario_email))
-                       AND le.taller_id = c.taller_id
-                       AND le.estado = 'pagado'
-                 )
-               )
-         ORDER BY t.id, c.created_at DESC`,
-        [email.trim()]
+        `SELECT DISTINCT ON (taller_id) * FROM (
+             -- Vía chispa (como siempre)
+             SELECT t.id AS taller_id, t.nombre, t.descripcion, t.categoria,
+                    t.horario, t.hora_inicio, t.hora_fin, t.fecha_inicio, t.fecha_fin, t.imagen_url,
+                    c.code, c.used_at, c.created_at, c.expires_at, c.is_demo,
+                    EXISTS (
+                        SELECT 1 FROM taller_profesores tp
+                        WHERE tp.taller_id = t.id AND tp.usuario_id = $2
+                    ) AS es_profesor,
+                    1 AS prioridad
+             FROM chispas c
+             JOIN talleres t ON t.id = c.taller_id
+             WHERE LOWER(c.usuario_email) = LOWER($1)
+               AND c.revoked = FALSE
+               AND (c.expires_at IS NULL OR c.expires_at > NOW())
+               AND (
+                     c.is_demo = TRUE
+                     OR EXISTS (
+                         SELECT 1 FROM lista_espera le
+                         WHERE (le.usuario_id = c.usuario_id
+                                OR LOWER(le.email) = LOWER(c.usuario_email))
+                           AND le.taller_id = c.taller_id
+                           AND le.estado = 'pagado'
+                     )
+                   )
+
+             UNION ALL
+
+             -- Vía ser profesora del taller (T-05) — sin necesitar chispa.
+             -- prioridad = 2: si también existe la fila de arriba (vía
+             -- chispa) para el mismo taller, el DISTINCT ON se queda con
+             -- ESA (prioridad 1), no con esta sintética.
+             SELECT t.id AS taller_id, t.nombre, t.descripcion, t.categoria,
+                    t.horario, t.hora_inicio, t.hora_fin, t.fecha_inicio, t.fecha_fin, t.imagen_url,
+                    NULL AS code, NULL AS used_at, tp.created_at, NULL AS expires_at, FALSE AS is_demo,
+                    TRUE AS es_profesor,
+                    2 AS prioridad
+             FROM taller_profesores tp
+             JOIN talleres t ON t.id = tp.taller_id
+             WHERE tp.usuario_id = $2
+         ) combinado
+         ORDER BY taller_id, prioridad ASC, created_at DESC`,
+        [email.trim(), usuarioId]
     )
 
     return rows
@@ -603,6 +638,7 @@ export async function getTalleresDelUsuario(email) {
             esDemo:      r.is_demo,
             asignadaAt:  r.created_at,
             canjeadaAt:  r.used_at,
+            esProfe:     r.es_profesor,
             ...estadoTaller(r),
         }))
         .sort((a, b) => String(b.fechaInicio ?? '').localeCompare(String(a.fechaInicio ?? '')))

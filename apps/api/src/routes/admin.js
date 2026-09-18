@@ -41,6 +41,7 @@ import * as certificadoService from '../services/certificadoService.js'
 import * as bloqueoService      from '../services/bloqueoService.js'
 import { sincronizarEstadoCupo } from '../services/cupoService.js'
 import { rateLimit }          from '../middleware/rateLimit.js'
+import * as profesorService  from '../services/profesorService.js'
 
 const router = Router()
 
@@ -119,6 +120,37 @@ router.put('/talleres/:id', async (req, res, next) => {
         if (sync) taller.estado = sync.estado
 
         res.json({ status: 'ok', taller })
+    } catch (err) { next(err) }
+})
+
+// ── Profesores (T-05) ────────────────────────────────────────────────────
+// Quién da qué taller. El panel busca al usuario por correo (misma ruta que
+// ya usa AccesosPanel, /admin/usuarios/buscar) y aquí solo se asigna/quita.
+
+router.get('/profesores', async (_req, res, next) => {
+    try {
+        const asignaciones = await profesorService.listarAsignaciones()
+        res.json({ status: 'ok', asignaciones })
+    } catch (err) { next(err) }
+})
+
+router.post('/profesores', async (req, res, next) => {
+    try {
+        const { usuarioId, tallerId } = req.body ?? {}
+        if (!usuarioId || !tallerId) {
+            throw new AppError('usuarioId y tallerId son requeridos', 400, 'BAD_REQUEST')
+        }
+        const asignacion = await profesorService.asignarProfesor({ usuarioId, tallerId })
+        res.json({ status: 'ok', asignacion })
+    } catch (err) { next(err) }
+})
+
+router.delete('/profesores/:tallerId/:usuarioId', async (req, res, next) => {
+    try {
+        const { tallerId, usuarioId } = req.params
+        const quitada = await profesorService.quitarProfesor({ usuarioId: Number(usuarioId), tallerId })
+        if (!quitada) throw new AppError('Esa asignación no existe', 404, 'NOT_FOUND')
+        res.json({ status: 'ok' })
     } catch (err) { next(err) }
 })
 

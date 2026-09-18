@@ -331,6 +331,9 @@ POST /admin/lista-espera/:id/confirmar-pago  → activarAlumno() transaccional
 GET  /admin/usuarios/buscar?email=    → busca un usuario por correo (AccesosPanel)
 POST /admin/send-wa                   → envía mensaje WA directo desde bot Faro
 GET  /admin/talleres                  → CRUD de talleres
+GET  /admin/profesores                → quién da qué taller (T-05)
+POST /admin/profesores                → asigna, body {usuarioId, tallerId}
+DELETE /admin/profesores/:tallerId/:usuarioId → quita esa asignación
 GET  /admin/talleres/:id/asistencia   → asistencia registrada de un taller
 POST /admin/talleres/:id/certificados → emitir certificados (todos o selección, body {emails})
 POST /admin/certificados              → emitir certificado individual
@@ -398,8 +401,9 @@ Métodos de pago incluidos en templates:
 
 ## Panel Admin `/admin`
 
-7 tabs en `PageAdmin.jsx`: **Accesos** · **Talleres** · **Lista de espera** ·
-**Reportes** · **Asistencia** · **Usuarios** · **Métricas**.
+8 tabs en `PageAdmin.jsx`: **Accesos** · **Talleres** · **Profesores** ·
+**Lista de espera** · **Reportes** · **Asistencia** · **Usuarios** ·
+**Métricas**.
 
 **Accesos (`AccesosPanel.jsx`)** — búsqueda por email, historial de chispas del usuario y tabla global de todas las chispas; genera Chispas nuevas para cuentas ya activas (uso principal: demos). Ya no maneja Resplandores — retirado el 18 sep 2026 (T-14a).
 
@@ -410,6 +414,8 @@ Métodos de pago incluidos en templates:
 - Botón correo (jade) → `POST /admin/lista-espera/:id/confirmar-lugar` → Resend
 
 **Talleres (`TalleresPanel.jsx`)** ✅ completo — CRUD con columnas reales de BD, editor de cupo, fecha y horario (texto libre; `hora_inicio`/`hora_fin` se derivan del texto en el backend)
+
+**Profesores (`ProfesoresPanel.jsx`, T-05, 18 sep 2026)** — busca una cuenta ya existente por correo (mismo patrón que Accesos) y la asigna como profesora de un taller (`taller_profesores`). No hace falta que tenga chispa de ese taller — dar la clase ya es su acceso. Las cuentas admin (`ADMIN_EMAILS`) siguen entrando como profe a cualquier aula sin pasar por aquí; esto es solo para profesores reales, limitados a lo que se les asigne.
 
 **Reportes** — reportes de acceso (`reportes_acceso`), incluye los que manda una cuenta bloqueada (`POST /bot/reporte-acceso` sigue abierto a propósito)
 
@@ -502,11 +508,11 @@ Detalle completo y cómo diagnosticarlo en `docs/backlog-tickets.md` (T-S1).
   de cada una (parejas, piezas, modelos 3D) — construirlas con contenido
   inventado invalidaría la prueba del contrato, mismo criterio que ya
   aplicaba solo a `modelo3d` y ahora se extiende a las tres.
-- **Tabla de profesores (T-05).** Hoy "profe" = `isAdminEmail()` — es un
-  problema de seguridad (un profesor externo vería todo el panel
-  financiero), no solo un pendiente cosmético. Destraba también: nombre en
-  los diplomas, firma, y ForYou. Sin bloqueo externo — se puede construir
-  ya.
+- **Tabla de profesores (T-05) — ✅ código listo, falta correr la migración.**
+  Ver el detalle completo en "Lo que Está Terminado y Funciona" — falta que
+  Paola corra `018_profesores.sql` en Supabase antes de poder usarlo (sin
+  eso, `/admin/profesores` y `/users/me/talleres` truenan). Destraba
+  también, para después: nombre en los diplomas, firma, y ForYou.
 
 ### 🟠 Deuda técnica — las tablas se relacionan por CORREO, no por id
 Detectado por Paola el 21 jul 2026. `chispas.usuario_email` y
@@ -577,6 +583,52 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
 ---
 
 ## Lo que Está Terminado y Funciona
+
+- ⚠️ **T-05 — Tabla de profesores real, código listo** (18 sep 2026)
+  **— falta correr la migración en Supabase antes de usarlo.** Hoy "profe"
+  era `isAdminEmail()`, una lista fija de un solo correo en el frontend
+  (`apps/web/src/constants.js`) — la misma que decide quién ve el nav
+  "Admin" (ojo: el panel `/admin` en sí ya estaba bien protegido, con su
+  propio login de contraseña separado — `authenticateAdmin`, no
+  `isAdminEmail`; el riesgo real no era ESE panel, era que agregar un
+  profesor nuevo significaba volverlo admin de todo Destello, y encima
+  requería editar y redesplegar el frontend).
+  - **Backend:** migración `018_profesores.sql` — tabla `profesores`
+    (quién PUEDE ser profesora) + `taller_profesores` (quién da qué
+    taller, muchos a muchos). `profesorService.js` con
+    `esProfeDelTaller()`/`listarAsignaciones()`/`asignarProfesor()`/
+    `quitarProfesor()`. 3 endpoints nuevos bajo `/admin/profesores`.
+  - **`chispaService.getTalleresDelUsuario(email, usuarioId)`** — segundo
+    parámetro opcional (T-05): cada taller trae `esProfe`, y los talleres
+    donde la cuenta es profesora **entran a la lista aunque no tenga
+    chispa** (un `UNION ALL` con prioridad — si además tiene chispa de ese
+    taller, esa fila real gana sobre la sintética). Sin esto, un profesor
+    real sin chispa de su propio taller no habría podido ni entrar al aula
+    ni pedir su token de video — dar la clase no debería depender de estar
+    "inscrita" a tu propio taller.
+  - **`asistenciaService.tieneAcceso(email, tallerId, usuarioId)`** —
+    mismo tercer parámetro opcional, usado por
+    `GET /users/me/aula/:tallerId/video-token` (T-01) para que un profesor
+    sin chispa sí pueda pedir su token de video. Los latidos de asistencia
+    (`registrarPresencia`) NO lo mandan a propósito: la asistencia
+    certifica alumnos, no profesoras.
+  - **`PageAula.jsx`** — `esProfe = isAdminEmail(user?.email) ||
+    taller?.esProfe === true`. Los admins conservan su acceso a CUALQUIER
+    aula sin cambios; esto solo agrega la posibilidad de un profesor real,
+    limitado a los talleres que se le asignen.
+  - **Panel admin nuevo, `ProfesoresPanel.jsx`** (tab "Profesores", 8vo tab
+    de `PageAdmin.jsx`) — busca una cuenta por correo (mismo patrón que
+    Accesos) y la asigna a un taller desde un `<select>`. Lista las
+    asignaciones agrupadas por profesor, con botón para quitar una
+    asignación puntual.
+  - **⚠️ Pendiente antes de poder usarlo:** correr
+    `018_profesores.sql` en Supabase → SQL Editor (mismo procedimiento que
+    las migraciones anteriores) — sin las tablas, `/admin/profesores` y
+    `/users/me/talleres` truenan.
+  - **Pruebas:** `apps/api` — `npm test`: 19/19 sin regresiones (no hay
+    lógica pura nueva que aislar en `profesorService.js` — depende de BD
+    real, mismo caso que T-13 3a/3b). Verificación funcional real
+    diferida hasta correr la migración.
 
 - ✅ **T-01 — Video real en el aula, fase local** (18 sep 2026). Cámara,
   micrófono, audio y el control de palabra ya son de verdad — probado de

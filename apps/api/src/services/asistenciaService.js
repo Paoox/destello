@@ -47,8 +47,15 @@ const ENTRADA_NUEVA_MINUTOS = 20
  * Se comprueba SIEMPRE, aunque el front ya lo haya comprobado: el front se
  * puede saltar. Sin esto, cualquiera con sesión podría fabricarse asistencia
  * a un taller que no compró — y de la asistencia sale el certificado.
+ *
+ * @param {number|null} usuarioId  Opcional (T-05): si se manda, también
+ *   cuenta como acceso ser profesora de ESE taller — sin esto, un profesor
+ *   sin chispa de su propio taller no podría ni pedir el token de video
+ *   (`GET /users/me/aula/:tallerId/video-token`, el único llamador que hoy
+ *   manda este dato). Los latidos de asistencia (`registrarPresencia`) NO
+ *   lo mandan a propósito: la asistencia certifica alumnos, no profesoras.
  */
-export async function tieneAcceso(email, tallerId) {
+export async function tieneAcceso(email, tallerId, usuarioId = null) {
     const { rows } = await query(
         `SELECT 1
            FROM chispas c
@@ -62,8 +69,11 @@ export async function tieneAcceso(email, tallerId) {
                                      OR LOWER(le.email) = LOWER(c.usuario_email))
                                 AND le.taller_id = c.taller_id
                                 AND le.estado = 'pagado') )
+          UNION ALL
+          SELECT 1 FROM taller_profesores
+           WHERE usuario_id = $3 AND taller_id = $2
           LIMIT 1`,
-        [String(email).trim(), tallerId]
+        [String(email).trim(), tallerId, usuarioId]
     )
     return rows.length > 0
 }

@@ -1,12 +1,12 @@
 /**
  * Destello Admin — PageAdmin
  * Dashboard de administración con tabs:
- *   ✦ Accesos | Talleres | Lista de espera | Reportes | Asistencia | Usuarios | Métricas
+ *   ✦ Accesos | Talleres | Profesores | Lista de espera | Reportes | Asistencia | Usuarios | Métricas
  * Protegida por AdminAuthOverlay hasta que el admin se autentique.
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate }                       from 'react-router-dom'
-import { ArrowClockwise, SignOut, Sparkle, BookOpen, ClockCounterClockwise, Tray, ChartLineUp, Certificate, UsersThree } from '@phosphor-icons/react'
+import { ArrowClockwise, SignOut, Sparkle, BookOpen, ClockCounterClockwise, Tray, ChartLineUp, Certificate, UsersThree, ChalkboardTeacher } from '@phosphor-icons/react'
 import { useAdminSession }                   from '@hooks/useAdminSession.js'
 import AdminAuthOverlay                      from '@components/admin/AdminAuthOverlay.jsx'
 import AccesosPanel                          from '@components/admin/AccesosPanel.jsx'
@@ -16,10 +16,12 @@ import ReportesPanel                         from '@components/admin/ReportesPan
 import MetricasPanel                         from '@components/admin/MetricasPanel.jsx'
 import AsistenciaPanel                       from '@components/admin/AsistenciaPanel.jsx'
 import UsuariosPanel                          from '@components/admin/UsuariosPanel.jsx'
+import ProfesoresPanel                        from '@components/admin/ProfesoresPanel.jsx'
 
 const TABS = [
     { id: 'accesos',      label: 'Accesos',         Icon: Sparkle },
     { id: 'talleres',     label: 'Talleres',         Icon: BookOpen },
+    { id: 'profesores',   label: 'Profesores',      Icon: ChalkboardTeacher },
     { id: 'lista-espera', label: 'Lista de espera',  Icon: ClockCounterClockwise },
     { id: 'reportes',     label: 'Reportes',        Icon: Tray },
     { id: 'asistencia',   label: 'Asistencia',      Icon: Certificate },
@@ -167,6 +169,11 @@ export default function PageAdmin() {
                     <TalleresAdmin
                         adminToken={adminToken}
                     />
+                )}
+
+                {/* Tab: Profesores — quién da qué taller (T-05) */}
+                {activeTab === 'profesores' && isAuthenticated && (
+                    <ProfesoresPanel adminToken={adminToken} />
                 )}
 
                 {/* Tab: Lista de espera */}

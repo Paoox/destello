@@ -330,15 +330,54 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
 - **Criterio de terminado:** mismo checklist del contrato; además valida que la
   miniatura de la rejilla del profe (20 en vivo) no se sienta lenta.
 
-### T-05 — Tabla de profesores real
-- **Qué falta:** tabla `profesores` en BD + lógica de permisos separada de admin.
-- **Por qué importa:** hoy un profesor externo con cuenta de "profe" vería todo
-  el panel financiero — es un problema de seguridad, no solo cosmético.
-- **Desbloquea:** nombre del profesor en diplomas, firma en certificados, ForYou.
-- **Dónde tocar:** migración nueva en `apps/api/src/db/migrations/`, reemplazar
-  `isAdminEmail()` donde se usa para decidir `esProfe`.
+### ~~T-05 — Tabla de profesores real~~ ✅ código listo (18 sep 2026), falta correr la migración
+- **Lo que se encontró al investigar (antes de tocar nada):** el riesgo
+  real NO era que un profesor externo viera el panel `/admin` — ese ya
+  estaba bien protegido con su propio login de contraseña
+  (`authenticateAdmin`, `router.use()` al inicio de `routes/admin.js`),
+  completamente separado de `isAdminEmail()`. El problema real era
+  conceptual: `isAdminEmail()` (una lista fija de un correo en
+  `apps/web/src/constants.js`) decidía a la vez "quién administra
+  Destello" y "quién es profe en el aula" — agregar un profesor nuevo
+  significaba volverlo admin de todo, y encima requería editar y
+  redesplegar el frontend cada vez.
+- **Qué se hizo:**
+  - Migración `018_profesores.sql` — tabla `profesores` (cuenta que PUEDE
+    ser profesora) + `taller_profesores` (relación muchos a muchos: quién
+    da qué taller).
+  - `apps/api/src/services/profesorService.js` — `esProfeDelTaller()`,
+    `listarAsignaciones()`, `asignarProfesor()`, `quitarProfesor()`.
+  - 3 endpoints nuevos: `GET/POST /admin/profesores`,
+    `DELETE /admin/profesores/:tallerId/:usuarioId`.
+  - `chispaService.getTalleresDelUsuario(email, usuarioId)` — nuevo
+    parámetro opcional: cada taller trae `esProfe`, y los talleres donde
+    la cuenta es profesora entran a la lista **aunque no tenga chispa**
+    (`UNION ALL` con prioridad: si también tiene una chispa real de ese
+    taller, esa gana). Sin esto, un profesor real sin chispa de su propio
+    taller ni siquiera habría podido entrar al aula.
+  - `asistenciaService.tieneAcceso(email, tallerId, usuarioId)` — mismo
+    tercer parámetro opcional, para que el endpoint de token de video
+    (T-01) también reconozca a un profesor sin chispa. Los latidos de
+    asistencia NO lo usan a propósito — la asistencia certifica alumnos.
+  - `PageAula.jsx`: `esProfe = isAdminEmail(user?.email) ||
+    taller?.esProfe === true` — los admins conservan su acceso a
+    cualquier aula tal cual, esto solo agrega la posibilidad de un
+    profesor real, limitado a lo que se le asigne.
+  - Panel admin nuevo `ProfesoresPanel.jsx` (tab "Profesores", 8vo tab):
+    busca una cuenta por correo (mismo patrón que Accesos), la asigna a
+    un taller desde un `<select>`, lista las asignaciones agrupadas por
+    profesor con botón para quitar una en particular.
+- **⚠️ Pendiente antes de poder usarlo:** correr `018_profesores.sql` en
+  Supabase → SQL Editor, igual que las migraciones anteriores. Sin las
+  tablas, `/admin/profesores` y `/users/me/talleres` truenan.
+- **Pruebas:** `apps/api` — `npm test`: 19/19 sin regresiones. Sin test
+  automatizado nuevo (depende de BD real, mismo caso que T-13 3a/3b).
+  Verificación funcional real (crear una asignación de prueba, confirmar
+  que esa cuenta entra como profe SOLO a ese taller) diferida hasta correr
+  la migración.
 - **Criterio de terminado:** un profesor puede entrar a SU salón sin ver
-  métricas/finanzas de otros talleres.
+  métricas/finanzas de otros talleres — código listo, verificación con
+  datos reales pendiente de la migración.
 
 ### T-32 — Página de Perfil: construir desde cero
 - **Qué falta:** todo. `PagePerfil.jsx` hoy es 100% datos inventados

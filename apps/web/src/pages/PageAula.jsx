@@ -173,10 +173,13 @@ export default function PageAula() {
 
   // ── Se arma la sesión que el aula va a recibir ─────────────────────────
   //
-  // Quién es profe: por ahora, quien sea admin. Es un atajo consciente —
-  // todavía no existe una tabla de profesores (hace falta también para el
-  // nombre en los diplomas). Cuando exista, se cambia esta línea y nada más.
-  const esProfe = isAdminEmail(user?.email)
+  // Quién es profe (T-05, 18 sep 2026): la cuenta admin sigue entrando como
+  // profe a CUALQUIER aula, sin cambios — pero ya no es la única manera.
+  // `taller.esProfe` lo calcula el SERVIDOR (`chispaService.getTalleresDelUsuario`,
+  // tabla `taller_profesores`), verificado por taller — un profesor real
+  // solo es profe de los talleres que se le asignaron en el panel
+  // (Admin → Profesores), nunca de todos por default.
+  const esProfe = isAdminEmail(user?.email) || taller?.esProfe === true
 
   const sesion = {
     marca: MARCA_DESTELLO,
