@@ -307,6 +307,10 @@ Verificado 18 sep 2026: `cupoService.hayCupo()` existe y ya se llama desde
   en `apps/api`: 12/12 (los 8 de antes + estos 4).
 - **Criterio de terminado:** ✅ una cuenta activada desde `lista_espera` sin
   pasar por el bot también termina con `nombre` y `apellido` separados.
+- **Verificación funcional con datos reales:** diferida a propósito (decisión
+  de Paola, 18 sep 2026) — se confirma en la próxima revisión completa del
+  flujo del bot, en vez de armar un caso de prueba manual aislado ahora.
+  Código desplegado y cubierto por las 4 pruebas automatizadas mientras tanto.
 
 ### ~~T-11 — Transacción en `confirmar-pago`~~ ✅ ya resuelto
 Verificado 18 sep 2026: `activarAlumno()` corre completo dentro de
@@ -580,6 +584,10 @@ se llama desde el manejador principal de mensajes.
 - **Criterio de terminado:** si existe la rama muerta, se quita (o se deja
   documentada como inofensiva); si no existe, se cierra el ticket sin
   cambios.
+- **Aprovechar la misma sesión para:** confirmar con datos reales la
+  verificación funcional que quedó diferida en T-10 (activar desde
+  `lista_espera` a alguien que nunca escribió al bot, y revisar que
+  `usuarios.nombre`/`apellido` queden bien separados).
 
 ---
 
