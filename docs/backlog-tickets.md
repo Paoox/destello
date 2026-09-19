@@ -1068,6 +1068,48 @@ se llama desde el manejador principal de mensajes.
   entra a esa vista y ve sus talleres, fechas/horarios y material, sin
   pasar por `/admin`.
 
+### T-40 — Dar de alta profesores nuevos desde el panel (sin cuenta previa)
+- **Pedido por Paola (18 sep 2026), al terminar T-05:** hoy
+  `ProfesoresPanel.jsx` (tab "Profesores") solo sabe ASIGNAR a alguien que
+  **ya tiene cuenta** — busca por correo contra `/admin/usuarios/buscar` y,
+  si no existe, no hay forma de seguir. Falta un segmento para dar de alta
+  a un profesor que nunca ha usado Destello: su correo (para que pueda
+  entrar con Google), nombre/apellido, y de una vez el taller que va a dar.
+- **Por qué importa:** sin esto, para meter a un profesor externo nuevo
+  habría que primero hacerlo pasar por el flujo de alumno (bot de
+  WhatsApp, lista de espera, "confirmar pago" de $0) solo para que exista
+  la cuenta — un rodeo absurdo para alguien que no está comprando nada.
+- **Ya existe un patrón idéntico para copiar, no hay que inventar nada
+  nuevo:** `chispaService.createChispa()` (usado por "Crear Chispa" en
+  AccesosPanel, el flujo de demos) ya hace exactamente esto — UPSERT a
+  `usuarios` con `estado = 'activo'` directo (sin pasar por `'espera'`),
+  usando `usuarioService.asegurarWhatsappLibre()` para no pisar el
+  WhatsApp de otra cuenta. Es cuestión de adaptar ese mismo INSERT
+  (`activado_por = 'admin:profesor'` en vez de `'admin:chispa'`, con
+  `apellido` además de `nombre`, que `createChispa` no separa) más el
+  INSERT en `profesores`/`taller_profesores` que ya existe en
+  `profesorService.asignarProfesor()`.
+- **Dónde tocar:**
+  - `profesorService.js` — nueva función (ej. `altaProfesor({ email,
+    nombre, apellido, whatsapp, tallerId })`) que upsertea el usuario en
+    `'activo'` y lo asigna, en un solo paso.
+  - `routes/admin.js` — nuevo endpoint, ej. `POST /admin/profesores/alta`
+    (separado del `POST /admin/profesores` que ya existe, que asume que
+    la cuenta ya existe — no romper ese).
+  - `ProfesoresPanel.jsx` — nuevo segmento/formulario arriba del buscador
+    actual: correo, nombre, apellido, WhatsApp (opcional — el login por
+    Google no lo necesita), taller. Cuando la búsqueda por correo dé
+    "no encontrado" (`usuarioStatus === 'not_found'`), podría incluso
+    ofrecer el botón "Dar de alta" ahí mismo, en vez de un formulario
+    aparte — decidir al construirlo.
+- **Ojo (mismo criterio que en T-05):** el WhatsApp es opcional aquí —
+  a diferencia del flujo del bot, un profesor puede perfectamente entrar
+  solo con Google sin nunca dar su número.
+- **Criterio de terminado:** Paola puede dar de alta a un profesor que
+  nunca ha usado Destello, con solo su correo (+ nombre), y esa persona
+  ya puede entrar con Google y ver su taller — sin pasar por el bot ni
+  por lista de espera.
+
 ---
 
 ## 6. 🔮 Futuro (post-lanzamiento)
