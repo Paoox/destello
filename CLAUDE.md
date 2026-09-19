@@ -555,6 +555,27 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
   `/aula-nueva` se está reconvirtiendo en salón de ensayo del profesor (en vez
   de borrarla); ilustraciones de sellos y reacciones (las hace Paola);
   corregir talleres con horario `12:00 PM – 12:00 PM` cargado mal (dato, no bug).
+- **Surgidos al cerrar T-05 y probar T-01 (18 sep 2026)** — detalle
+  completo en `docs/backlog-tickets.md`, solo documentados, sin código
+  todavía:
+  - **T-39** — dashboard de profesores (talleres asignados, fechas,
+    material) y **T-40** — darlos de alta desde el panel sin cuenta
+    previa (mismo patrón que "Crear Chispa" para demos).
+  - **T-41/T-42** — mano levantada, reacciones y chat del aula en tiempo
+    real, todos con el mismo mecanismo del canal de datos de LiveKit que
+    ya resolvió "dar la palabra" en T-01 — falta aplicarlo a estos tres.
+  - **T-43** — nombre real del profesor/taller en el aula, aprovechando
+    la cuenta real que ya da T-05 (hoy depende de un campo de texto
+    suelto casi siempre vacío).
+  - **T-44/T-45** — Notificaciones y Ajustes: links muertos en el menú
+    (`/notifs`, `/settings`, ninguna ruta existe) — falta primero definir
+    qué son, antes de construir nada.
+  - **T-46** — catálogo de avatares para alumnos con cámara apagada (el
+    campo `Persona.avatarUrl` ya existe, falta la mitad de "elegir y
+    guardar").
+  - **T-47** — fondos de video seleccionables para el profesor —
+    ⚠️ marcado a propósito como función de video real (segmentación en
+    vivo antes de publicar la pista), no un ajuste chico de UI.
 - **T-34** — `PageLanding.jsx` (🔒 CONGELADA) todavía menciona "Resplandor y
   Chispa" en su copy de marketing, un mecanismo que ya no existe en el
   código (T-14, 18 sep 2026). Decisión de Paola: se actualiza al final,
