@@ -1206,6 +1206,62 @@ se llama desde el manejador principal de mensajes.
 - **Criterio de terminado:** por definir junto con el alcance — mismo
   caso que T-44.
 
+### T-46 — Menú de avatares para alumnos con cámara apagada
+- **Pedido por Paola (18 sep 2026):** cuando un alumno trae la cámara
+  apagada (el caso normal, la mayoría de la clase), poder elegir un
+  avatar de un catálogo en vez de mostrar solo sus iniciales — para que
+  la miss se sienta más a gusto viendo caras/personajes en vez de un
+  cuarto lleno de círculos con letras.
+- **El gancho ya existe, no hay que inventarlo:** el contrato del aula
+  YA tiene el campo `Persona.avatarUrl` (`aula/contrato.js`) y
+  `Avatar.jsx` YA sabe pintar una imagen ahí en vez de las iniciales
+  cuando `avatarUrl` viene lleno — hoy simplemente nadie lo llena nunca:
+  `PageAula.jsx` arma `sesion.yo.avatarUrl: null` fijo, siempre. Falta
+  la mitad de "elegir y guardar", no la de "mostrarlo".
+- **Qué falta:**
+  - Un catálogo de avatares (mismo patrón que `SELLOS`/`REACCIONES` en
+    `aula/catalogo.js` — una lista fija con id + imagen, no fotos libres
+    que suba cada quien).
+  - Dónde se elige: ¿en `/perfil`, o un selector rápido dentro del aula
+    misma? A decidir al construir.
+  - Dónde se guarda: un campo nuevo en `usuarios` (ej. `avatar_id`), o
+    reusar `usuarios.avatarUrl` si ya existe algo parecido — revisar
+    antes de agregar una columna.
+  - `PageAula.jsx` deja de mandar `avatarUrl: null` fijo y lo saca del
+    usuario real.
+- **Criterio de terminado:** un alumno elige un avatar del catálogo, y
+  con la cámara apagada, ese avatar (no sus iniciales) es lo que ve la
+  profe y el resto de la clase.
+
+### T-47 — Fondos fijos seleccionables para el profesor al dar clase
+- **Pedido por Paola (18 sep 2026):** que la profe pueda elegir un fondo
+  de video de un catálogo (desde su propio panel del aula), para no
+  verse poco profesional si no tiene un espacio adecuado de fondo real.
+- **⚠️ Esto NO es un ajuste chico de UI — es una función de video real:**
+  necesita separar a la persona del fondo real de su cámara en vivo
+  (segmentación / "virtual background") y componerla sobre la imagen
+  elegida, cuadro por cuadro, ANTES de publicar la pista a LiveKit —
+  para que todos los demás vean el fondo compuesto, no solo la profe.
+  Es tecnología distinta a todo lo que se construyó en T-01 (que solo
+  conecta pistas, no las procesa) — normalmente se resuelve con una
+  librería de segmentación en el navegador (ej. MediaPipe Selfie
+  Segmentation, o un track processor si LiveKit trae uno compatible con
+  la versión que ya se instaló, `livekit-client` 2.22.3 — revisar al
+  construirlo, no asumido aquí) corriendo sobre WebGL/Canvas.
+- **Por qué importa evaluarlo con cuidado antes de prometerlo:** el
+  costo real (procesamiento en vivo por cuadro, puede pesarle a
+  laptops modestas) y el esfuerzo de construcción son mucho mayores que
+  "una lista de imágenes para elegir" — vale la pena una prueba técnica
+  chica (un fondo, una laptop de gama media) antes de comprometerse con
+  un catálogo completo.
+- **Dónde tocar:** `aula/video/useVideoAula.js` (ahí es donde se captura
+  y publica la pista de cámara — el procesamiento entra ANTES de
+  `setCameraEnabled`/publicar), un catálogo de fondos, y UI nueva en el
+  panel del profesor para elegirlo (¿el mismo dashboard de T-39?).
+- **Criterio de terminado:** la profe elige un fondo de una lista, y los
+  demás participantes la ven con ese fondo compuesto en tiempo real, sin
+  que la calidad de video se sienta rota.
+
 ---
 
 ## 6. 🔮 Futuro (post-lanzamiento)
