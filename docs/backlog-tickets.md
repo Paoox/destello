@@ -1110,6 +1110,102 @@ se llama desde el manejador principal de mensajes.
   ya puede entrar con Google y ver su taller — sin pasar por el bot ni
   por lista de espera.
 
+### T-41 — Mano levantada y reacciones en tiempo real (visibles para todos)
+- **Pedido por Paola (18 sep 2026), tras probar T-01:** hoy `manoArriba` y
+  `reaccion` (los emojis 👏❤️😮😄🤔👍 que manda el alumno) son estado
+  **100% local** de cada quien — cuando alguien levanta la mano o manda
+  un emoji, solo lo ve en su propia pantalla. La profe no se entera de
+  nada de esto en tiempo real.
+- **Por qué importa:** son de los controles más básicos de una clase en
+  vivo — sin esto, "levantar la mano" no sirve para nada.
+- **Ya existe el mecanismo, no hay que inventar nada nuevo:** T-01 ya
+  resolvió exactamente este mismo problema para "dar la palabra"/
+  "silenciar", con el **canal de datos de LiveKit**
+  (`localParticipant.publishData()` / `RoomEvent.DataReceived`, ver
+  `aula/video/useVideoAula.js`) — sin backend nuevo. Es el mismo patrón,
+  aplicado a `manoArriba` y `reaccion` en vez de `silenciadoPorProfe`.
+- **Nota:** los **sellos** (`insignias`, los que planta la profe) tienen
+  el mismo problema de fondo (estado local), pero Paola no los mencionó
+  esta vez — quedan fuera del alcance de este ticket a propósito, mismo
+  mecanismo cuando se retome.
+- **Dónde tocar:** `aula/Aula.jsx` (`reaccionar()`, y donde se marca
+  `manoArriba`), `aula/video/useVideoAula.js` (ya tiene `enviarControl`/
+  `ultimoControl` — se reutiliza o se extiende con más tipos de mensaje).
+- **Criterio de terminado:** la profe ve en tiempo real, sin recargar,
+  cuando un alumno levanta la mano o manda una reacción — y viceversa,
+  si aplica.
+
+### T-42 — Chat del aula en tiempo real
+- **Pedido por Paola (18 sep 2026), tras probar T-01:** el `Chat` de
+  `Aula.jsx` existe visualmente (botón, panel, input) pero es **decorado**
+  — `mensajes` es estado local que nunca sale del navegador. Cualquiera
+  que escriba algo solo se lo dice a sí mismo; nadie más en la clase lo ve.
+- **Por qué importa:** es un botón visible que hoy no hace lo que promete.
+- **Dónde tocar:** `aula/Aula.jsx` (`function Chat`) — mismo canal de
+  datos de LiveKit que T-41/T-01, un tipo de mensaje más
+  (`{ tipo: 'chat', texto, de }`).
+- **Ojo, ya está decidido y no hay que rediseñarlo:** el comentario del
+  propio componente ya documenta la intención — "No guarda historial
+  visible — es para compartir un dato suelto, no para una conversación
+  paralela que compita con la clase." La solución es que sea real EN
+  VIVO (todos lo ven mientras están conectados), no agregar persistencia
+  ni historial — eso sería un cambio de producto, no el bug que se
+  está resolviendo aquí.
+- **Criterio de terminado:** un mensaje que escribe cualquier persona en
+  el aula lo ven las demás, en tiempo real, mientras la clase sigue
+  conectada.
+
+### T-43 — Personalizar datos reales del profe y del taller en el aula
+- **Pedido por Paola (18 sep 2026), tras probar T-01:** hoy
+  `PageAula.jsx` arma `sesion.taller.instructor` desde el campo de texto
+  libre `talleres.instructor` (vacío para casi todos los talleres, según
+  ya lo tenía anotado `CLAUDE.md`), y `sesion.marca` es SIEMPRE
+  `MARCA_DESTELLO` fija — no hay nada personalizado por taller ni por
+  profesor todavía.
+- **Por qué importa ahora, no antes:** con T-05 ya existe una cuenta REAL
+  ligada al profesor de cada taller (`taller_profesores` → `usuarios`) —
+  ya no hace falta depender del campo de texto suelto `instructor`, que
+  se puede escribir mal o quedar vacío. El aula debería poder mostrar el
+  nombre de verdad de quien está dando la clase.
+- **Qué falta (a definir con Paola al construirlo, no asumir):**
+  - ¿`taller.instructor` se reemplaza por el nombre real de la cuenta en
+    `taller_profesores`, o se quedan los dos (uno como respaldo si el
+    taller no tiene profesor asignado todavía)?
+  - ¿Algo más que "personalizar" además del nombre — foto del profesor,
+    color/tema del taller?
+- **Dónde tocar:** `PageAula.jsx` (arma `sesion.taller`), posiblemente
+  `chispaService.getTalleresDelUsuario()` (ya trae `esProfe`, podría
+  traer también el nombre del profesor asignado).
+- **Criterio de terminado:** el aula muestra el nombre real del profesor
+  que da ESE taller (no un campo de texto vacío ni "Destello" genérico).
+
+### T-44 — Página de Notificaciones (hoy: link muerto en el menú)
+- **Encontrado al revisar el pendiente de Paola (18 sep 2026):** el menú
+  lateral (`Navbar.jsx`) ya tiene un renglón "Notificaciones" apuntando a
+  `/notifs` — pero esa ruta **no existe** en `App.jsx` (cae al 404).
+  No es solo "falta pulir": hoy no hay nada ahí, ni backend ni idea de
+  qué debe notificar.
+- **Qué falta (a definir con Paola antes de construir):** qué cuenta como
+  notificación (¿nuevo certificado emitido? ¿taller por empezar? ¿mensaje
+  del profe?), de dónde salen (¿tabla nueva, o reusar `eventos`?), y si
+  son solo para alumnos o también para profesores.
+- **Dónde tocar:** ruta nueva en `App.jsx`, página nueva, y backend a
+  definir según qué se decida que notifica.
+- **Criterio de terminado:** por definir junto con el alcance — este
+  ticket empieza como "aterrizar qué es esto", no como código.
+
+### T-45 — Página de Ajustes (hoy: link muerto en el menú)
+- **Encontrado al revisar el pendiente de Paola (18 sep 2026):** mismo
+  caso que T-44 — `Navbar.jsx` tiene "Ajustes" apuntando a `/settings`,
+  ruta que tampoco existe en `App.jsx`.
+- **Qué falta (a definir con Paola antes de construir):** qué se puede
+  ajustar hoy que no viva ya en `/perfil` (notificaciones por
+  correo/WhatsApp, idioma, privacidad...) — sin una lista clara de qué va
+  aquí, es fácil construir una página vacía que no resuelve nada.
+- **Dónde tocar:** ruta nueva en `App.jsx`, página nueva.
+- **Criterio de terminado:** por definir junto con el alcance — mismo
+  caso que T-44.
+
 ---
 
 ## 6. 🔮 Futuro (post-lanzamiento)
