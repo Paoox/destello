@@ -22,6 +22,7 @@
 import { useParams, useSearchParams } from 'react-router-dom'
 import Aula from '../aula/Aula.jsx'
 import { MARCA_DESTELLO } from '../aula/contrato.js'
+import { MATERIALES_DE_ENSAYO } from './materialesDeEnsayo.js'
 
 /** Aviso fijo de que esto es el salón de ensayo, no una clase real. */
 function AvisoEnsayo({ rol }) {
@@ -89,68 +90,6 @@ export default function PageAulaNueva() {
             reaccion: null, interactuando: true, avance: 42,
             insignias: ['trabajadora', 'excelente'] }
 
-    // ── El material precargado de la clase ────────────────────────────────
-    //
-    // Esto es lo que un día va a venir de la PLANTILLA del taller, cargada
-    // desde la API. Hoy está aquí para poder ver el aula funcionando.
-    //
-    // ⚠️ Las preguntas son de EJEMPLO y son de anatomía básica del oído — no de
-    // tratamiento. El contenido real lo escribe y lo valida la profesora; el
-    // código nunca inventa material de clase.
-    const MATERIALES = [
-        {
-            id:     'quiz-oreja',
-            tipo:   'quiz',
-            nombre: 'Quiz · partes del oído',
-            contenido: {
-                preguntas: [
-                    {
-                        id: 'q1',
-                        texto: '¿Cómo se llama el borde curvo que rodea la parte de arriba de la oreja?',
-                        opciones: [
-                            { id: 'a', texto: 'Hélix', correcta: true },
-                            { id: 'b', texto: 'Lóbulo' },
-                            { id: 'c', texto: 'Trago' },
-                        ],
-                    },
-                    {
-                        id: 'q2',
-                        texto: '¿Qué parte de la oreja no tiene cartílago?',
-                        opciones: [
-                            { id: 'a', texto: 'El trago' },
-                            { id: 'b', texto: 'El lóbulo', correcta: true },
-                            { id: 'c', texto: 'La concha' },
-                        ],
-                    },
-                    {
-                        id: 'q3',
-                        texto: '¿Cómo se llama la pequeña prominencia que está junto al conducto auditivo?',
-                        opciones: [
-                            { id: 'a', texto: 'Antihélix' },
-                            { id: 'b', texto: 'Hélix' },
-                            { id: 'c', texto: 'Trago', correcta: true },
-                        ],
-                    },
-                ],
-            },
-        },
-        { id: 'modelo-oreja', tipo: 'modelo3d', nombre: 'Modelo 3D · oreja', contenido: {} },
-        memoramaOreja('memorama-oreja-1', 'Memorama · oreja 1', [
-            ['helix',             'Hélix',              'Repliegue curvilíneo que forma el borde prominente del pabellón auricular'],
-            ['antehelix',         'Antehélix',          'Elevación del cartílago paralela al hélix que se divide en su parte superior'],
-            ['trago',             'Trago',              'Prominencia cartilaginosa que cubre parcialmente la entrada del conducto auditivo'],
-            ['antitrago',         'Antitrago',          'Pequeña protuberancia en la base del antehélix, ubicada frente al trago'],
-            ['lobulo',            'Lóbulo',             'Parte inferior y blanda de la oreja, formada por piel y grasa sin cartílago'],
-        ]),
-        memoramaOreja('memorama-oreja-2', 'Memorama · oreja 2', [
-            ['concha-superior',   'Concha superior',    'Porción estrecha y superior de la cavidad central de la oreja'],
-            ['concha-inferior',   'Concha inferior',    'Depresión profunda e inferior que conduce directamente al conducto auditivo'],
-            ['fosa-escafoidea',   'Fosa escafoidea',    'Depresión alargada y estrecha situada entre el hélix y el antehélix'],
-            ['foseta-triangular', 'Foseta triangular',  'Depresión en forma de triángulo ubicada en la parte superior entre las dos ramas del antehélix'],
-            ['pabellon-auricular','Pabellón auricular', 'Representación gráfica de la anatomía externa del oído, dividida en zonas delimitadas para la localización exacta de puntos terapéuticos'],
-        ]),
-    ]
-
     const sesion = {
         marca: MARCA_DESTELLO,
         taller: {
@@ -164,8 +103,11 @@ export default function PageAulaNueva() {
         // La profe se ve a sí misma en la lista; el alumno no se duplica.
         personas: rol === 'profe' ? PERSONAS : PERSONAS.slice(1),
         pizarron: {
-            materiales:  MATERIALES,
-            actividadId: 'quiz-oreja',   // la profe ya la puso en el pizarrón
+            materiales:  MATERIALES_DE_ENSAYO,
+            // La profe ya la puso en el pizarrón. `?actividad=<id>` abre otra
+            // directo (para revisar un material sin pasar por el menú).
+            actividadId: MATERIALES_DE_ENSAYO.some(m => m.id === params.get('actividad'))
+                ? params.get('actividad') : 'quiz-oreja',
             liberado:    true,           // y ya los dejó trabajar
         },
     }
@@ -176,30 +118,4 @@ export default function PageAulaNueva() {
             <Aula sesion={sesion} key={`${id}-${rol}`} />
         </>
     )
-}
-
-/**
- * Un memorama de la oreja, de 5 parejas (10 cartas — se ve bien hasta en un
- * pizarrón chico; las 10 parejas se partieron en dos materiales).
- *
- * Textos e introducción tal cual venían en el memorama de prueba de Paola
- * (`mini-juegos/memorama_auri`); los dibujos de la oreja se recortaron de esas
- * mismas cartas, sin el texto horneado.
- */
-function memoramaOreja(id, nombre, pares) {
-    return {
-        id,
-        tipo: 'memorama',
-        nombre,
-        contenido: {
-            titulo: 'Anatomía del pabellón auricular',
-            instrucciones: '¡Bienvenido al desafío anatómico del pabellón auditivo! Explora las maravillas del sistema auditivo emparejando cada estructura anatómica con su función técnica exacta.',
-            segundosParaMemorizar: 15,
-            pares: pares.map(([parId, texto, descripcion]) => ({
-                id: parId,
-                a: { texto, imagen: `/contenido/auriculoterapia/oreja/${parId}.webp` },
-                b: descripcion,
-            })),
-        },
-    }
 }

@@ -513,6 +513,7 @@ function VentanaPizarron({ sesion, onSellar, onSellarATodos, onElegirActividad, 
                     Agregar una actividad nueva no cambia una línea de aquí. */}
                 {Actividad ? (
                     <Actividad
+                        key={actividadActiva.id}
                         contenido={actividadActiva.contenido}
                         estado={estadoVisible}
                         onCambio={(nuevo) => onAvanzar?.(quienTrabaja, nuevo)}
@@ -999,7 +1000,21 @@ export default function Aula({ sesion }) {
      * La profe elige qué se muestra. Se actualiza para ella y para todos —
      * es lo que hace que sea un pizarrón compartido y no una pantalla suelta.
      */
-    const elegirActividad = (id) => setActividadId(id)
+    const elegirActividad = (id) => {
+        if (id === actividadId) return
+        setActividadId(id)
+        // Actividad nueva = hoja en blanco para todas. El estado guardado es de
+        // la actividad anterior (su tablero, sus respuestas): si se quedara,
+        // una sopa nueva mostraría la sopa vieja y un crucigrama intentaría
+        // leer un tablero de sopa. Solo se conserva `ultimoCambio`, que es del
+        // semáforo y no de la actividad.
+        const limpiar = (p) => ({
+            ...p,
+            estadoActividad: { pasos: {}, ultimoCambio: p.estadoActividad?.ultimoCambio ?? null },
+        })
+        setPersonas(lista => lista.map(limpiar))
+        setYo(limpiar)
+    }
 
     /**
      * Alguien avanzó en la actividad.

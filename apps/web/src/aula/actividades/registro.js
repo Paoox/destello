@@ -10,6 +10,10 @@
  */
 import Quiz, { resumen as resumenQuiz } from './Quiz.jsx'
 import Memorama, { resumen as resumenMemorama } from './Memorama.jsx'
+import Caso, { resumen as resumenCaso } from './Caso.jsx'
+import Sopa, { resumen as resumenSopa } from './Sopa.jsx'
+import Crucigrama, { resumen as resumenCrucigrama } from './Crucigrama.jsx'
+import Trivia, { resumen as resumenTrivia } from './Trivia.jsx'
 
 export const TIPOS = {
     quiz: {
@@ -24,15 +28,36 @@ export const TIPOS = {
         resumen:    resumenMemorama,
     },
 
-    // Por construir, cada una sobre este mismo molde:
+    // Decisiones paso a paso, con modelo 3D opcional (el visor vive en
+    // `aula/visor3d/` y se puede reusar en otras actividades).
+    caso: {
+        nombre:     'Caso',
+        Componente: Caso,
+        resumen:    resumenCaso,
+    },
+
+    sopa: {
+        nombre:     'Sopa de letras',
+        Componente: Sopa,
+        resumen:    resumenSopa,
+    },
+
+    crucigrama: {
+        nombre:     'Crucigrama',
+        Componente: Crucigrama,
+        resumen:    resumenCrucigrama,
+    },
+
+    // A diferencia del Quiz, dice al momento si atinaste (es juego, no examen).
+    trivia: {
+        nombre:     'Trivia',
+        Componente: Trivia,
+        resumen:    resumenTrivia,
+    },
+
+    // Por construir, sobre este mismo molde:
     //
     //   armar       → piezas que se arrastran, tipo lego
-    //   modelo3d    → el visor con puntos marcables ← la prueba de fuego
-    //
-    // El modelo 3D es el difícil y el que va a decir si el contrato aguanta.
-    // Se deja para cuando existan los modelos, no antes: construirlo con una
-    // esfera de mentiras validaría el contrato contra un problema que no es el
-    // real.
 }
 
 /** Busca el tipo de una actividad. `null` si es un tipo que ya no existe. */

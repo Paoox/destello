@@ -47,7 +47,10 @@ export default defineConfig(({ mode }) => {
           // Code splitting por ruta para lazy loading
           manualChunks: {
             'vendor-react':  ['react', 'react-dom', 'react-router-dom'],
-            'vendor-three':  ['three', '@react-three/fiber', '@react-three/drei'],
+            // three.js NO va aquí: un chunk manual se precarga en todas las
+            // páginas, y three pesa ~500 KB. Lo usa solo el visor 3D del aula
+            // (`aula/visor3d/`), que se carga con lazy() — así three viaja en
+            // su chunk y solo se descarga cuando alguien abre un modelo 3D.
             'vendor-icons':  ['@phosphor-icons/react'],
           },
         },
