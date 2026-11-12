@@ -9,6 +9,7 @@
  * memorama obliga a modificar `Aula.jsx`, es que algo se coló donde no iba.
  */
 import Quiz, { resumen as resumenQuiz } from './Quiz.jsx'
+import Memorama, { resumen as resumenMemorama } from './Memorama.jsx'
 
 export const TIPOS = {
     quiz: {
@@ -17,9 +18,14 @@ export const TIPOS = {
         resumen:    resumenQuiz,
     },
 
+    memorama: {
+        nombre:     'Memorama',
+        Componente: Memorama,
+        resumen:    resumenMemorama,
+    },
+
     // Por construir, cada una sobre este mismo molde:
     //
-    //   memorama    → parejas que se destapan
     //   armar       → piezas que se arrastran, tipo lego
     //   modelo3d    → el visor con puntos marcables ← la prueba de fuego
     //

@@ -135,7 +135,20 @@ export default function PageAulaNueva() {
             },
         },
         { id: 'modelo-oreja', tipo: 'modelo3d', nombre: 'Modelo 3D · oreja', contenido: {} },
-        { id: 'memorama-1',   tipo: 'memorama', nombre: 'Memorama · puntos',  contenido: {} },
+        memoramaOreja('memorama-oreja-1', 'Memorama · oreja 1', [
+            ['helix',             'Hélix',              'Repliegue curvilíneo que forma el borde prominente del pabellón auricular'],
+            ['antehelix',         'Antehélix',          'Elevación del cartílago paralela al hélix que se divide en su parte superior'],
+            ['trago',             'Trago',              'Prominencia cartilaginosa que cubre parcialmente la entrada del conducto auditivo'],
+            ['antitrago',         'Antitrago',          'Pequeña protuberancia en la base del antehélix, ubicada frente al trago'],
+            ['lobulo',            'Lóbulo',             'Parte inferior y blanda de la oreja, formada por piel y grasa sin cartílago'],
+        ]),
+        memoramaOreja('memorama-oreja-2', 'Memorama · oreja 2', [
+            ['concha-superior',   'Concha superior',    'Porción estrecha y superior de la cavidad central de la oreja'],
+            ['concha-inferior',   'Concha inferior',    'Depresión profunda e inferior que conduce directamente al conducto auditivo'],
+            ['fosa-escafoidea',   'Fosa escafoidea',    'Depresión alargada y estrecha situada entre el hélix y el antehélix'],
+            ['foseta-triangular', 'Foseta triangular',  'Depresión en forma de triángulo ubicada en la parte superior entre las dos ramas del antehélix'],
+            ['pabellon-auricular','Pabellón auricular', 'Representación gráfica de la anatomía externa del oído, dividida en zonas delimitadas para la localización exacta de puntos terapéuticos'],
+        ]),
     ]
 
     const sesion = {
@@ -163,4 +176,30 @@ export default function PageAulaNueva() {
             <Aula sesion={sesion} key={`${id}-${rol}`} />
         </>
     )
+}
+
+/**
+ * Un memorama de la oreja, de 5 parejas (10 cartas — se ve bien hasta en un
+ * pizarrón chico; las 10 parejas se partieron en dos materiales).
+ *
+ * Textos e introducción tal cual venían en el memorama de prueba de Paola
+ * (`mini-juegos/memorama_auri`); los dibujos de la oreja se recortaron de esas
+ * mismas cartas, sin el texto horneado.
+ */
+function memoramaOreja(id, nombre, pares) {
+    return {
+        id,
+        tipo: 'memorama',
+        nombre,
+        contenido: {
+            titulo: 'Anatomía del pabellón auricular',
+            instrucciones: '¡Bienvenido al desafío anatómico del pabellón auditivo! Explora las maravillas del sistema auditivo emparejando cada estructura anatómica con su función técnica exacta.',
+            segundosParaMemorizar: 15,
+            pares: pares.map(([parId, texto, descripcion]) => ({
+                id: parId,
+                a: { texto, imagen: `/contenido/auriculoterapia/oreja/${parId}.webp` },
+                b: descripcion,
+            })),
+        },
+    }
 }
