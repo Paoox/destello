@@ -321,6 +321,28 @@ export const MATERIALES_DE_ENSAYO = [
         },
     },
     CASO_INSOMNIO,
+    // La misma oreja del caso, solita, para explorarla con vuelta completa.
+    // Los puntos (y sus coordenadas) son los del caso clínico de arriba.
+    {
+        id:     'oreja-3d',
+        tipo:   'modelo3d',
+        nombre: 'Oreja 3D · explorar',
+        contenido: {
+            titulo:      'La oreja en 3D',
+            descripcion: 'Gírala con el dedo o el mouse y acércala. Toca un punto de la lista para ubicarlo.',
+            modelo:      { url: `${OREJA}/modelos/oreja.glb` },
+            puntos: [
+                { id: 'shenmen',   nombre: 'Shen Men',    x: 46, y: 22, descripcion: 'Vértice superior de la fosa triangular; modula la actividad cortical y la sedación profunda.' },
+                { id: 'rinon',     nombre: 'Riñón',       x: 50, y: 38, descripcion: 'Concha cymba, debajo de la cruz del antihélix.' },
+                { id: 'estomago',  nombre: 'Estómago',    x: 38, y: 48, descripcion: 'En el origen de la raíz del hélix.' },
+                { id: 'corazon',   nombre: 'Corazón',     x: 46, y: 52, descripcion: 'En la depresión central de la concha cava.' },
+                { id: 'pulmon',    nombre: 'Pulmón',      x: 48, y: 58, descripcion: 'En la concha cava, rodeando al corazón.' },
+                { id: 'endocrino', nombre: 'Endocrino',   x: 38, y: 62, descripcion: 'En la escotadura intertrágica; equilibra hormonas y la melatonina.' },
+                { id: 'subcortex', nombre: 'Subcórtex',   x: 44, y: 68, descripcion: 'Pared interna del antitrago; regula la excitación del tálamo cerebral.' },
+                { id: 'insomnio',  nombre: 'Insomnio 1 / 2', x: 46, y: 86, descripcion: 'Zona céntrica del lóbulo; indicado para trastornos de vigilia.' },
+            ],
+        },
+    },
     memoramaOreja('memorama-oreja-1', 'Memorama · oreja 1', [
         ['helix',             'Hélix',              'Repliegue curvilíneo que forma el borde prominente del pabellón auricular'],
         ['antehelix',         'Antehélix',          'Elevación del cartílago paralela al hélix que se divide en su parte superior'],

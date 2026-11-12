@@ -69,7 +69,9 @@ destello/
 │   │   │   │                            PageHome, PageHabitat, PageAula, PageAulaNueva,
 │   │   │   │                            PageCertificado, PagePerfil
 │   │   │   ├── aula/                 ← El módulo del aula (Aula.jsx, Sello.jsx,
-│   │   │   │                            actividades/contrato.js + Quiz.jsx,
+│   │   │   │                            actividades/ (contrato.js, registro.js, comun.js,
+│   │   │   │                            Quiz, Memorama, Caso, Modelo3D, Sopa,
+│   │   │   │                            Crucigrama, Trivia), visor3d/Visor3D.jsx,
 │   │   │   │                            video/useVideoAula.js + PistaVideo.jsx
 │   │   │   │                            — LiveKit, T-01). NUNCA llama a la API
 │   │   │   │                            de Destello — ver "Reglas Críticas"
@@ -438,7 +440,7 @@ Métodos de pago incluidos en templates:
 | `/home` | PageHome.jsx | ✅ |
 | `/habitat` | PageHabitat.jsx | ✅ — grid talleres reales desde BD, modal lista de espera |
 | `/aula/:id` | PageAula.jsx | ✅ — LA FRONTERA: única pieza que habla con la API de Destello. Arma la `sesion` del contrato y envuelve `src/aula/Aula.jsx` (el módulo del aula: sellos, contrato de actividades, Quiz, rejilla — no consulta la API a propósito, para poder rentarse a otras escuelas como producto aparte). Le suma los latidos de asistencia que el módulo del aula no puede tener |
-| `/aula-nueva/:id` | PageAulaNueva.jsx | ✅ — salón de ensayo del profesor con datos inventados (sin backend, sin video). Entra como `profe` por defecto; `?rol=alumno` para verla del otro lado |
+| `/aula-nueva/:id` | PageAulaNueva.jsx | ✅ — salón de ensayo del profesor con datos inventados (sin backend, sin video). Entra como `profe` por defecto; `?rol=alumno` para verla del otro lado; `?actividad=<id>` abre directo un material de `materialesDeEnsayo.js` |
 | `/perfil` | PagePerfil.jsx | ✅ |
 | `/admin` | PageAdmin.jsx | ✅ — protegido con JWT admin, 7 tabs (ver arriba) |
 | `/` | PageLanding.jsx | 🔒 CONGELADO — NO modificar sin permiso explícito de Paola |
@@ -501,13 +503,12 @@ Detalle completo y cómo diagnosticarlo en `docs/backlog-tickets.md` (T-S1).
   punto único de falla (depende de una laptop prendida en una casa). Se
   agenda ~15-20 días antes del lanzamiento, en la misma ventana que el
   montaje del VPS de video. Detalle completo en `docs/backlog-tickets.md`.
-- **Actividades reales (T-02/T-03/T-04).** Existe el contrato
-  (`src/aula/actividades/contrato.js`) y el Quiz funcionando de punta a
-  punta; faltan `memorama`, `armar` y `modelo3d`. **Las 3 están bloqueadas
-  por igual (18 sep 2026):** Paola necesita armar primero el material real
-  de cada una (parejas, piezas, modelos 3D) — construirlas con contenido
-  inventado invalidaría la prueba del contrato, mismo criterio que ya
-  aplicaba solo a `modelo3d` y ahora se extiende a las tres.
+- **Actividades (T-02/T-04 ✅, T-03 pendiente).** Ya funcionan 7 tipos con
+  material de ensayo (ver "Lo que Está Terminado"). Falta: `armar` (T-03),
+  el **material real** de cada taller (Paola), y que el avance de cada
+  alumno le llegue a la profe en tiempo real (hoy es local, mismo caso que
+  sellos/mano arriba). ⚠️ Revisar la **licencia del modelo 3D de la oreja**
+  (Sketchfab) antes de usarlo en clases pagadas.
 
 ### 🟠 Deuda técnica — las tablas se relacionan por CORREO, no por id
 Detectado por Paola el 21 jul 2026. `chispas.usuario_email` y
@@ -599,6 +600,20 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
 ---
 
 ## Lo que Está Terminado y Funciona
+
+- ✅ **Actividades del aula genéricas — T-02 y T-04** (11-12 nov 2026,
+  commits `52a8baa` y siguientes). A partir de los prototipos de Paola
+  (`mini-juegos/`, carpeta local fuera del repo), convertidos en
+  componentes donde solo cambia el contenido: **memorama**, **caso**
+  (decisiones paso a paso sobre la oreja 3D), **modelo3d** (la oreja sola
+  para girar/acercar, con puntos de referencia), **sopa** de letras,
+  **crucigrama** (se genera distinto cada partida) y **trivia** (dice al
+  momento si atinaste; el Quiz no). Todas con instrucciones + práctica,
+  sin tiempo límite ni "perdiste"; colores vivos a propósito. Visor 3D
+  reutilizable (`aula/visor3d/`), 0 cuadros dibujados en reposo, cargado
+  con `lazy()`. `Aula.jsx` ahora limpia el estado al cambiar de material.
+  Detalle, decisiones y pendientes en `docs/backlog-tickets.md` (T-02,
+  T-04 y sección 7).
 
 - ✅ **T-05 — Tabla de profesores real** (18 sep 2026). Hoy "profe"
   era `isAdminEmail()`, una lista fija de un solo correo en el frontend

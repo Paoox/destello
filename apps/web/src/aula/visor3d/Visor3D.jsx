@@ -52,6 +52,7 @@ export default function Visor3D({
     objetivo = null,
     bloqueado = false,
     calibrar = false,
+    giroLibre = false,
     onCalibrar,
     onInteraccion,
 }) {
@@ -282,6 +283,19 @@ export default function Visor3D({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [llaveObjetivo, carga.estado])
 
+    // ── Giro libre: darle la vuelta completa (para explorar el modelo solo).
+    // En un caso se limita para que nadie pierda la cara de frente; explorando
+    // sí tiene sentido verla por detrás.
+    useEffect(() => {
+        const c = motor.current?.controles
+        if (!c) return
+        c.minAzimuthAngle = giroLibre ? -Infinity : -Math.PI / 2.4
+        c.maxAzimuthAngle = giroLibre ? Infinity : Math.PI / 2.4
+        c.minPolarAngle = giroLibre ? 0.15 : Math.PI / 2 - 0.8
+        c.maxPolarAngle = giroLibre ? Math.PI - 0.15 : Math.PI / 2 + 0.8
+        c.update()
+    }, [giroLibre, carga.estado])
+
     // ── Bloqueado: se ve, pero no se deja girar ───────────────────────────
     useEffect(() => {
         if (motor.current) motor.current.controles.enabled = !bloqueado
@@ -300,10 +314,10 @@ export default function Visor3D({
                 <div className="v3d-aviso">Cargando modelo 3D… {carga.avance ? `${carga.avance}%` : ''}</div>
             )}
             {carga.estado === 'error' && (
-                <div className="v3d-aviso">No se pudo cargar el modelo 3D. Puedes seguir con las opciones de la derecha.</div>
+                <div className="v3d-aviso">No se pudo cargar el modelo 3D. Intenta recargar la página.</div>
             )}
             {carga.estado === 'sin-webgl' && (
-                <div className="v3d-aviso">Este dispositivo no puede mostrar el modelo 3D. Puedes seguir con las opciones.</div>
+                <div className="v3d-aviso">Este dispositivo no puede mostrar modelos 3D.</div>
             )}
             {carga.estado === 'listo' && (
                 <>

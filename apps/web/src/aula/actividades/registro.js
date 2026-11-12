@@ -14,6 +14,7 @@ import Caso, { resumen as resumenCaso } from './Caso.jsx'
 import Sopa, { resumen as resumenSopa } from './Sopa.jsx'
 import Crucigrama, { resumen as resumenCrucigrama } from './Crucigrama.jsx'
 import Trivia, { resumen as resumenTrivia } from './Trivia.jsx'
+import Modelo3D, { resumen as resumenModelo3D } from './Modelo3D.jsx'
 
 export const TIPOS = {
     quiz: {
@@ -53,6 +54,14 @@ export const TIPOS = {
         nombre:     'Trivia',
         Componente: Trivia,
         resumen:    resumenTrivia,
+    },
+
+    // Un modelo 3D solito para explorarlo (girar, acercar, ver puntos).
+    // Sin preguntas ni calificación.
+    modelo3d: {
+        nombre:     'Modelo 3D',
+        Componente: Modelo3D,
+        resumen:    resumenModelo3D,
     },
 
     // Por construir, sobre este mismo molde:

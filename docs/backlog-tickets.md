@@ -19,7 +19,7 @@ Formato de cada ticket: **qué falta** · **por qué importa** · **dónde tocar
 | Área | Visión completa | Estado hoy | Brecha |
 |---|---|---|---|
 | Aula — video | Video en vivo real (profe + alumnos) vía OpenVidu/LiveKit | Cámara, micrófono, audio y "dar la palabra" reales, probados de punta a punta en local (T-01) ✅. Sellos/mano arriba/avance siguen sin viajar en tiempo real | 🟠 Solo falta el VPS para el lanzamiento — el código ya está |
-| Aula — actividades | 4 tipos: quiz, memorama, armar, modelo3d, todas sobre el mismo contrato (`contrato.js`) | Solo **quiz** existe de punta a punta. Las otras 3 están declaradas pero no implementadas (`registro.js`) | 🔴 3 de 4 por construir — las 3 bloqueadas hasta que Paola tenga el material real (T-02/T-03/T-04) |
+| Aula — actividades | Variedad de actividades genéricas (el contenido cambia por taller), todas sobre el mismo contrato (`contrato.js`) | 8 tipos funcionando con material de ensayo (12 nov 2026): quiz, memorama, caso clínico con oreja 3D, modelo 3D para explorar, sopa de letras, crucigrama, trivia ✅. Falta **armar** (T-03) y que el avance de cada alumno le llegue a la profe en tiempo real | 🟠 Falta T-03, el material real de cada taller y el avance en vivo |
 | Aula — profesores | Tabla `profesores` real, con permisos propios (solo su salón, no el panel financiero) | `esProfe` = `isAdminEmail()` — cualquier admin ve todo; no hay concepto de "profesor externo" | 🔴 Riesgo de seguridad, no solo pendiente |
 | Accesos | Login sin códigos, activación transaccional, relación por `usuario_id` | Login sin códigos ✅, activación unificada y transaccional ✅, modelo de Resplandor retirado por completo, `POST /auth/login` viejo retirado ✅ (T-14a/b/c + T-33, 18 sep, verificado en sitio real). Solo Google/WhatsApp para entrar. Queda: relación por email (T-13, diferida) | 🟠 Solo T-13 real, ver sección 4 |
 | Bot Faro | Menú completo, reporte de pago con foto, diagnóstico automático | Menú y opción 2 (talleres) funcionando ✅. Reporte de pago con foto: el bot **ignora imágenes por completo** | 🟡 Mitad implementado |
@@ -291,7 +291,13 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
   servidor de video corriendo en el VPS; sitio y bot funcionando de punta a
   punta contra el VPS; la Toshiba puede apagarse sin que Destello se caiga.
 
-### T-02 — Actividad: Memorama
+### ~~T-02 — Actividad: Memorama~~ ✅ CERRADO (11 nov 2026, commit `52a8baa`)
+- `Memorama.jsx`: 5 parejas (10 cartas), instrucciones + tutorial, sin
+  tiempo límite. Se construyó con material de ensayo a partir de los
+  prototipos de Paola (`mini-juegos/`, carpeta local, fuera del repo) — ella
+  decidió no esperar al material real: los juegos son genéricos y solo cambia
+  el contenido. Lo que sigue abajo es la descripción original del ticket.
+
 - **Qué falta:** componente que exporte `Componente` + `resumen`, sumado a
   `TIPOS` en `apps/web/src/aula/actividades/registro.js`. Contenido = parejas a
   destapar, viene de la plantilla del taller (no hardcodeado) — pensado desde
@@ -317,7 +323,28 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
 - **Dónde tocar:** `apps/web/src/aula/actividades/Armar.jsx` + `registro.js`.
 - **Criterio de terminado:** mismo checklist del contrato que T-02.
 
-### T-04 — Actividad: Modelo 3D (puntos marcables)
+### ~~T-04 — Actividad: Modelo 3D (puntos marcables)~~ ✅ CERRADO (12 nov 2026, commits `1215856` y siguiente)
+- **Visor reutilizable** `apps/web/src/aula/visor3d/Visor3D.jsx` (three.js
+  vanilla): dibuja solo cuando algo cambia (0 cuadros en reposo, medido), la
+  resolución se topa en 1.5x, libera todo el WebGL al desmontarse, y se carga
+  con `lazy()` — three.js solo se descarga al abrir una actividad 3D. Puntos
+  como `{x, y}` en % del modelo visto de frente (se pegan a la superficie con
+  un rayo); botón "Coordenadas" (solo profe) para sacarlas con un clic.
+  Giro con tope (frente y lados, no por detrás — decisión de Paola, la parte
+  de atrás de la oreja no luce); `giroLibre` lo abre por material.
+- **Dos actividades lo usan:** `caso` (`Caso.jsx` — decisiones paso a paso
+  sobre la oreja, con semillas/balines y resultado con video al final) y
+  `modelo3d` (`Modelo3D.jsx` — la oreja sola para explorar, con lista de
+  puntos de referencia opcional; sin calificación).
+- **Modelo:** `public/contenido/auriculoterapia/modelos/oreja.glb` (12 MB →
+  1.27 MB). ⚠️ Viene de Sketchfab: **falta revisar su licencia** (crédito al
+  autor / uso comercial) antes de usarlo en clases pagadas.
+- **Pendiente:** confirmar con Paola las coordenadas de los puntos (se
+  tomaron tal cual de su prototipo de decisiones).
+- **De paso:** `vite.config.js` tenía three.js en `manualChunks`, lo que lo
+  precargaba en TODAS las páginas (~514 KB); se quitó.
+- Lo que sigue abajo es la descripción original del ticket.
+
 - **Qué falta:** visor 3D con puntos que se pueden marcar (ej. puntos de
   acupuntura para auriculoterapia). El propio código lo marca como
   "la prueba de fuego" del contrato — el más difícil.
@@ -1285,7 +1312,29 @@ se llama desde el manejador principal de mensajes.
 
 ---
 
-## 7. Cómo revisar las actividades pendientes (T-02, T-03, T-04)
+## 7. Cómo revisar las actividades pendientes (T-03 y las que vengan)
+
+**Hoy existen (12 nov 2026):** quiz, memorama, caso, modelo3d, sopa,
+crucigrama y trivia. Utilidades compartidas en
+`apps/web/src/aula/actividades/comun.js` (`useAltoDelPizarron`, `useTamano`,
+`barajar`, `normalizarPalabra`, `COLORES_VIVOS`). Material de ensayo en
+`apps/web/src/pages/materialesDeEnsayo.js`; se abre uno directo con
+`/aula-nueva/<id>?actividad=<id-del-material>`.
+
+Molde que siguen los juegos (decisión de Paola): instrucciones → práctica
+corta → juego; **sin tiempo límite ni pantalla de "perdiste"** (el reloj, si
+existe, es opcional y viene apagado); colores vivos a propósito; lo generado
+(tablero, orden) se guarda en `estado` para que la profe y quien regresa vean
+lo mismo; la profe tiene "Ver soluciones" pero **nunca se marca la respuesta
+correcta mientras se juega**.
+
+⚠️ Única excepción a la regla 5 de abajo, ya hecha: `Aula.jsx` limpia el
+`estado` de todas al cambiar de material (`elegirActividad`). Sin eso, el
+tablero de una actividad se quedaba y la siguiente lo leía (una sopa nueva
+mostraba la vieja; el crucigrama tronaba con un tablero de sopa). Es del
+contrato, no de un juego en particular. Aun así, cada actividad valida que
+el tablero guardado sea suyo antes de usarlo.
+
 
 Antes de construir cualquiera, releer `apps/web/src/aula/actividades/contrato.js`
 completo — es, textualmente, "el archivo más importante del aula". Checklist
