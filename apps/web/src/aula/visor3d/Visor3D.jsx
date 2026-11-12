@@ -53,6 +53,7 @@ export default function Visor3D({
     bloqueado = false,
     calibrar = false,
     giroLibre = false,
+    credito = null,
     onCalibrar,
     onInteraccion,
 }) {
@@ -321,6 +322,13 @@ export default function Visor3D({
             )}
             {carga.estado === 'listo' && (
                 <>
+                    {/* Crédito del autor: lo pide la licencia del modelo (p. ej. CC BY). */}
+                    {credito && (
+                        <a className="v3d-credito" href={credito.url} target="_blank" rel="noreferrer"
+                            onClick={e => { if (!credito.url) e.preventDefault() }}>
+                            {credito.texto}
+                        </a>
+                    )}
                     <span className="v3d-pista">{bloqueado ? 'Espera a que tu profe libere el modelo' : 'Arrastra para girar · rueda o pellizca para acercar'}</span>
                     <button className="v3d-frontal" onClick={vistaFrontal} disabled={bloqueado}>Vista frontal</button>
                 </>
@@ -427,6 +435,11 @@ const CSS = `
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 9px; border-radius: 999px;
     font-size: 10.5px; color: #cbd5e1; background: rgba(15, 23, 42, .75); pointer-events: none;
 }
+.v3d-credito {
+    position: absolute; top: 8px; right: 10px; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 9.5px; color: rgba(203, 213, 225, .55); text-decoration: none;
+}
+.v3d-credito:hover { color: #cbd5e1; text-decoration: underline; }
 .v3d-frontal {
     position: absolute; right: 10px; bottom: 10px; padding: 5px 11px; border-radius: 999px;
     font-size: 11px; font-weight: 600; color: #5eead4; cursor: pointer;

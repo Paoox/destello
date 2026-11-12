@@ -13,7 +13,8 @@
  *     titulo: 'Reto clínico: tratamiento de insomnio',
  *     introduccion: 'Tu paciente Roberto, 42 años, …',
  *     datos: [{ etiqueta: 'Síntoma clave', valor: 'Insomnio y agitación' }],
- *     modelo: { url: '/contenido/…/oreja.glb', rotacion: [0, 0, 0], espejo: false },  // opcional
+ *     modelo: { url: '/contenido/…/oreja.glb', rotacion: [0, 0, 0], espejo: false,
+ *               credito: { texto, url } },  // opcional; credito si la licencia lo pide
  *     marcadores: [{ id: 'semilla', nombre: 'Semilla de vaccaria' }, …],   // opcional
  *     pasos: [{
  *       id: 'p1', titulo: 'Punto ansiolítico principal',
@@ -188,6 +189,7 @@ export default function Caso({ contenido, estado, onCambio, liberado, esProfe })
                                         url={contenido.modelo.url}
                                         rotacion={contenido.modelo.rotacion}
                                         espejo={contenido.modelo.espejo}
+                                        credito={contenido.modelo.credito}
                                         puntos={puntos}
                                         objetivo={previa?.punto ?? null}
                                         bloqueado={!liberado}

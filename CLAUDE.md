@@ -507,8 +507,10 @@ Detalle completo y cómo diagnosticarlo en `docs/backlog-tickets.md` (T-S1).
   material de ensayo (ver "Lo que Está Terminado"). Falta: `armar` (T-03),
   el **material real** de cada taller (Paola), y que el avance de cada
   alumno le llegue a la profe en tiempo real (hoy es local, mismo caso que
-  sellos/mano arriba). ⚠️ Revisar la **licencia del modelo 3D de la oreja**
-  (Sketchfab) antes de usarlo en clases pagadas.
+  sellos/mano arriba). La oreja 3D es CC BY 4.0 (Sketchfab, ssavish274):
+  uso comercial libre con crédito, que el visor ya muestra
+  (`modelo.credito`). Todo modelo 3D nuevo debe traer su crédito si su
+  licencia lo pide.
 
 ### 🟠 Deuda técnica — las tablas se relacionan por CORREO, no por id
 Detectado por Paola el 21 jul 2026. `chispas.usuario_email` y

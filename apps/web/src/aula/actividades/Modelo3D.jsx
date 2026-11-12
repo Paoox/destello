@@ -10,7 +10,8 @@
  *   {
  *     titulo: 'La oreja en 3D',
  *     descripcion: 'Gírala y acércala…',                         // opcional
- *     modelo: { url: '/contenido/…/oreja.glb', rotacion, espejo },
+ *     modelo: { url: '/contenido/…/oreja.glb', rotacion, espejo,
+ *               credito: { texto: 'Modelo: … · autor · CC BY 4.0', url } },  // si la licencia lo pide
  *     giroLibre: false,   // true = vuelta completa (por defecto no: la parte de atrás del modelo no luce)
  *     puntos: [{ id, nombre, descripcion, x, y }],              // opcional
  *   }
@@ -92,6 +93,7 @@ export default function Modelo3D({ contenido, estado, onCambio, liberado }) {
                             url={contenido.modelo.url}
                             rotacion={contenido.modelo.rotacion}
                             espejo={contenido.modelo.espejo}
+                            credito={contenido.modelo.credito}
                             giroLibre={contenido.giroLibre ?? false}
                             puntos={marcas}
                             objetivo={actual ? { x: actual.x, y: actual.y } : null}

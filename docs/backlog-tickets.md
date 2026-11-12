@@ -337,8 +337,11 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
   `modelo3d` (`Modelo3D.jsx` — la oreja sola para explorar, con lista de
   puntos de referencia opcional; sin calificación).
 - **Modelo:** `public/contenido/auriculoterapia/modelos/oreja.glb` (12 MB →
-  1.27 MB). ⚠️ Viene de Sketchfab: **falta revisar su licencia** (crédito al
-  autor / uso comercial) antes de usarlo en clases pagadas.
+  1.27 MB). Es "Human Ear Model" de ssavish274 en Sketchfab, licencia
+  **CC BY 4.0** (venía en los metadatos del .glb): uso libre, también
+  comercial, dando crédito. ✅ El visor muestra el crédito en una esquina
+  (`modelo.credito` en el contenido) — todo modelo nuevo debe traer el suyo
+  si su licencia lo pide.
 - **Pendiente:** confirmar con Paola las coordenadas de los puntos (se
   tomaron tal cual de su prototipo de decisiones).
 - **De paso:** `vite.config.js` tenía three.js en `manualChunks`, lo que lo
