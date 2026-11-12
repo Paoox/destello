@@ -508,9 +508,9 @@ Detalle completo y cómo diagnosticarlo en `docs/backlog-tickets.md` (T-S1).
   el **material real** de cada taller (Paola), y que el avance de cada
   alumno le llegue a la profe en tiempo real (hoy es local, mismo caso que
   sellos/mano arriba). La oreja 3D es CC BY 4.0 (Sketchfab, ssavish274):
-  uso comercial libre con crédito, que el visor ya muestra
-  (`modelo.credito`). Todo modelo 3D nuevo debe traer su crédito si su
-  licencia lo pide.
+  uso comercial libre con crédito. Por decisión de Paola el crédito NO se
+  muestra en el aula; ⚠️ queda pendiente acreditarlo en otro lado (o
+  cambiar a un modelo CC0/propio) para cumplir la licencia.
 
 ### 🟠 Deuda técnica — las tablas se relacionan por CORREO, no por id
 Detectado por Paola el 21 jul 2026. `chispas.usuario_email` y

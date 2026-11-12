@@ -339,9 +339,11 @@ docker exec -it destello-api node -e "console.log(process.env.ADMIN_PASSWORD_HAS
 - **Modelo:** `public/contenido/auriculoterapia/modelos/oreja.glb` (12 MB →
   1.27 MB). Es "Human Ear Model" de ssavish274 en Sketchfab, licencia
   **CC BY 4.0** (venía en los metadatos del .glb): uso libre, también
-  comercial, dando crédito. ✅ El visor muestra el crédito en una esquina
-  (`modelo.credito` en el contenido) — todo modelo nuevo debe traer el suyo
-  si su licencia lo pide.
+  comercial, dando crédito. Se llegó a mostrar el crédito en el visor, pero
+  Paola decidió quitarlo (12 nov 2026: la liga sacaba al alumno del aula).
+  ⚠️ Sin crédito visible el uso queda fuera de lo que pide la licencia —
+  pendiente decidir dónde acreditarlo sin estorbar (créditos del taller,
+  página "acerca de") o cambiar a un modelo CC0/propio.
 - **Pendiente:** confirmar con Paola las coordenadas de los puntos (se
   tomaron tal cual de su prototipo de decisiones).
 - **De paso:** `vite.config.js` tenía three.js en `manualChunks`, lo que lo

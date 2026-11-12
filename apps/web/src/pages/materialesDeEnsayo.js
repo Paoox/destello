@@ -13,13 +13,9 @@
 
 const OREJA = '/contenido/auriculoterapia'
 
-// La oreja 3D es "Human Ear Model" de ssavish274 en Sketchfab, licencia
-// CC BY 4.0: se puede usar (también en clases pagadas) dando crédito al autor.
-// Por eso el visor lo muestra en una esquina. Venía en los metadatos del .glb.
-const CREDITO_OREJA = {
-    texto: 'Modelo: Human Ear Model · ssavish274 · CC BY 4.0',
-    url:   'https://sketchfab.com/3d-models/human-ear-model-e1f0f4b6fae54d59bdc3c6b2534eb411',
-}
+// La oreja 3D es "Human Ear Model" de ssavish274 en Sketchfab (CC BY 4.0,
+// según los metadatos del .glb). Por decisión de Paola el crédito NO se
+// muestra en el aula.
 
 /* ── Lo que aparece en el menú de materiales ─────────────────────────── */
 
@@ -49,7 +45,7 @@ const CASO_INSOMNIO = {
                 valor: "7 auriculopuntos"
             }
         ],
-        modelo: { url: `${OREJA}/modelos/oreja.glb`, credito: CREDITO_OREJA },
+        modelo: { url: `${OREJA}/modelos/oreja.glb` },
         marcadores: [
             {
                 id: "semilla",
@@ -338,7 +334,7 @@ export const MATERIALES_DE_ENSAYO = [
         contenido: {
             titulo:      'La oreja en 3D',
             descripcion: 'Gírala con el dedo o el mouse y acércala. Toca un punto de la lista para ubicarlo.',
-            modelo:      { url: `${OREJA}/modelos/oreja.glb`, credito: CREDITO_OREJA },
+            modelo:      { url: `${OREJA}/modelos/oreja.glb` },
             puntos: [
                 { id: 'shenmen',   nombre: 'Shen Men',    x: 46, y: 22, descripcion: 'Vértice superior de la fosa triangular; modula la actividad cortical y la sedación profunda.' },
                 { id: 'rinon',     nombre: 'Riñón',       x: 50, y: 38, descripcion: 'Concha cymba, debajo de la cruz del antihélix.' },
