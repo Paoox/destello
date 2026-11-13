@@ -51,6 +51,8 @@ services:
       - LIVEKIT_URL=${LIVEKIT_URL}
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      # Cuentas admin que entran como profe a cualquier aula (separadas por coma).
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
     depends_on:
       redis:
         condition: service_healthy

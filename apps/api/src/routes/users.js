@@ -14,6 +14,7 @@ import { registrarEvento } from '../services/eventoService.js'
 import * as asistenciaService from '../services/asistenciaService.js'
 import * as certificadoService from '../services/certificadoService.js'
 import { crearTokenVideo } from '../services/videoService.js'
+import { esProfeDelTaller } from '../services/profesorService.js'
 
 const router = Router()
 
@@ -311,10 +312,20 @@ router.get('/me/aula/:tallerId/video-token', async (req, res, next) => {
       'SELECT nombre, apellido FROM usuarios WHERE id = $1', [req.user.userId])
     const nombre = [rows[0]?.nombre, rows[0]?.apellido].filter(Boolean).join(' ') || email
 
+    // Profe = asignada a este taller (T-05) o cuenta admin (`ADMIN_EMAILS`
+    // del .env — la misma lista que en el front decide quién entra como profe
+    // a cualquier aula). El aula usa este rol para saber de quién aceptar
+    // sellos, cambio de actividad, silenciar… (ver `videoService.js`).
+    const esAdmin = (process.env.ADMIN_EMAILS ?? '')
+      .split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
+      .includes(email.toLowerCase().trim())
+    const esProfe = esAdmin || await esProfeDelTaller(req.user.userId, req.params.tallerId)
+
     const video = await crearTokenVideo({
       tallerId: req.params.tallerId,
       identity: String(req.user.userId),
       nombre,
+      rol: esProfe ? 'profe' : 'alumno',
     })
 
     res.json({ status: 'ok', video })

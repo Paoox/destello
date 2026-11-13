@@ -48,18 +48,24 @@ export function nombreSala(tallerId) {
  *   persona correcta aunque se le caiga el internet y regrese.
  * @param {string} args.nombre    Nombre a mostrar — viaja como el `name` del
  *   participante, lo lee cualquier cliente de LiveKit sin pedir nada aparte.
+ * @param {'profe'|'alumno'} [args.rol]  Viaja en la `metadata` del
+ *   participante. El aula lo usa para saber a quién hacerle caso con lo que
+ *   solo puede mandar la profe (sellos, cambiar la actividad, silenciar…).
+ *   La persona no puede cambiar su propia metadata: no le damos
+ *   `canUpdateOwnMetadata`, así que esto lo decide solo el servidor.
  * @returns {Promise<{ token: string, serverUrl: string } | null>}  `null` si
  *   el servidor de video no está configurado — el aula ya sabe mostrar
  *   "Sin video todavía" cuando `sesion.video` es `null`, así que no hace falta
  *   que este servicio invente un error.
  */
-export async function crearTokenVideo({ tallerId, identity, nombre }) {
+export async function crearTokenVideo({ tallerId, identity, nombre, rol = 'alumno' }) {
     const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env
     if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) return null
 
     const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
         identity,
         name: nombre,
+        metadata: JSON.stringify({ rol: rol === 'profe' ? 'profe' : 'alumno' }),
         // 4 h: más que cualquier clase real, para que a nadie se le venza el
         // token a media sesión. LiveKit igual vuelve a pedir uno al reconectar
         // (el aula lo hace al recargar la página, vía PageAula.jsx).
@@ -71,6 +77,7 @@ export async function crearTokenVideo({ tallerId, identity, nombre }) {
         canPublish:     true,
         canSubscribe:   true,
         canPublishData: true,
+        canUpdateOwnMetadata: false,
     })
 
     return { token: await at.toJwt(), serverUrl: LIVEKIT_URL }

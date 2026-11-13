@@ -31,6 +31,13 @@ Servicios systemd que arrancan automáticamente:
 - `destello-bot` → Bot Faro de WhatsApp
   (`WorkingDirectory=/home/pao/destello/apps/bot`, corre con node v20.20.2 de nvm)
 
+**Vigía (13 nov 2026):** `~/bin/destello-vigia.sh` en la Toshiba (cron de
+`pao`, cada 5 min y al arrancar). Levanta la API si `/health` no responde,
+consulta `/tallers` para que Supabase no pause el proyecto, y prende el bot
+si está apagado (salvo logout de WhatsApp, que pide QR). Bitácora en
+`~/destello-vigia.log`. Vive solo en el servidor, como el resto de la config.
+Acceso desde la máquina de desarrollo: `ssh toshiba` (red de casa, 192.168.1.78).
+
 ⚠️ En la Toshiba **no hay pm2**. El bot se reinicia con systemd, no con `pm2 restart`.
 
 Comandos en la Toshiba:
@@ -564,9 +571,13 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
   - **T-39** — dashboard de profesores (talleres asignados, fechas,
     material) y **T-40** — darlos de alta desde el panel sin cuenta
     previa (mismo patrón que "Crear Chispa" para demos).
-  - **T-41/T-42** — mano levantada, reacciones y chat del aula en tiempo
-    real, todos con el mismo mecanismo del canal de datos de LiveKit que
-    ya resolvió "dar la palabra" en T-01 — falta aplicarlo a estos tres.
+  - **T-41/T-42 — ✅ hechos en código (12 nov 2026), falta la prueba real
+    con OpenVidu:** mano, reacciones, chat, sellos, actividad elegida,
+    candado y avance de cada alumno viajan por el canal de datos de
+    LiveKit. Lo que solo manda la profe se acepta solo si su token dice
+    `rol: 'profe'` (lo firma la API). ⚠️ Al desplegar: agregar
+    `ADMIN_EMAILS=pao.arreola.g@gmail.com` al `.env` de la Toshiba y
+    reconstruir la API. Detalle en `docs/backlog-tickets.md` (T-41).
   - **T-43** — nombre real del profesor/taller en el aula, aprovechando
     la cuenta real que ya da T-05 (hoy depende de un campo de texto
     suelto casi siempre vacío).

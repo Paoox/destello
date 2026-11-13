@@ -1142,7 +1142,34 @@ se llama desde el manejador principal de mensajes.
   ya puede entrar con Google y ver su taller — sin pasar por el bot ni
   por lista de espera.
 
-### T-41 — Mano levantada y reacciones en tiempo real (visibles para todos)
+### ~~T-41 — Mano levantada y reacciones en tiempo real (visibles para todos)~~ ✅ HECHO EN CÓDIGO (12 nov 2026) — falta probarlo con LiveKit real
+- **Se conectó todo junto por el canal de datos de LiveKit** (mano, reacciones,
+  chat (T-42), sellos, la actividad que elige la profe, el candado y el
+  avance de cada alumno hacia la rejilla/semáforo de la profe). Los tipos de
+  mensaje están documentados arriba de `export default function Aula` en
+  `aula/Aula.jsx`; `useVideoAula.js` ahora entrega cada mensaje a un callback
+  (`alRecibir`) en lugar de un estado (dos mensajes en el mismo instante se
+  perdían) y avisa cuando alguien entra (`alLlegar`) para ponerlo al día:
+  quien recarga recupera la actividad, el candado, sus sellos y su avance.
+  Dar la palabra baja la mano sola.
+- **Seguridad:** lo que solo puede mandar la profe (sellos, cambiar actividad,
+  candado, silenciar) se acepta únicamente si el **token** de quien lo manda
+  dice `rol: 'profe'` — lo firma la API en `metadata` (`videoService.js`,
+  sin `canUpdateOwnMetadata`), así que un alumno no puede hacerse pasar por
+  la profe desde las herramientas del navegador. Profe = asignada en
+  `taller_profesores` o correo en `ADMIN_EMAILS` (variable NUEVA del `.env`
+  de la API, separada por comas; pasada en `docker-compose.yml`). Tokens sin
+  rol (anteriores al cambio) se aceptan como antes, para no romper nada.
+- **De paso:** el alumno ya ve en grande a quien el token marca como profe
+  (antes: el primer remoto con cámara).
+- **Probado:** con dos pestañas y un sustituto del canal de LiveKit (sin
+  servidor de video disponible en la sesión): actividad, candado, avance,
+  sello, mano, reacción, chat, dar la palabra y recarga — todo llega. `npm
+  test` en `apps/api`: 20/20 (nuevo: el rol viaja en el token). **Falta la
+  prueba de Paola con OpenVidu local** y desplegar la API en la Toshiba con
+  `ADMIN_EMAILS` en el `.env`.
+- Lo que sigue abajo es la descripción original del ticket.
+
 - **Pedido por Paola (18 sep 2026), tras probar T-01:** hoy `manoArriba` y
   `reaccion` (los emojis 👏❤️😮😄🤔👍 que manda el alumno) son estado
   **100% local** de cada quien — cuando alguien levanta la mano o manda
@@ -1167,7 +1194,7 @@ se llama desde el manejador principal de mensajes.
   cuando un alumno levanta la mano o manda una reacción — y viceversa,
   si aplica.
 
-### T-42 — Chat del aula en tiempo real
+### ~~T-42 — Chat del aula en tiempo real~~ ✅ HECHO EN CÓDIGO (12 nov 2026) — junto con T-41, ver arriba. Sin historial guardado, como estaba decidido; aviso de mensajes nuevos con el chat cerrado.
 - **Pedido por Paola (18 sep 2026), tras probar T-01:** el `Chat` de
   `Aula.jsx` existe visualmente (botón, panel, input) pero es **decorado**
   — `mensajes` es estado local que nunca sale del navegador. Cualquiera

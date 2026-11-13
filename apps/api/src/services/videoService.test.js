@@ -34,3 +34,22 @@ test('crearTokenVideo: con configuración completa devuelve token + serverUrl', 
 
     process.env = antes
 })
+
+test('crearTokenVideo: el rol viaja en la metadata del token (alumno por defecto)', async () => {
+    const antes = { ...process.env }
+    process.env.LIVEKIT_URL = 'ws://localhost:7880'
+    process.env.LIVEKIT_API_KEY = 'devkey'
+    process.env.LIVEKIT_API_SECRET = 'secret'
+
+    const leer = (token) => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
+    const profe = leer((await crearTokenVideo({ tallerId: 't', identity: '1', nombre: 'Ana', rol: 'profe' })).token)
+    const alumno = leer((await crearTokenVideo({ tallerId: 't', identity: '2', nombre: 'Luis' })).token)
+    const raro = leer((await crearTokenVideo({ tallerId: 't', identity: '3', nombre: 'X', rol: 'admin' })).token)
+
+    assert.deepEqual(JSON.parse(profe.metadata), { rol: 'profe' })
+    assert.deepEqual(JSON.parse(alumno.metadata), { rol: 'alumno' })
+    assert.deepEqual(JSON.parse(raro.metadata), { rol: 'alumno' })
+    assert.equal(profe.video.canUpdateOwnMetadata, false)
+
+    process.env = antes
+})

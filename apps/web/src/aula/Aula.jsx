@@ -170,21 +170,21 @@ function Semaforo({ activo, size = 8 }) {
    Ventana izquierda — el video
    ══════════════════════════════════════════════════════════════════════════ */
 
-function VentanaVideo({ sesion, video, pistasCamara, onAbrirChat, chatAbierto, onMicro, onReaccionar, onSilenciarATodos }) {
+function VentanaVideo({ sesion, video, pistasCamara, onAbrirChat, chatAbierto, chatNuevos, onMicro, onMano, onReaccionar, onSilenciarATodos }) {
     const { rol, taller, personas, yo } = sesion
     const esProfe = rol === 'profe'
 
     // ── Quién se ve en grande ──────────────────────────────────────────
     //
     // La profe se ve a sí misma (así sabe qué está transmitiendo). El
-    // alumno debería ver siempre a LA PROFE — pero el contrato de hoy no
-    // dice quién, entre `personas`, es la profe (eso llega con T-05, la
-    // tabla de profesores). Mientras tanto: el primer remoto con cámara
-    // prendida. Con un profe + un salón chico de prueba da el resultado
-    // correcto; no es la regla final.
+    // alumno ve a LA PROFE: el rol viene del token que firmó el servidor
+    // (`persona.rol`). Si nadie trae rol (tokens viejos), el primer remoto
+    // con cámara prendida, como antes.
+    const laProfe = personas.find(p => p.rol === 'profe' && p.camara)
+        ?? personas.find(p => p.camara)
     const pistaGrande = esProfe
         ? pistasCamara?.[yo.id]
-        : pistasCamara?.[[...personas].find(p => p.camara)?.id]
+        : pistasCamara?.[laProfe?.id]
 
     return (
         <section className="aula-ventana" style={{
@@ -265,6 +265,8 @@ function VentanaVideo({ sesion, video, pistasCamara, onAbrirChat, chatAbierto, o
                 video={video}
                 onAbrirChat={onAbrirChat}
                 chatAbierto={chatAbierto}
+                chatNuevos={chatNuevos}
+                onMano={onMano}
                 onReaccionar={onReaccionar}
                 onSilenciarATodos={onSilenciarATodos}
             />
@@ -368,10 +370,10 @@ function FichaPersona({ persona, pista, esProfe, soyYo, onMicro }) {
  * no hacen nada — el hook ya se encarga de que `toggleMicro`/`toggleCamara`
  * sean no-ops seguros en ese caso.
  */
-function BarraControles({ sesion, video, onAbrirChat, chatAbierto, onReaccionar, onSilenciarATodos }) {
+function BarraControles({ sesion, video, onAbrirChat, chatAbierto, chatNuevos = 0, onMano, onReaccionar, onSilenciarATodos }) {
     const { rol, yo } = sesion
     const esProfe = rol === 'profe'
-    const [mano, setMano] = useState(false)
+    const mano = yo.manoArriba === true
     const micro  = video?.microActivo  ?? false
     const camara = video?.camaraActiva ?? false
 
@@ -404,7 +406,7 @@ function BarraControles({ sesion, video, onAbrirChat, chatAbierto, onReaccionar,
             </BotonIcono>
 
             {!esProfe && (
-                <BotonIcono titulo="Levantar la mano" activo={mano} onClick={() => setMano(m => !m)}>
+                <BotonIcono titulo={mano ? 'Bajar la mano' : 'Levantar la mano'} activo={mano} onClick={onMano}>
                     <Hand size={17} />
                 </BotonIcono>
             )}
@@ -444,10 +446,19 @@ function BarraControles({ sesion, video, onAbrirChat, chatAbierto, onReaccionar,
                 </button>
             )}
 
-            <div style={{ marginLeft: 'auto' }}>
-                <BotonIcono titulo="Chat de la clase" activo={chatAbierto} onClick={onAbrirChat}>
+            <div style={{ marginLeft: 'auto', position: 'relative' }}>
+                <BotonIcono titulo={chatNuevos ? `Chat de la clase (${chatNuevos} nuevos)` : 'Chat de la clase'} activo={chatAbierto} onClick={onAbrirChat}>
                     <ChatCircleDots size={17} />
                 </BotonIcono>
+                {/* Mensajes que llegaron con el chat cerrado */}
+                {chatNuevos > 0 && !chatAbierto && (
+                    <span style={{
+                        position: 'absolute', top: -3, right: -3, minWidth: 16, height: 16,
+                        padding: '0 4px', borderRadius: 99, background: 'var(--color-amber-500, #D97706)',
+                        color: '#fff', fontSize: 10, fontWeight: 700, lineHeight: '16px', textAlign: 'center',
+                        pointerEvents: 'none',
+                    }}>{chatNuevos > 9 ? '9+' : chatNuevos}</span>
+                )}
             </div>
         </div>
     )
@@ -457,10 +468,11 @@ function BarraControles({ sesion, video, onAbrirChat, chatAbierto, onReaccionar,
    Ventana derecha — el pizarrón
    ══════════════════════════════════════════════════════════════════════════ */
 
-function VentanaPizarron({ sesion, onSellar, onSellarATodos, onElegirActividad, onAvanzar }) {
+function VentanaPizarron({ sesion, onSellar, onSellarATodos, onElegirActividad, onLiberar, onAvanzar }) {
     const { rol, personas, yo, pizarron } = sesion
     const esProfe = rol === 'profe'
-    const [liberado, setLiberado] = useState(pizarron.liberado)
+    // El candado lo guarda el aula (no esta ventana) porque viaja a todas.
+    const liberado = pizarron.liberado === true
     const [soloLosQueNecesitan, setSoloLosQueNecesitan] = useState(false)
     const [abierta, setAbierta] = useState(null)   // pizarrón de quién estoy viendo
     const [bandeja, setBandeja] = useState(false)  // ¿está abierta la bandeja de sellos?
@@ -606,7 +618,7 @@ function VentanaPizarron({ sesion, onSellar, onSellarATodos, onElegirActividad, 
                         <BotonIcono
                             titulo={liberado ? 'Bloquear: que solo vean mi modelo' : 'Liberar: que cada quien tome el suyo'}
                             activo={liberado}
-                            onClick={() => setLiberado(l => !l)}
+                            onClick={() => onLiberar?.(!liberado)}
                         >
                             {liberado ? <LockOpen size={16} /> : <Lock size={16} />}
                         </BotonIcono>
@@ -841,8 +853,7 @@ function MiniPizarron({ persona, onClick, sellando = null, resumen = null }) {
  *
  * Ocupa el ancho de la ventana de video y empuja lo demás, como pidió Paola.
  */
-function Chat({ onCerrar }) {
-    const [mensajes, setMensajes] = useState([])
+function Chat({ mensajes, onEnviar, onCerrar }) {
     const [texto, setTexto] = useState('')
     const finRef = useRef(null)
 
@@ -852,7 +863,7 @@ function Chat({ onCerrar }) {
         e.preventDefault()
         const t = texto.trim()
         if (!t) return
-        setMensajes(m => [...m, { id: m.length, de: 'Tú', texto: t }])
+        onEnviar?.(t)
         setTexto('')
     }
 
@@ -890,7 +901,7 @@ function Chat({ onCerrar }) {
             </div>
 
             <form onSubmit={enviar} style={{ display: 'flex', gap: 6, padding: 'var(--space-2) var(--space-3)', borderTop: '1px solid var(--border-subtle)' }}>
-                <input
+                <input maxLength={LARGO_CHAT}
                     value={texto}
                     onChange={e => setTexto(e.target.value)}
                     placeholder="Escribe algo…"
@@ -910,8 +921,32 @@ function Chat({ onCerrar }) {
    El aula completa
    ══════════════════════════════════════════════════════════════════════════ */
 
+/* ── Lo que viaja por el canal de datos de LiveKit ──────────────────────────
+ *
+ *   De la profe (solo se les hace caso si el token dice rol 'profe'):
+ *     dar_palabra / silenciar   { para }            — ya existían (T-01)
+ *     pizarron   { actividadId, liberado }          — qué se ve y si se puede tocar
+ *     sello      { persona|null, sello }            — null = a todo el grupo
+ *     sellos     { porPersona: { id: [sellos] } }   — al que llega, para ponerlo al día
+ *     tu_estado  { actividadId, estado }            — su avance de vuelta (si recargó,
+ *                                                     o si la profe trabajó en su pizarrón)
+ *   De cualquiera:
+ *     mano       { arriba }
+ *     reaccion   { reaccion }
+ *     chat       { texto }
+ *     avance     { actividadId, estado }            — de alumno a profe(s), para la rejilla
+ *
+ * Nada de esto pasa por la API de Destello ni se guarda en la base: vive lo
+ * que dura la clase. El nombre de quien manda SIEMPRE se toma de LiveKit (lo
+ * firmó el servidor), nunca de lo que diga el mensaje.
+ */
+const LARGO_CHAT = 500
+const MAX_MENSAJES_CHAT = 200
+
 export default function Aula({ sesion }) {
     const [chatAbierto, setChatAbierto] = useState(false)
+    const [chat, setChat] = useState([])          // { id, de, texto, mio }
+    const [chatNuevos, setChatNuevos] = useState(0)
 
     // ── La conexión real de video (T-01) ──────────────────────────────────
     //
@@ -919,7 +954,11 @@ export default function Aula({ sesion }) {
     // aquí — ver la regla del contrato). Si viene `null` (sin servidor
     // configurado, o sin acceso) el hook no conecta nada y todo sigue como
     // antes: "Sin video todavía".
-    const video = useVideoAula(sesion.video)
+    const video = useVideoAula(sesion.video, {
+        alRecibir: (m, de) => recibir(m, de),
+        alLlegar:  (identity, rol) => ponerAlDia(identity, rol),
+    })
+    const esProfe = sesion.rol === 'profe'
 
     // ── El estado vivo de la clase ────────────────────────────────────────
     //
@@ -927,14 +966,23 @@ export default function Aula({ sesion }) {
     // cambia la profe desde el pizarrón y se ven en la tira de video: si cada
     // ventana guardara su propia copia, se desincronizarían.
     //
-    // `personas` ya viene de LiveKit (ver el `useEffect` de abajo) en vez de
-    // estado inventado. Lo que TODAVÍA es local — sellos, mano arriba, avance
-    // de actividad — sigue siéndolo: es la siguiente pieza después de validar
-    // que cámara y micrófono funcionan bien. **La forma de los datos no
-    // cambia** cuando esa pieza también se conecte — por eso se construye así.
+    // `personas` viene de LiveKit (ver el `useEffect` de abajo). Sellos, mano,
+    // reacciones, chat, la actividad elegida, el candado y el avance viajan
+    // por el canal de datos (ver `recibir` y los tipos de mensaje arriba de
+    // este componente) — cada pantalla aplica lo que le llega a su copia.
     const [personas, setPersonas] = useState(sesion.personas)
     const [yo, setYo] = useState(sesion.yo)
     const [actividadId, setActividadId] = useState(sesion.pizarron.actividadId ?? null)
+    const [liberado, setLiberado] = useState(sesion.pizarron.liberado ?? false)
+    // La misma actividad, pero leída al instante: dos mensajes seguidos (el
+    // pizarrón y luego "tu estado") llegan antes de que React vuelva a pintar,
+    // y el segundo tiene que compararse contra la actividad que trajo el primero.
+    const actividadRef = useRef(actividadId)
+
+    // Memoria de la clase por persona: si alguien se cae y vuelve a entrar,
+    // LiveKit la saca y la vuelve a meter a la lista — sin esto perdería sus
+    // sellos y su avance. Solo la profe la llena (es quien pone al día).
+    const memoria = useRef({ insignias: {}, estados: {} })
 
     // Quién está de verdad en la sala, según LiveKit. Se conserva el estado
     // social (sellos, mano arriba, avance) de quien ya estaba; a quien llega
@@ -953,8 +1001,9 @@ export default function Aula({ sesion }) {
                     reaccion:           porId.get(r.identity)?.reaccion ?? null,
                     silenciadoPorProfe: porId.get(r.identity)?.silenciadoPorProfe ?? false,
                     interactuando:      porId.get(r.identity)?.interactuando ?? false,
-                    insignias:          porId.get(r.identity)?.insignias ?? [],
-                    estadoActividad:    porId.get(r.identity)?.estadoActividad ?? null,
+                    insignias:          porId.get(r.identity)?.insignias ?? memoria.current.insignias[r.identity] ?? [],
+                    estadoActividad:    porId.get(r.identity)?.estadoActividad ?? memoria.current.estados[r.identity] ?? null,
+                    rol:                r.rol,
                     // Cámara/micrófono SIEMPRE vienen de LiveKit, nunca se
                     // conserva el valor viejo — es justo el dato que cambió.
                     camara: r.camaraActiva,
@@ -979,21 +1028,32 @@ export default function Aula({ sesion }) {
     // queremos que React reuse el <audio> de uno para la pista del otro.
     const pistasMicroRemoto = video.remotos.filter(r => r.microTrack)
 
-    /** Le pone un sello a una persona. Sin repetir el mismo dos veces. */
+    /**
+     * Pone un sello (sin repetir el mismo dos veces). `personaId` null = a
+     * todo el grupo. Es lo mismo si lo puso yo o si me llegó de la profe.
+     */
+    const aplicarSello = (personaId, selloId) => {
+        const agregar = (p) => {
+            if (p.insignias?.includes(selloId)) return p
+            const insignias = [...(p.insignias ?? []), selloId]
+            memoria.current.insignias[p.id] = insignias
+            return { ...p, insignias }
+        }
+        setPersonas(lista => lista.map(p => personaId == null || p.id === personaId ? agregar(p) : p))
+        // "A todos" es a los alumnos: la profe no se sella a sí misma.
+        setYo(actual => (personaId == null ? !esProfe : actual.id === personaId) ? agregar(actual) : actual)
+    }
+
+    /** Le pone un sello a una persona — y le llega a todas. */
     const sellar = (personaId, selloId) => {
-        const agregar = (p) => p.insignias?.includes(selloId)
-            ? p
-            : { ...p, insignias: [...(p.insignias ?? []), selloId] }
-        setPersonas(lista => lista.map(p => p.id === personaId ? agregar(p) : p))
-        setYo(actual => actual.id === personaId ? agregar(actual) : actual)
+        aplicarSello(personaId, selloId)
+        video.enviar({ tipo: 'sello', persona: personaId, sello: selloId })
     }
 
     /** El mismo sello para todo el grupo. */
     const sellarATodos = (selloId) => {
-        const agregar = (p) => p.insignias?.includes(selloId)
-            ? p
-            : { ...p, insignias: [...(p.insignias ?? []), selloId] }
-        setPersonas(lista => lista.map(agregar))
+        aplicarSello(null, selloId)
+        video.enviar({ tipo: 'sello', persona: null, sello: selloId })
     }
 
     /**
@@ -1002,6 +1062,19 @@ export default function Aula({ sesion }) {
      */
     const elegirActividad = (id) => {
         if (id === actividadId) return
+        cambiarActividad(id)
+        memoria.current.estados = {}
+        video.enviar({ tipo: 'pizarron', actividadId: id, liberado })
+    }
+
+    /** El candado: liberado = cada quien trabaja en lo suyo. Viaja a todas. */
+    const cambiarLiberado = (valor) => {
+        setLiberado(valor)
+        video.enviar({ tipo: 'pizarron', actividadId, liberado: valor })
+    }
+
+    const cambiarActividad = (id) => {
+        actividadRef.current = id
         setActividadId(id)
         // Actividad nueva = hoja en blanco para todas. El estado guardado es de
         // la actividad anterior (su tablero, sus respuestas): si se quedara,
@@ -1027,10 +1100,25 @@ export default function Aula({ sesion }) {
      * avance y se le olvide el semáforo.
      */
     const avanzar = (personaId, estadoNuevo) => {
+        aplicarAvance(personaId, estadoNuevo)
+        if (personaId === yo.id) {
+            // Mi propio avance: a la(s) profe(s), para su rejilla y semáforo.
+            if (!esProfe) video.enviar({ tipo: 'avance', actividadId, estado: estadoNuevo }, profesEnSala())
+        } else if (esProfe) {
+            // La profe movió el pizarrón de una alumna: que ella lo vea también.
+            video.enviar({ tipo: 'tu_estado', actividadId, estado: estadoNuevo }, personaId)
+        }
+    }
+
+    const aplicarAvance = (personaId, estadoNuevo) => {
         const aplicar = (p) => ({ ...p, estadoActividad: estadoNuevo, interactuando: true })
+        if (personaId !== yo.id) memoria.current.estados[personaId] = estadoNuevo
         setPersonas(lista => lista.map(p => p.id === personaId ? aplicar(p) : p))
         setYo(a => a.id === personaId ? aplicar(a) : a)
     }
+
+    /** A quién mandarle lo que es solo para la profe. Tokens sin rol: a todos. */
+    const profesEnSala = () => video.remotos.filter(r => r.rol !== 'alumno').map(r => r.identity)
 
     /**
      * El alumno manda una reacción. Se borra sola a los 4 segundos.
@@ -1041,6 +1129,32 @@ export default function Aula({ sesion }) {
     const reaccionar = (reaccionId) => {
         setYo(a => ({ ...a, reaccion: reaccionId }))
         setTimeout(() => setYo(a => a.reaccion === reaccionId ? { ...a, reaccion: null } : a), 4000)
+        video.enviar({ tipo: 'reaccion', reaccion: reaccionId })
+    }
+
+    /** Lo mismo, cuando la reacción es de alguien más. */
+    const verReaccion = (personaId, reaccionId) => {
+        setPersonas(lista => lista.map(p => p.id === personaId ? { ...p, reaccion: reaccionId } : p))
+        setTimeout(() => setPersonas(lista => lista.map(p =>
+            p.id === personaId && p.reaccion === reaccionId ? { ...p, reaccion: null } : p)), 4000)
+    }
+
+    /** Levantar / bajar la mano. */
+    const ponerMano = (arriba) => {
+        setYo(a => ({ ...a, manoArriba: arriba }))
+        video.enviar({ tipo: 'mano', arriba })
+    }
+
+    /** Un mensaje al chat de la clase. */
+    const enviarChat = (texto) => {
+        const t = String(texto).slice(0, LARGO_CHAT)
+        agregarAlChat({ de: 'Tú', texto: t, mio: true })
+        video.enviar({ tipo: 'chat', texto: t })
+    }
+
+    const agregarAlChat = (m) => {
+        setChat(lista => [...lista, { ...m, id: `${Date.now()}-${Math.random()}` }].slice(-MAX_MENSAJES_CHAT))
+        if (!m.mio && !chatAbierto) setChatNuevos(n => n + 1)
     }
 
     /**
@@ -1079,35 +1193,104 @@ export default function Aula({ sesion }) {
 
         // Esto es lo que de verdad viaja a la otra persona — lo de arriba
         // solo actualiza lo que TÚ ves en tu propia pantalla.
-        video.enviarControl(leDabaLaPalabra ? 'dar_palabra' : 'silenciar', personaId)
+        video.enviar({ tipo: leDabaLaPalabra ? 'dar_palabra' : 'silenciar' }, personaId)
     }
 
     /** El botón "Silenciar a todos": mismo mecanismo, sin destinatario único. */
     const silenciarMicrosATodos = () => {
         setPersonas(lista => lista.map(p => ({ ...p, silenciadoPorProfe: true, micro: false })))
-        video.enviarControl('silenciar', null)
+        video.enviar({ tipo: 'silenciar' })
     }
 
     /**
-     * Lo que llega por el canal de datos de LiveKit (`useVideoAula.js`) desde
-     * la profe. Solo el propio interesado actualiza SU `yo` — un `silenciar`
-     * o `dar_palabra` dirigido a otra persona ya ni le llega (LiveKit filtra
-     * por `destinationIdentities` en el servidor), pero se revisa aquí
-     * también por si algún día se manda un broadcast sin destinatario.
+     * Todo lo que llega por el canal de datos (`useVideoAula.js`), mensaje
+     * por mensaje. Lo que manda la profe solo se acepta si el token de quien
+     * lo manda dice rol 'profe' — un alumno con las herramientas del
+     * navegador abiertas puede mandar lo que quiera, pero no puede cambiar el
+     * rol que le firmó el servidor. (Tokens sin rol, de antes de este cambio:
+     * se acepta, para no romper lo que ya funcionaba.)
      */
-    useEffect(() => {
-        const msg = video.ultimoControl
-        if (!msg) return
-        if (msg.para && msg.para !== yo.id) return
+    const recibir = (m, de) => {
+        if (!m || typeof m.tipo !== 'string') return
+        const deLaProfe = de.rol !== 'alumno'
+        if (m.para && m.para !== yo.id) return
 
-        if (msg.tipo === 'dar_palabra') {
-            setYo(a => ({ ...a, silenciadoPorProfe: false }))
-        } else if (msg.tipo === 'silenciar') {
-            setYo(a => ({ ...a, silenciadoPorProfe: true }))
-            video.apagarMicro()
+        switch (m.tipo) {
+            case 'dar_palabra':
+                if (!deLaProfe) return
+                // Ya tiene la palabra: la mano se baja sola.
+                setYo(a => ({ ...a, silenciadoPorProfe: false }))
+                if (yo.manoArriba) ponerMano(false)
+                return
+            case 'silenciar':
+                if (!deLaProfe) return
+                setYo(a => ({ ...a, silenciadoPorProfe: true }))
+                video.apagarMicro()
+                return
+            case 'pizarron':
+                if (!deLaProfe || esProfe) return
+                if ((m.actividadId ?? null) !== actividadRef.current) cambiarActividad(m.actividadId ?? null)
+                setLiberado(m.liberado === true)
+                return
+            case 'sello':
+                if (!deLaProfe || !selloPorId(m.sello)) return
+                aplicarSello(m.persona ?? null, m.sello)
+                return
+            case 'sellos':
+                if (!deLaProfe || esProfe || typeof m.porPersona !== 'object') return
+                for (const [id, lista] of Object.entries(m.porPersona ?? {})) {
+                    for (const sello of [].concat(lista ?? [])) if (selloPorId(sello)) aplicarSello(id, sello)
+                }
+                return
+            case 'tu_estado':
+                if (!deLaProfe || esProfe || m.actividadId !== actividadRef.current || !m.estado) return
+                setYo(a => ({ ...a, estadoActividad: m.estado }))
+                return
+            case 'avance':
+                if (!esProfe || m.actividadId !== actividadRef.current || !m.estado || typeof m.estado !== 'object') return
+                // La hora la pone quien recibe: el reloj de cada compu es distinto.
+                aplicarAvance(de.identity, { ...m.estado, ultimoCambio: Date.now() })
+                return
+            case 'mano':
+                setPersonas(lista => lista.map(p => p.id === de.identity ? { ...p, manoArriba: m.arriba === true } : p))
+                return
+            case 'reaccion':
+                if (!reaccionPorId(m.reaccion)) return
+                verReaccion(de.identity, m.reaccion)
+                return
+            case 'chat': {
+                const texto = String(m.texto ?? '').slice(0, LARGO_CHAT).trim()
+                if (!texto) return
+                const nombre = video.remotos.find(r => r.identity === de.identity)?.nombre ?? 'Alguien'
+                agregarAlChat({ de: nombre, texto })
+                return
+            }
+            default:
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [video.ultimoControl])
+    }
+
+    /**
+     * Alguien acaba de entrar (o volvió tras recargar): se le pone al día con
+     * lo que la sala ya sabe y que a él no le tocó oír.
+     */
+    const ponerAlDia = (identity, rol) => {
+        if (esProfe) {
+            video.enviar({ tipo: 'pizarron', actividadId, liberado }, identity)
+            // De la memoria, no de `personas`: quien recargó todavía no está
+            // en la lista en este instante (LiveKit avisa antes de que se pinte).
+            const porPersona = Object.fromEntries(
+                Object.entries(memoria.current.insignias).filter(([, l]) => l?.length))
+            if (Object.keys(porPersona).length) video.enviar({ tipo: 'sellos', porPersona }, identity)
+            const suEstado = memoria.current.estados[identity]
+            if (suEstado) video.enviar({ tipo: 'tu_estado', actividadId, estado: suEstado }, identity)
+        } else {
+            if (yo.manoArriba) video.enviar({ tipo: 'mano', arriba: true }, identity)
+            // Si la que llega es la profe (o recargó), que vea por dónde voy.
+            if (rol !== 'alumno' && yo.estadoActividad?.ultimoCambio) {
+                video.enviar({ tipo: 'avance', actividadId, estado: yo.estadoActividad }, identity)
+            }
+        }
+    }
 
     // ── El semáforo se apaga solo ─────────────────────────────────────────
     //
@@ -1138,7 +1321,7 @@ export default function Aula({ sesion }) {
         // Cámara/micrófono de "yo" salen de LiveKit, no del estado que se usa
         // para sellos/insignias — mismo criterio que `personas` arriba.
         yo: { ...yo, camara: video.camaraActiva, micro: video.microActivo },
-        pizarron: { ...sesion.pizarron, actividadId, actividad },
+        pizarron: { ...sesion.pizarron, actividadId, actividad, liberado },
     }
 
     return (
@@ -1164,13 +1347,15 @@ export default function Aula({ sesion }) {
                         video={video}
                         pistasCamara={pistasCamara}
                         chatAbierto={chatAbierto}
-                        onAbrirChat={() => setChatAbierto(v => !v)}
+                        chatNuevos={chatNuevos}
+                        onAbrirChat={() => { setChatAbierto(v => !v); setChatNuevos(0) }}
+                        onMano={() => ponerMano(!yo.manoArriba)}
                         onMicro={alternarMicro}
                         onReaccionar={reaccionar}
                         onSilenciarATodos={silenciarMicrosATodos}
                     />
                     {/* El chat empuja hacia arriba en lugar de taparlo todo */}
-                    {chatAbierto && <Chat onCerrar={() => setChatAbierto(false)} />}
+                    {chatAbierto && <Chat mensajes={chat} onEnviar={enviarChat} onCerrar={() => setChatAbierto(false)} />}
                 </div>
 
                 <VentanaPizarron
@@ -1178,6 +1363,7 @@ export default function Aula({ sesion }) {
                     onSellar={sellar}
                     onSellarATodos={sellarATodos}
                     onElegirActividad={elegirActividad}
+                    onLiberar={cambiarLiberado}
                     onAvanzar={avanzar}
                 />
             </main>

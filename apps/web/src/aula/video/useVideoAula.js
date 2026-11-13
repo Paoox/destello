@@ -17,11 +17,30 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Room, RoomEvent, Track } from 'livekit-client'
 
+/**
+ * El rol que el SERVIDOR le puso a esta persona en su token (`metadata`, ver
+ * `apps/api/src/services/videoService.js`). Una persona no puede cambiar su
+ * propia metadata (LiveKit no lo permite sin un permiso que no damos), así que
+ * esto sí sirve para decidir a quién hacerle caso — a diferencia de algo que
+ * cada quien anuncie de sí misma por el canal de datos.
+ *
+ * `null` si el token no trae rol (tokens de antes de que existiera).
+ */
+function rolDe(p) {
+    try {
+        const rol = JSON.parse(p?.metadata || '{}').rol
+        return rol === 'profe' || rol === 'alumno' ? rol : null
+    } catch {
+        return null
+    }
+}
+
 /** Lee de un `Participant` (local o remoto) lo que el aula necesita mostrar. */
 function leerParticipante(p) {
     return {
         identity:     p.identity,
         nombre:       p.name || p.identity,
+        rol:          rolDe(p),
         camaraTrack:  p.getTrackPublication(Track.Source.Camera)?.videoTrack ?? null,
         microTrack:   p.getTrackPublication(Track.Source.Microphone)?.audioTrack ?? null,
         camaraActiva: p.isCameraEnabled,
@@ -32,16 +51,23 @@ function leerParticipante(p) {
 const CODIFICADOR = new TextEncoder()
 const DECODIFICADOR = new TextDecoder()
 
-export function useVideoAula(video) {
+/**
+ * @param video       `sesion.video` — `{ serverUrl, token }` o `null`
+ * @param alRecibir   `(mensaje, de: { identity, rol }) => void` — CADA mensaje
+ *                    del canal de datos, uno por uno (ver abajo por qué no es
+ *                    un estado).
+ * @param alLlegar    `(identity, rol) => void` — alguien entró a la sala; es el
+ *                    momento de ponerle al día (qué actividad va, sus sellos…).
+ */
+export function useVideoAula(video, { alRecibir, alLlegar } = {}) {
     const roomRef = useRef(null)
+    // Los callbacks por ref: el aula los vuelve a crear en cada render, y no
+    // queremos reconectar la sala por eso.
+    const oyentes = useRef({ alRecibir, alLlegar })
+    oyentes.current = { alRecibir, alLlegar }
     const [conectado, setConectado] = useState(false)
     const [yo, setYo] = useState({ camaraActiva: false, microActivo: false, camaraTrack: null })
     const [remotos, setRemotos] = useState([]) // Participante[]
-    // Último mensaje de control recibido por el canal de datos de LiveKit
-    // (quién puede hablar, silenciar a todos...). Un objeto NUEVO en cada
-    // mensaje (nunca el mismo por referencia) para que un `useEffect` que
-    // dependa de esto se dispare aunque el contenido se repita.
-    const [ultimoControl, setUltimoControl] = useState(null)
 
     useEffect(() => {
         if (!video?.serverUrl || !video?.token) return
@@ -71,7 +97,11 @@ export function useVideoAula(video) {
         const refrescarTodo = () => { refrescarYo(); refrescarRemotos() }
 
         room
-            .on(RoomEvent.ParticipantConnected, refrescarRemotos)
+            .on(RoomEvent.ParticipantConnected, (p) => {
+                refrescarRemotos()
+                oyentes.current.alLlegar?.(p.identity, rolDe(p))
+            })
+            .on(RoomEvent.ParticipantMetadataChanged, refrescarRemotos)
             .on(RoomEvent.ParticipantDisconnected, refrescarRemotos)
             .on(RoomEvent.TrackSubscribed, refrescarRemotos)
             .on(RoomEvent.TrackUnsubscribed, refrescarRemotos)
@@ -80,18 +110,24 @@ export function useVideoAula(video) {
             .on(RoomEvent.LocalTrackPublished, refrescarYo)
             .on(RoomEvent.LocalTrackUnpublished, refrescarYo)
             .on(RoomEvent.Disconnected, () => { if (vivo) setConectado(false) })
-            // Mensajes de control (dar la palabra / silenciar) — van por el
-            // canal de datos de LiveKit, no por la API de Destello: es
-            // mensajería directa entre navegadores, relevada por el mismo
-            // servidor que ya reenvía cámara y micrófono.
+            // Todo lo que no es audio/video (dar la palabra, sellos, mano,
+            // chat, avance…) va por el canal de datos de LiveKit, no por la
+            // API de Destello: mensajería directa entre navegadores, relevada
+            // por el mismo servidor que ya reenvía cámara y micrófono.
+            //
+            // Se entrega mensaje por mensaje a un callback, NO se guarda en un
+            // estado: si llegan dos en el mismo instante (un sello y un chat),
+            // React junta los dos `setState` y solo sobreviviría el último.
             .on(RoomEvent.DataReceived, (payload, participante) => {
-                if (!vivo) return
+                if (!vivo || !participante) return
+                let mensaje
                 try {
-                    const mensaje = JSON.parse(DECODIFICADOR.decode(payload))
-                    setUltimoControl({ ...mensaje, de: participante?.identity ?? null, ts: Date.now() })
+                    mensaje = JSON.parse(DECODIFICADOR.decode(payload))
                 } catch (err) {
-                    console.error('[aula-video] mensaje de control ilegible:', err.message)
+                    console.error('[aula-video] mensaje ilegible:', err.message)
+                    return
                 }
+                oyentes.current.alRecibir?.(mensaje, { identity: participante.identity, rol: rolDe(participante) })
             })
 
         room.connect(video.serverUrl, video.token)
@@ -141,20 +177,23 @@ export function useVideoAula(video) {
     }, [])
 
     /**
-     * Manda un mensaje de control por el canal de datos de LiveKit.
+     * Manda un mensaje por el canal de datos de LiveKit.
      *
-     * @param {'dar_palabra'|'silenciar'} tipo
-     * @param {string|null} paraIdentity  `null` = todos en la sala (ej.
-     *   "silenciar a todos"); una identity = solo esa persona.
+     * @param {Object} mensaje  `{ tipo, ... }` — ver los tipos en `Aula.jsx`
+     * @param {string|string[]|null} para  `null` = todos en la sala; una
+     *   identity o una lista = solo esas personas (LiveKit filtra en el
+     *   servidor: a las demás ni les llega).
      */
-    const enviarControl = useCallback((tipo, paraIdentity = null) => {
+    const enviar = useCallback((mensaje, para = null) => {
         const room = roomRef.current
-        if (!room) return
-        const payload = CODIFICADOR.encode(JSON.stringify({ tipo, para: paraIdentity }))
+        if (!room || room.state !== 'connected') return
+        const destinos = para == null ? null : [para].flat()
+        if (destinos && !destinos.length) return
+        const payload = CODIFICADOR.encode(JSON.stringify({ ...mensaje, para: destinos?.length === 1 ? destinos[0] : null }))
         room.localParticipant.publishData(payload, {
             reliable: true,
-            ...(paraIdentity ? { destinationIdentities: [paraIdentity] } : {}),
-        })
+            ...(destinos ? { destinationIdentities: destinos } : {}),
+        }).catch(err => console.error('[aula-video] no se pudo enviar:', err.message))
     }, [])
 
     return {
@@ -163,10 +202,9 @@ export function useVideoAula(video) {
         microActivo:  yo.microActivo,
         camaraTrack:  yo.camaraTrack,
         remotos,
-        ultimoControl,
         toggleMicro,
         toggleCamara,
         apagarMicro,
-        enviarControl,
+        enviar,
     }
 }
