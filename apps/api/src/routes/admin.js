@@ -145,6 +145,16 @@ router.post('/profesores', async (req, res, next) => {
     } catch (err) { next(err) }
 })
 
+// T-40: alta de un profesor que todavía no tiene cuenta (o sí, da igual):
+// crea/activa la cuenta y la asigna al taller en un solo paso. Separado de
+// POST /profesores, que asume que la cuenta ya existe.
+router.post('/profesores/alta', async (req, res, next) => {
+    try {
+        const resultado = await profesorService.altaProfesor(req.body ?? {})
+        res.json({ status: 'ok', ...resultado })
+    } catch (err) { next(err) }
+})
+
 router.delete('/profesores/:tallerId/:usuarioId', async (req, res, next) => {
     try {
         const { tallerId, usuarioId } = req.params

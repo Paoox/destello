@@ -77,6 +77,13 @@ async function start() {
     console.log(`  Entorno: ${process.env.NODE_ENV || 'development'}`)
   })
 
+  // Solo en producción: una API local de desarrollo usa la MISMA base real y
+  // mandaría recordatorios duplicados (o los marcaría sin mandarlos).
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('  Recordatorios automáticos: apagados (no es producción)')
+    return
+  }
+
   // Primera corrida a los 2 min (deja que el bot Faro también esté arriba —
   // systemd levanta destello-api y destello-bot por separado, sin orden
   // garantizado), y de ahí en adelante cada INTERVALO_RECORDATORIOS_MS.

@@ -34,8 +34,10 @@ Servicios systemd que arrancan automáticamente:
 **Vigía (13 nov 2026):** `~/bin/destello-vigia.sh` en la Toshiba (cron de
 `pao`, cada 5 min y al arrancar). Levanta la API si `/health` no responde,
 consulta `/tallers` para que Supabase no pause el proyecto, y prende el bot
-si está apagado (salvo logout de WhatsApp, que pide QR). Bitácora en
-`~/destello-vigia.log`. Vive solo en el servidor, como el resto de la config.
+si está apagado (salvo logout de WhatsApp, que pide QR). Si un problema no
+se arregla solo (WhatsApp cerró sesión, API o base caídas 15 min) manda UN
+correo a Paola por Resend, y otro al resolverse. Bitácora en
+`~/destello-vigia.log`; prueba del correo: `destello-vigia.sh --prueba`. Vive solo en el servidor, como el resto de la config.
 Acceso desde la máquina de desarrollo: `ssh toshiba` (red de casa, 192.168.1.78).
 
 ⚠️ En la Toshiba **no hay pm2**. El bot se reinicia con systemd, no con `pm2 restart`.
@@ -557,6 +559,11 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
   "Lo que Está Terminado y Funciona" más abajo para el detalle completo.
 
 ### 🟡 Pendiente
+- **▶ Siguiente: Paola prueba el aula en vivo (T-41/T-42)** — sellos,
+  chat, mano, reacciones, actividad/candado y avance, con OpenVidu local y
+  dos cuentas. Después: T-39 → T-17 → T-43 → T-03 → material real de cada
+  taller (al final). Lista completa en `docs/backlog-tickets.md` (sección 5,
+  "Siguientes").
 - **T-06 — Respaldo de BD + ping diario** *(movido aquí desde "Bloquea el
   lanzamiento", 18 sep 2026)*: la BD todavía tiene cambios frecuentes, no
   está pulida — Paola decidió que respaldarla ahora no es prioridad, se
@@ -569,15 +576,18 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
   completo en `docs/backlog-tickets.md`, solo documentados, sin código
   todavía:
   - **T-39** — dashboard de profesores (talleres asignados, fechas,
-    material) y **T-40** — darlos de alta desde el panel sin cuenta
-    previa (mismo patrón que "Crear Chispa" para demos).
+    material). **T-40 ✅ (13 nov 2026)** — alta desde la pestaña
+    Profesores sin cuenta previa: cuenta activa + asignación en un paso;
+    cada tarjeta de profe tiene "Agregar otro taller".
+  - **Recordatorios automáticos de pago solo con `NODE_ENV=production`**
+    (13 nov 2026): una API local usa la misma base real y los duplicaría.
   - **T-41/T-42 — ✅ hechos en código (12 nov 2026), falta la prueba real
     con OpenVidu:** mano, reacciones, chat, sellos, actividad elegida,
     candado y avance de cada alumno viajan por el canal de datos de
     LiveKit. Lo que solo manda la profe se acepta solo si su token dice
     `rol: 'profe'` (lo firma la API). ⚠️ Al desplegar: agregar
     `ADMIN_EMAILS=pao.arreola.g@gmail.com` al `.env` de la Toshiba y
-    reconstruir la API. Detalle en `docs/backlog-tickets.md` (T-41).
+    reconstruir la API (✅ hecho el 13 nov 2026). Detalle en `docs/backlog-tickets.md` (T-41).
   - **T-43** — nombre real del profesor/taller en el aula, aprovechando
     la cuenta real que ya da T-05 (hoy depende de un campo de texto
     suelto casi siempre vacío).
@@ -661,7 +671,8 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
     limitado a los talleres que se le asignen.
   - **Panel admin nuevo, `ProfesoresPanel.jsx`** (tab "Profesores", 8vo tab
     de `PageAdmin.jsx`) — busca una cuenta por correo (mismo patrón que
-    Accesos) y la asigna a un taller desde un `<select>`. Lista las
+    Accesos) y la asigna a un taller desde un `<select>`. Desde T-40, si el correo no
+    tiene cuenta, ahí mismo se da de alta (`POST /admin/profesores/alta`). Lista las
     asignaciones agrupadas por profesor, con botón para quitar una
     asignación puntual.
   - **Migración `018_profesores.sql` corrida en Supabase y confirmada por

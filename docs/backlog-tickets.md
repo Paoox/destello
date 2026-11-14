@@ -806,6 +806,21 @@ se llama desde el manejador principal de mensajes.
 
 ## 5. 🟡 Pendiente (acordado, sin empezar / a medias)
 
+### ▶ Siguientes (orden acordado con Paola, 13 nov 2026)
+1. **Probar el aula en vivo (T-41/T-42)** — Paola. Ya está en código y
+   desplegado, falta la prueba real con OpenVidu local y dos cuentas en dos
+   pestañas (una profe, una alumna). Revisar: elegir actividad y que le
+   llegue a la alumna · candado (abrir/cerrar) · avance y semáforo en la
+   rejilla de la profe · **sellos** (a una y a todas) · mano levantada y
+   "dar la palabra" (baja la mano) · reacciones · **chat** (contador de
+   nuevos) · recargar la pestaña de la alumna y que recupere todo.
+   Requisito ya cumplido: `ADMIN_EMAILS` en el `.env` de la Toshiba.
+2. **T-39** — pantalla del profe (sus talleres, horarios, material).
+3. **T-17** — aula de práctica del profe con su material.
+4. **T-43** — nombre real del profe/taller en el aula.
+5. **T-03** — actividad "armar".
+6. **Al final:** material didáctico real de cada taller, con cada profe.
+
 - **T-06 — Respaldo de BD + ping diario** *(movido aquí desde "Bloquea el
   lanzamiento", 18 sep 2026)*. Backup de Supabase (el plan free no incluye
   backups diarios) + un ping diario para que el proyecto no se pause por
@@ -1101,6 +1116,17 @@ se llama desde el manejador principal de mensajes.
   pasar por `/admin`.
 
 ### T-40 — Dar de alta profesores nuevos desde el panel (sin cuenta previa)
+- **✅ HECHO (13 nov 2026).** En la pestaña Profesores, si el correo no
+  tiene cuenta aparece el formulario (nombre, apellido, WhatsApp opcional,
+  taller) → `POST /admin/profesores/alta` → `profesorService.altaProfesor()`:
+  cuenta `activo` (`activado_por = 'admin:profesor'`) + `profesores` +
+  `taller_profesores` en una sola transacción. Si la cuenta ya existía no se
+  pisan sus datos (mismo criterio que Crear Chispa); WhatsApp ajeno → 409
+  `WA_EN_USO`. Entra con Google, o con número + código si se capturó el
+  WhatsApp. Pruebas: `profesorService.test.js` (validación, 5 casos, 25/25
+  en total); el SQL se verificó contra la base real dentro de una
+  transacción revertida (sin dejar datos). El texto original queda abajo
+  como referencia.
 - **Pedido por Paola (18 sep 2026), al terminar T-05:** hoy
   `ProfesoresPanel.jsx` (tab "Profesores") solo sabe ASIGNAR a alguien que
   **ya tiene cuenta** — busca por correo contra `/admin/usuarios/buscar` y,

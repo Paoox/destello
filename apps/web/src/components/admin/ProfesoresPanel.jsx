@@ -9,6 +9,11 @@
  * Los admins (`ADMIN_EMAILS`) siguen entrando como profe a CUALQUIER aula,
  * sin cambios — esto solo agrega la posibilidad de un profesor real que no
  * sea admin, limitado a los talleres que se le asignen aquí.
+ *
+ * T-40: si el correo no tiene cuenta, aquí mismo se le da de alta (nombre,
+ * apellido, WhatsApp opcional, taller) — la cuenta queda activa y asignada en
+ * un solo paso, sin pasar por el bot ni la lista de espera. Entra con Google
+ * (su correo) o con su número + código si se capturó el WhatsApp.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { MagnifyingGlass, ChalkboardTeacher, X, CheckCircle, WarningCircle } from '@phosphor-icons/react'
@@ -82,10 +87,18 @@ export default function ProfesoresPanel({ adminToken }) {
     const [asignando, setAsignando] = useState(false)
     const [asignarError, setAsignarError] = useState(null)
 
+    // ── Alta de un profesor sin cuenta (T-40) ────────────────────────────
+    const [alta, setAlta]           = useState({ nombre: '', apellido: '', whatsapp: '' })
+    const [aviso, setAviso]         = useState(null) // texto de éxito tras dar de alta/asignar
+
     // ── Datos globales ────────────────────────────────────────────────────
     const [talleres, setTalleres]         = useState([])
     const [asignaciones, setAsignaciones] = useState([])
     const [quitando, setQuitando]         = useState(null) // `${tallerId}:${usuarioId}` en curso
+    // Sumar otro taller desde la tarjeta de cada profe: { [usuarioId]: tallerId elegido }
+    const [extra, setExtra]               = useState({})
+    const [sumando, setSumando]           = useState(null)   // usuarioId en curso
+    const [errorTarjeta, setErrorTarjeta] = useState({})     // { [usuarioId]: mensaje }
 
     const cargarAsignaciones = useCallback(() => {
         API('/profesores', adminToken).then(d => setAsignaciones(d.asignaciones ?? [])).catch(() => {})
@@ -104,6 +117,7 @@ export default function ProfesoresPanel({ adminToken }) {
         setEmailInput(val)
         setUsuario(null)
         setSearchError(null)
+        setAviso(null)
         clearTimeout(debounceRef.current)
 
         if (!val.includes('@')) { setUsuarioStatus('idle'); return }
@@ -130,12 +144,58 @@ export default function ProfesoresPanel({ adminToken }) {
                 method: 'POST',
                 body: JSON.stringify({ usuarioId: usuario.id, tallerId }),
             })
+            const taller = talleres.find(t => t.id === tallerId)?.nombre ?? 'el taller'
+            setAviso(`${[usuario.nombre, usuario.apellido].filter(Boolean).join(' ') || usuario.email} quedó asignada a ${taller}.`)
             setTallerId('')
             cargarAsignaciones()
         } catch (err) {
             setAsignarError(err.message ?? 'No se pudo asignar')
         } finally {
             setAsignando(false)
+        }
+    }
+
+    const darDeAlta = async () => {
+        if (!alta.nombre.trim() || !tallerId) return
+        setAsignando(true)
+        setAsignarError(null)
+        try {
+            const d = await API('/profesores/alta', adminToken, {
+                method: 'POST',
+                body: JSON.stringify({ email: emailInput, ...alta, tallerId }),
+            })
+            const nombre = [d.usuario?.nombre, d.usuario?.apellido].filter(Boolean).join(' ')
+            const taller = talleres.find(t => t.id === tallerId)?.nombre ?? 'el taller'
+            setAviso(`${nombre} ya tiene su cuenta activa y quedó asignada a ${taller}. ` +
+                (d.usuario?.whatsapp
+                    ? 'Puede entrar con Google (su correo) o con su número y el código de WhatsApp.'
+                    : 'Puede entrar con Google usando su correo.'))
+            setEmailInput(''); setUsuario(null); setUsuarioStatus('idle')
+            setAlta({ nombre: '', apellido: '', whatsapp: '' }); setTallerId('')
+            cargarAsignaciones()
+        } catch (err) {
+            setAsignarError(err.message ?? 'No se pudo dar de alta')
+        } finally {
+            setAsignando(false)
+        }
+    }
+
+    const sumarTaller = async (usuarioId) => {
+        const tId = extra[usuarioId]
+        if (!tId) return
+        setSumando(usuarioId)
+        setErrorTarjeta(e => ({ ...e, [usuarioId]: null }))
+        try {
+            await API('/profesores', adminToken, {
+                method: 'POST',
+                body: JSON.stringify({ usuarioId, tallerId: tId }),
+            })
+            setExtra(x => ({ ...x, [usuarioId]: '' }))
+            cargarAsignaciones()
+        } catch (err) {
+            setErrorTarjeta(e => ({ ...e, [usuarioId]: err.message ?? 'No se pudo agregar' }))
+        } finally {
+            setSumando(null)
         }
     }
 
@@ -171,10 +231,17 @@ export default function ProfesoresPanel({ adminToken }) {
                     <ChalkboardTeacher size={16} /> Asignar un profesor a un taller
                 </p>
                 <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--text-muted)' }}>
-                    La cuenta debe ya existir (nombre, correo, WhatsApp) — busca por
-                    correo, igual que en Accesos. No hace falta que tenga chispa del
-                    taller: dar la clase ya es su acceso.
+                    Escribe su correo. Si ya tiene cuenta, solo eliges el taller; si
+                    no, aquí mismo le das de alta y su cuenta queda activa al momento.
+                    No necesita chispa: dar la clase ya es su acceso.
                 </p>
+
+                {aviso && (
+                    <div style={{ ...sStatusBox('#16a34a'), marginBottom: 12 }}>
+                        <CheckCircle size={18} color="#16a34a" weight="fill" style={{ flexShrink: 0 }} />
+                        <p style={{ margin: 0, fontSize: 12 }}>{aviso}</p>
+                    </div>
+                )}
 
                 <label style={sLabel}>Correo del profesor</label>
                 <div style={{ position: 'relative', marginBottom: 10 }}>
@@ -205,17 +272,39 @@ export default function ProfesoresPanel({ adminToken }) {
                 )}
 
                 {usuarioStatus === 'not_found' && (
-                    <div style={{ ...sStatusBox('#d97706'), marginBottom: 10 }}>
-                        <WarningCircle size={18} color="#d97706" weight="fill" style={{ flexShrink: 0 }} />
-                        <p style={{ margin: 0, fontSize: 12 }}>
-                            No existe ninguna cuenta con ese correo todavía — tiene que
-                            registrarse primero (por el bot o con Google) antes de poder
-                            asignarla como profesora.
+                    <>
+                        <div style={{ ...sStatusBox('#d97706'), marginBottom: 12 }}>
+                            <WarningCircle size={18} color="#d97706" weight="fill" style={{ flexShrink: 0 }} />
+                            <p style={{ margin: 0, fontSize: 12 }}>
+                                Ese correo todavía no tiene cuenta. Completa sus datos y se la
+                                creamos ya activa.
+                            </p>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 10 }}>
+                            <div>
+                                <label style={sLabel}>Nombre *</label>
+                                <input value={alta.nombre} onChange={e => setAlta(a => ({ ...a, nombre: e.target.value }))}
+                                    placeholder="Ana" style={sInput} autoComplete="off" />
+                            </div>
+                            <div>
+                                <label style={sLabel}>Apellido</label>
+                                <input value={alta.apellido} onChange={e => setAlta(a => ({ ...a, apellido: e.target.value }))}
+                                    placeholder="Ruiz García" style={sInput} autoComplete="off" />
+                            </div>
+                            <div>
+                                <label style={sLabel}>WhatsApp (opcional)</label>
+                                <input value={alta.whatsapp} onChange={e => setAlta(a => ({ ...a, whatsapp: e.target.value }))}
+                                    placeholder="10 dígitos" inputMode="tel" style={sInput} autoComplete="off" />
+                            </div>
+                        </div>
+                        <p style={{ margin: '0 0 10px', fontSize: 11, color: 'var(--text-muted)' }}>
+                            Sin WhatsApp solo podrá entrar con Google; con WhatsApp también por código.
                         </p>
-                    </div>
+                    </>
                 )}
 
-                {usuario && (
+                {(usuario || usuarioStatus === 'not_found') && (
                     <>
                         <label style={sLabel}>Taller que va a dar</label>
                         <select
@@ -224,20 +313,32 @@ export default function ProfesoresPanel({ adminToken }) {
                             style={{ ...sInput, marginBottom: 12 }}
                         >
                             <option value="">Elige un taller…</option>
-                            {talleres.map(t => (
-                                <option key={t.id} value={t.id}>{t.nombre}</option>
-                            ))}
+                            {talleres
+                                .filter(t => !usuario || !asignaciones.some(a => a.usuario_id === usuario.id && a.taller_id === t.id))
+                                .map(t => (
+                                    <option key={t.id} value={t.id}>{t.nombre}</option>
+                                ))}
                         </select>
 
                         {asignarError && <p style={{ color: 'var(--color-error)', fontSize: 12, margin: '0 0 10px' }}>⚠ {asignarError}</p>}
 
-                        <button
-                            onClick={asignar}
-                            disabled={!tallerId || asignando}
-                            style={sBtnPrimary('var(--color-jade-500)', !tallerId || asignando)}
-                        >
-                            {asignando ? 'Asignando...' : 'Asignar como profesora'}
-                        </button>
+                        {usuario ? (
+                            <button
+                                onClick={asignar}
+                                disabled={!tallerId || asignando}
+                                style={sBtnPrimary('var(--color-jade-500)', !tallerId || asignando)}
+                            >
+                                {asignando ? 'Asignando...' : 'Asignar como profesora'}
+                            </button>
+                        ) : (
+                            <button
+                                onClick={darDeAlta}
+                                disabled={!tallerId || !alta.nombre.trim() || asignando}
+                                style={sBtnPrimary('var(--color-jade-500)', !tallerId || !alta.nombre.trim() || asignando)}
+                            >
+                                {asignando ? 'Dando de alta...' : 'Dar de alta y asignar'}
+                            </button>
+                        )}
                     </>
                 )}
             </div>
@@ -292,6 +393,39 @@ export default function ProfesoresPanel({ adminToken }) {
                                     )
                                 })}
                             </div>
+
+                            {/* Sumarle otro taller sin volver a buscarla arriba */}
+                            {(() => {
+                                const libres = talleres.filter(t => !p.talleres.some(x => x.taller_id === t.id))
+                                if (!libres.length) return null
+                                const elegido = extra[p.usuario_id] ?? ''
+                                const ocupado = sumando === p.usuario_id
+                                return (
+                                    <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                                        <select
+                                            value={elegido}
+                                            onChange={e => setExtra(x => ({ ...x, [p.usuario_id]: e.target.value }))}
+                                            style={{ ...sInput, flex: '1 1 180px', width: 'auto', padding: '6px 10px', fontSize: 12 }}
+                                        >
+                                            <option value="">Agregar otro taller…</option>
+                                            {libres.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                                        </select>
+                                        <button
+                                            onClick={() => sumarTaller(p.usuario_id)}
+                                            disabled={!elegido || ocupado}
+                                            style={{
+                                                ...sBtnPrimary('var(--color-jade-500)', !elegido || ocupado),
+                                                width: 'auto', padding: '6px 14px', fontSize: 12,
+                                            }}
+                                        >
+                                            {ocupado ? 'Agregando…' : '+ Agregar'}
+                                        </button>
+                                    </div>
+                                )
+                            })()}
+                            {errorTarjeta[p.usuario_id] && (
+                                <p style={{ color: 'var(--color-error)', fontSize: 12, margin: '6px 0 0' }}>⚠ {errorTarjeta[p.usuario_id]}</p>
+                            )}
                         </div>
                     ))}
                 </div>
