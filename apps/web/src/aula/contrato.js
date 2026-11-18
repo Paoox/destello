@@ -58,10 +58,13 @@
  * @property {Marca}   marca
  * @property {Object}  taller
  * @property {string}  taller.nombre
- * @property {string}  taller.instructor
+ * @property {string?} taller.instructor  Quién imparte la clase (null si no se sabe)
  * @property {string?} taller.tema      Nombre del fondo/ambiente ("Horizonte Zen")
  * @property {number}  taller.terminaEn Minutos que faltan para que acabe
  * @property {'alumno'|'profe'} rol     Desde qué lado se ve el aula
+ * @property {string?} claseId  Identifica ESTA sesión de clase (ej. taller +
+ *   día). Con él el aula guarda el chat en el navegador mientras dura la
+ *   clase, para que no se pierda al recargar. Sin él, el chat no se guarda.
  * @property {Persona} yo
  * @property {Persona[]} personas       Todos los demás
  * @property {Object}  pizarron
@@ -84,10 +87,15 @@
  */
 
 /** Marca por defecto, para cuando el aula se monta sin configurar nada. */
+import fondoDestello from './video/fondo-destello.webp'
+
 export const MARCA_DESTELLO = {
     nombre:        'Destello',
     logoUrl:       null,
     colorPrimario: 'var(--color-jade-500)',
+    // Fondo virtual que lleva la cámara de la profe por default (ver
+    // `video/useVideoAula.js`). Otra escuela pone aquí el suyo, o null.
+    fondoVideo:    fondoDestello,
 }
 
 /**

@@ -21,7 +21,7 @@
  * Estado: `{ pasos: { [idPunto]: true } }` — los puntos que ya revisó, para
  * que la profe vea en la miniatura quién está explorando.
  */
-import { lazy, Suspense, useRef, useState } from 'react'
+import { lazy, Suspense, useRef } from 'react'
 import { marcarCambio } from './contrato.js'
 import { useAltoDelPizarron } from './comun.js'
 
@@ -45,9 +45,11 @@ export function resumen(contenido, estado) {
 export default function Modelo3D({ contenido, estado, onCambio, liberado }) {
     const raiz = useRef(null)
     const alto = useAltoDelPizarron(raiz)
-    const ultimoAviso = useRef(0)
-    const [elegido, setElegido] = useState(null)
-    const [verTodos, setVerTodos] = useState(false)
+    // Qué punto está elegido, si se ven todos y hacia dónde mira el modelo
+    // viven en `estado` (no en estado local): así lo que hace la profe en su
+    // pizarrón lo ve el grupo, y lo que hace una alumna lo ve la profe.
+    const elegido = estado?.elegido ?? null
+    const verTodos = estado?.verTodos === true
 
     const puntos = contenido?.puntos ?? []
     const vistos = estado?.pasos ?? {}
@@ -57,20 +59,23 @@ export default function Modelo3D({ contenido, estado, onCambio, liberado }) {
         return <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Este material todavía no tiene modelo 3D.</p>
     }
 
-    // Girar el modelo ES interactuar (contrato), pero se avisa a lo mucho cada
-    // 3 segundos para no inundar el canal con cada arrastre.
-    const avisar = () => {
-        const ahora = Date.now()
-        if (ahora - ultimoAviso.current < 3000) return
-        ultimoAviso.current = ahora
-        onCambio(marcarCambio(estado, {}))
+    // Girar el modelo ES interactuar (contrato): cada vista nueva va al
+    // estado. El visor ya la manda a lo mucho ~8 veces por segundo.
+    const cambiarVista = (vista) => {
+        if (!liberado) return
+        onCambio(marcarCambio(estado, { vista }))
     }
 
     const elegir = (p) => {
         if (!liberado) return
         const nuevo = elegido === p.id ? null : p.id
-        setElegido(nuevo)
-        if (nuevo && !vistos[p.id]) onCambio(marcarCambio(estado, { pasos: { ...vistos, [p.id]: true } }))
+        const pasos = nuevo && !vistos[p.id] ? { ...vistos, [p.id]: true } : vistos
+        onCambio(marcarCambio(estado, { elegido: nuevo, pasos }))
+    }
+
+    const alternarTodos = () => {
+        if (!liberado) return
+        onCambio(marcarCambio(estado, { verTodos: !verTodos }))
     }
 
     const marcas = (verTodos ? puntos : actual ? [actual] : [])
@@ -96,7 +101,8 @@ export default function Modelo3D({ contenido, estado, onCambio, liberado }) {
                             puntos={marcas}
                             objetivo={actual ? { x: actual.x, y: actual.y } : null}
                             bloqueado={!liberado}
-                            onInteraccion={avisar}
+                            vista={estado?.vista ?? null}
+                            onVista={cambiarVista}
                         />
                     </Suspense>
                 </div>
@@ -105,7 +111,7 @@ export default function Modelo3D({ contenido, estado, onCambio, liberado }) {
                     <div className="m3d-panel">
                         <div className="m3d-panel-cabeza">
                             <span>Puntos de referencia</span>
-                            <button className={verTodos ? 'activo' : ''} onClick={() => setVerTodos(v => !v)} disabled={!liberado}>
+                            <button className={verTodos ? 'activo' : ''} onClick={alternarTodos} disabled={!liberado}>
                                 {verTodos ? 'Ocultar todos' : 'Ver todos'}
                             </button>
                         </div>

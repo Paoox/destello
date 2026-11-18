@@ -42,9 +42,8 @@
  * final, con el repaso de qué tocaba en cada paso. Mientras tanto se puede
  * volver a cualquier paso (los puntitos de arriba) y cambiar la decisión.
  */
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { marcarCambio } from './contrato.js'
-import { useAltoDelPizarron } from './comun.js'
+import { lazy, Suspense, useRef, useState } from 'react'
+import { useAltoDelPizarron, useCambiar } from './comun.js'
 
 // El visor trae three.js: que solo se descargue cuando de verdad se abre un caso con modelo.
 const Visor3D = lazy(() => import('../visor3d/Visor3D.jsx'))
@@ -80,60 +79,47 @@ export default function Caso({ contenido, estado, onCambio, liberado, esProfe })
     const hechos = pasos.filter(p => elegidas[p.id]).length
     const terminado = pasos.length > 0 && hechos >= pasos.length
 
-    const primeroSinHacer = () => Math.max(0, pasos.findIndex(p => !elegidas[p.id]))
-    const [pantalla, setPantalla] = useState(() => (terminado ? 'resultado' : hechos ? 'juego' : 'intro'))
-    const [indice, setIndice] = useState(primeroSinHacer)
-    const [previa, setPrevia] = useState(null)        // opción bajo el cursor → aro en el modelo
+    const primeroSinHacer = Math.max(0, pasos.findIndex(p => !elegidas[p.id]))
+    const cambiar = useCambiar(estado, onCambio)
+
+    // Lo que se ve vive en el estado (pantalla, paso, la opción señalada y el
+    // giro del modelo): así la profe y el grupo ven lo mismo. Ver `useCambiar`.
+    // 'procesando' es solo la animación de 1.3 s de quien terminó: local.
+    const pantallaGuardada = estado?.pantalla ?? (terminado ? 'resultado' : hechos ? 'juego' : 'intro')
+    const [procesando, setProcesando] = useState(false)
+    const pantalla = procesando ? 'procesando' : pantallaGuardada
+    const indice = Number.isInteger(estado?.indice) ? estado.indice : primeroSinHacer
+    // Solo de la profe (afinar coordenadas): local a propósito.
     const [calibrar, setCalibrar] = useState(false)
     const [coordenada, setCoordenada] = useState(null)
-    const ultimoAviso = useRef(0)
     const raiz = useRef(null)
     const alto = useAltoDelPizarron(raiz)
-
-    // Si la profe abre el pizarrón de otra persona (o se reinicia por fuera),
-    // ponerse en el paso correcto de ESE estado.
-    const llave = JSON.stringify(elegidas)
-    useEffect(() => {
-        if (terminado) setPantalla(p => (p === 'procesando' ? p : 'resultado'))
-        else setIndice(primeroSinHacer())
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [llave])
 
     if (!pasos.length) {
         return <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Este caso todavía no tiene pasos.</p>
     }
 
-    // Girar el modelo ES interactuar (contrato): se avisa, pero a lo mucho cada
-    // 3 segundos, para no inundar el canal con cada arrastre.
-    const avisarInteraccion = () => {
-        const ahora = Date.now()
-        if (ahora - ultimoAviso.current < 3000) return
-        ultimoAviso.current = ahora
-        onCambio(marcarCambio(estado, {}))
-    }
-
     const paso = pasos[Math.min(indice, pasos.length - 1)]
+    // La opción bajo el cursor → aro en el modelo (también para quien mira).
+    const previa = paso.opciones.find(o => o.id === estado?.previa) ?? null
+    const senalar = (o) => { if (liberado && (o?.punto || estado?.previa)) cambiar({ previa: o?.punto ? o.id : null }) }
 
     const elegir = (opcion) => {
         if (!liberado) return
         const nuevas = { ...elegidas, [paso.id]: opcion.id }
-        onCambio(marcarCambio(estado, { pasos: nuevas }))
-        setPrevia(null)
         const siguiente = pasos.findIndex(p => !nuevas[p.id])
         if (siguiente === -1) {
-            setPantalla('procesando')
-            setTimeout(() => setPantalla('resultado'), 1300)
+            cambiar({ pasos: nuevas, previa: null, pantalla: 'resultado' })
+            setProcesando(true)
+            setTimeout(() => setProcesando(false), 1300)
         } else {
-            setIndice(siguiente)
+            cambiar({ pasos: nuevas, previa: null, indice: siguiente })
         }
     }
 
-    const cambiarMarcador = (id) => onCambio(marcarCambio(estado, { marcador: id }))
-    const reintentar = () => {
-        onCambio(marcarCambio(estado, { pasos: {} }))
-        setIndice(0)
-        setPantalla('juego')
-    }
+    const cambiarMarcador = (id) => cambiar({ marcador: id })
+    const reintentar = () => cambiar({ pasos: {}, indice: 0, previa: null, pantalla: 'juego' })
+    const cambiarVista = (vista) => { if (liberado) cambiar({ vista }) }
 
     const puntos = pasos
         .map(p => p.opciones.find(o => o.id === elegidas[p.id]))
@@ -147,7 +133,7 @@ export default function Caso({ contenido, estado, onCambio, liberado, esProfe })
             <style>{CSS}</style>
 
             {pantalla === 'intro' && (
-                <Intro contenido={contenido} liberado={liberado} onEmpezar={() => { setPantalla('juego'); avisarInteraccion() }} />
+                <Intro contenido={contenido} liberado={liberado} onEmpezar={() => cambiar({ pantalla: 'juego' })} />
             )}
 
             {pantalla === 'procesando' && (
@@ -193,7 +179,8 @@ export default function Caso({ contenido, estado, onCambio, liberado, esProfe })
                                         bloqueado={!liberado}
                                         calibrar={calibrar}
                                         onCalibrar={setCoordenada}
-                                        onInteraccion={avisarInteraccion}
+                                        vista={estado?.vista ?? null}
+                                        onVista={cambiarVista}
                                     />
                                 </Suspense>
                             </div>
@@ -207,7 +194,7 @@ export default function Caso({ contenido, estado, onCambio, liberado, esProfe })
                                 {pasos.map((p, i) => (
                                     <button key={p.id} title={`Paso ${i + 1}`}
                                         className={`${i === indice ? 'actual' : ''}${elegidas[p.id] ? ' hecho' : ''}`}
-                                        onClick={() => { setIndice(i); setPrevia(null); avisarInteraccion() }} />
+                                        onClick={() => cambiar({ indice: i, previa: null })} />
                                 ))}
                             </div>
                         </div>
@@ -221,11 +208,11 @@ export default function Caso({ contenido, estado, onCambio, liberado, esProfe })
                                 const elegida = elegidas[paso.id] === o.id
                                 return (
                                     <button key={o.id}
-                                        className={`caso-opcion${elegida ? ' elegida' : ''}`}
-                                        onMouseEnter={() => o.punto && setPrevia(o)}
-                                        onMouseLeave={() => setPrevia(null)}
-                                        onFocus={() => o.punto && setPrevia(o)}
-                                        onBlur={() => setPrevia(null)}
+                                        className={`caso-opcion${elegida ? ' elegida' : ''}${esProfe && o.correcta ? ' correcta-profe' : ''}`}
+                                        onMouseEnter={() => senalar(o)}
+                                        onMouseLeave={() => senalar(null)}
+                                        onFocus={() => senalar(o)}
+                                        onBlur={() => senalar(null)}
                                         onClick={() => elegir(o)}
                                         disabled={!liberado}>
                                         <span className="caso-radio" />
@@ -233,6 +220,7 @@ export default function Caso({ contenido, estado, onCambio, liberado, esProfe })
                                             <strong>{o.titulo}</strong>
                                             {o.descripcion && <small>{o.descripcion}</small>}
                                         </span>
+                                        {esProfe && o.correcta && <span className="caso-etiqueta-profe">correcta</span>}
                                     </button>
                                 )
                             })}
@@ -411,6 +399,8 @@ const CSS = `
 .caso-opcion.elegida { border-color: #818cf8; background: rgba(99, 102, 241, .16); }
 .caso-radio { width: 14px; height: 14px; flex: none; border-radius: 99px; border: 2px solid rgba(45, 212, 191, .7); }
 .caso-opcion.elegida .caso-radio { background: #818cf8; border-color: #818cf8; box-shadow: inset 0 0 0 2px #1e293b; }
+.caso-opcion.correcta-profe { box-shadow: inset 0 0 0 2px #10b981; }
+.caso-etiqueta-profe { align-self: center; font-size: 10.5px; font-weight: 700; color: #34d399; text-transform: uppercase; letter-spacing: .04em; }
 .caso-opcion-texto { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .caso-opcion-texto strong { font-size: 12.5px; color: #fff; }
 .caso-opcion-texto small { font-size: 11px; color: #cbd5e1; line-height: 1.35; }

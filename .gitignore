@@ -62,3 +62,7 @@ temp/
 
 # Mini-juegos de referencia (solo locales, ~110 MB)
 mini-juegos/
+
+# Arte original (PNG pesados) de sellos y reacciones. En el repo van las
+# versiones .webp optimizadas, dentro de apps/web/src/aula/.
+arte-original/

@@ -238,6 +238,18 @@ const NAV_CSS = `
 }
 .ds-nav__scrim { display: none; }
 
+/* ═══════════════ COMPACTA (en el aula) ═══════════════
+   Solo en escritorio: tira de íconos de 68px, el nombre aparece al pasar el
+   mouse (title). En móvil el menú ya es un cajón escondido, no estorba. */
+@media (min-width: 769px) {
+  .ds-nav--compacta { width: 68px; padding: var(--space-4) 10px; }
+  .ds-nav--compacta .ds-nav__brand { justify-content: center; padding: var(--space-2) 0; }
+  .ds-nav--compacta .ds-nav__brand-text,
+  .ds-nav--compacta .ds-nav__txt { display: none; }
+  .ds-nav--compacta .ds-nav__link { justify-content: center; padding: var(--space-2) 0; border-left-color: transparent; }
+  .ds-nav--compacta .ds-nav__link:hover { transform: none; }
+}
+
 /* ═══════════════ RESPONSIVE ═══════════════ */
 @media (max-width: 768px) {
   .ds-nav__hamburger { display: inline-flex; }
@@ -262,7 +274,7 @@ const NAV_CSS = `
 }
 `
 
-export default function Navbar() {
+export default function Navbar({ compacta = false }) {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
@@ -300,7 +312,7 @@ export default function Navbar() {
       {/* Scrim — oscurece el fondo cuando el drawer está abierto (móvil) */}
       {mobileOpen && <div className="ds-nav__scrim" onClick={closeMobile} />}
 
-      <nav className={mobileOpen ? 'ds-nav ds-nav--open' : 'ds-nav'}>
+      <nav className={['ds-nav', mobileOpen && 'ds-nav--open', compacta && 'ds-nav--compacta'].filter(Boolean).join(' ')}>
         {/* Logo → redirige a Inicio */}
         <button
           type="button"
@@ -315,17 +327,17 @@ export default function Navbar() {
         {/* Links principales */}
         <div className="ds-nav__section">
           {NAV_ITEMS.map(({ label, path, Icon }) => (
-            <NavLink key={path} to={path} className={linkClass} onClick={closeMobile}>
+            <NavLink key={path} to={path} className={linkClass} onClick={closeMobile} title={compacta ? label : undefined}>
               <span className="ds-nav__ico"><Icon size={20} weight="regular" /></span>
-              {label}
+              <span className="ds-nav__txt">{label}</span>
             </NavLink>
           ))}
 
           {/* Admin — solo visible para cuentas autorizadas */}
           {showAdmin && (
-            <NavLink to="/admin" className={linkClass} onClick={closeMobile}>
+            <NavLink to="/admin" className={linkClass} onClick={closeMobile} title={compacta ? 'Admin' : undefined}>
               <span className="ds-nav__ico"><ShieldCheck size={20} weight="regular" /></span>
-              Admin
+              <span className="ds-nav__txt">Admin</span>
             </NavLink>
           )}
         </div>
@@ -333,18 +345,19 @@ export default function Navbar() {
         {/* Links inferiores */}
         <div className="ds-nav__bottom">
           {NAV_BOTTOM.map(({ label, path, Icon }) => (
-            <NavLink key={path} to={path} className={linkClass} onClick={closeMobile}>
+            <NavLink key={path} to={path} className={linkClass} onClick={closeMobile} title={compacta ? label : undefined}>
               <span className="ds-nav__ico"><Icon size={20} weight="regular" /></span>
-              {label}
+              <span className="ds-nav__txt">{label}</span>
             </NavLink>
           ))}
           <button
             type="button"
             className="ds-nav__link ds-nav__link--danger"
             onClick={() => { setConfirmOpen(true); closeMobile() }}
+            title={compacta ? 'Salir' : undefined}
           >
             <span className="ds-nav__ico"><SignOut size={20} /></span>
-            Salir
+            <span className="ds-nav__txt">Salir</span>
           </button>
         </div>
       </nav>

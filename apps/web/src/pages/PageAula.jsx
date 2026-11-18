@@ -24,6 +24,7 @@ import { isAdminEmail } from '@/constants.js'
 import { ArrowLeft, LockSimple, CircleNotch } from '@phosphor-icons/react'
 import Aula from '../aula/Aula.jsx'
 import { MARCA_DESTELLO } from '../aula/contrato.js'
+import { MATERIALES_DE_ENSAYO } from './materialesDeEnsayo.js'
 
 function AccesoGate({ estado, navigate }) {
   const verificando = estado === 'checking'
@@ -185,11 +186,14 @@ export default function PageAula() {
     marca: MARCA_DESTELLO,
     taller: {
       nombre:     taller?.nombre ?? 'Tu taller',
-      instructor: taller?.instructor ?? 'Destello',
+      instructor: taller?.instructor ?? null,
       tema:       null,
       terminaEn:  minutosRestantes(taller),
     },
     rol: esProfe ? 'profe' : 'alumno',
+    // Una sesión de clase = este taller, este día (en CDMX). Con esto el aula
+    // guarda el chat mientras dura la clase y lo recupera al recargar.
+    claseId: `${id}:${new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' })}`,
     yo: {
       id:       user?.id ? String(user.id) : 'yo',
       nombre:   [user?.nombre, user?.apellido].filter(Boolean).join(' ') || user?.email || 'Tú',
@@ -211,7 +215,10 @@ export default function PageAula() {
     personas: [],
     pizarron: {
       // Igual: el material de la clase va a venir de la plantilla del taller.
-      materiales:  [],
+      // Mientras no exista, en LOCAL (npm run dev) se carga el material de
+      // ensayo para poder probar actividades en vivo entre profe y alumna.
+      // En producción `import.meta.env.DEV` es false: el aula real sigue vacía.
+      materiales:  import.meta.env.DEV ? MATERIALES_DE_ENSAYO : [],
       actividadId: null,
       liberado:    false,
     },

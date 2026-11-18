@@ -66,7 +66,7 @@ const PERSONAS = NOMBRES.map((nombre, i) => ({
     reaccion:      i === 5 ? 'aplauso' : i === 14 ? 'duda' : null,
     interactuando: i % 4 !== 1,
     avance:   (i * 17) % 100,
-    insignias: i % 5 === 0 ? ['trabajadora'] : i % 7 === 0 ? ['pensativo', 'excelente'] : [],
+    insignias: i % 5 === 0 ? ['trabajadora'] : i % 7 === 0 ? ['aprendiendo', 'excelente'] : [],
     // Cada quien va por donde va. `ultimoCambio` alimenta el semáforo.
     estadoActividad: {
         pasos: i % 3 === 0 ? { q1: 'a' } : i % 3 === 1 ? {} : { q1: 'a', q2: 'b' },

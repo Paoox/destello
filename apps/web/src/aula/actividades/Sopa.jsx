@@ -29,8 +29,7 @@
  * tiempo". En el aula no — cada quien a su ritmo, como el resto.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { marcarCambio } from './contrato.js'
-import { barajar, normalizarPalabra, useAltoDelPizarron, useTamano, COLORES_VIVOS } from './comun.js'
+import { barajar, normalizarPalabra, useAltoDelPizarron, useCambiar, useTamano, COLORES_VIVOS } from './comun.js'
 import logo from './sopa/logo.webp'
 
 const LETRAS = 'AAAABCCDEEEEFGHIIIJLLMNNÑOOOOPQRRSSSTTUUVXYZ'
@@ -149,23 +148,35 @@ export function resumen(contenido, estado) {
 export default function Sopa({ contenido, estado, onCambio, liberado, esProfe }) {
     const raiz = useRef(null)
     const alto = useAltoDelPizarron(raiz)
-    const [fase, setFase] = useState('instrucciones')
-    const [verReglas, setVerReglas] = useState(false)
-    const [verTodas, setVerTodas] = useState(false)
+    const cambiar = useCambiar(estado, onCambio)
+    // Lo que se ve va en el estado (pantalla, reglas, práctica, el trazo en
+    // curso) para que quien mira vea lo mismo. "Ver soluciones" es solo de la
+    // profe: se queda local, si viajara el grupo vería las respuestas.
+    const fase = estado?.fase ?? 'instrucciones'
+    const verReglas = estado?.verReglas === true
+    const setVerReglas = (v) => cambiar({ verReglas: v })
+    // La profe ve las soluciones desde el inicio (en SU pantalla); el botón
+    // las oculta si estorban.
+    const [verTodas, setVerTodas] = useState(esProfe)
 
     const lista = contenido?.palabras ?? []
     const tablero = tableroDe(estado)
     const encontradas = estado?.pasos ?? {}
     const empezado = !!tablero
-    const toque = () => onCambio(marcarCambio(estado, {}))
+    const toque = () => cambiar()
 
     const empezar = (extra = {}) => {
         if (!liberado) return
         const elegidas = contenido?.cuantas ? barajar(lista).slice(0, contenido.cuantas) : lista
         const nuevo = generarSopa(elegidas, contenido?.tamano ?? 10, contenido ?? {})
-        setVerReglas(false)
-        onCambio(marcarCambio(estado, { tablero: nuevo, pasos: {}, ...extra }))
+        cambiar({ tablero: nuevo, pasos: {}, verReglas: false, sel: null, tuto: null, ...extra })
     }
+    // La práctica también se comparte: su tablerito se genera UNA vez y viaja.
+    const nuevaPractica = () => ({
+        tablero: generarSopa(TUTORIAL.palabras, TUTORIAL.tamano, { diagonales: false }),
+        encontradas: {}, sel: null,
+    })
+    const tuto = estado?.tuto?.tablero ? estado.tuto : null
 
     if (!lista.length) {
         return <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Esta sopa de letras todavía no tiene palabras.</p>
@@ -186,8 +197,10 @@ export default function Sopa({ contenido, estado, onCambio, liberado, esProfe })
                     encontradas={encontradas}
                     verTodas={verTodas}
                     bloqueado={!liberado || terminado}
-                    onEncontrada={(palabra) => onCambio(marcarCambio(estado, { pasos: { ...encontradas, [palabra]: true } }))}
+                    onEncontrada={(palabra) => cambiar({ pasos: { ...encontradas, [palabra]: true }, sel: null })}
                     onToque={toque}
+                    selRemota={estado?.sel ?? null}
+                    onSeleccion={(sel) => cambiar({ sel })}
                 />
                 {terminado && (
                     <div className="sopa-fin">
@@ -198,14 +211,16 @@ export default function Sopa({ contenido, estado, onCambio, liberado, esProfe })
                 )}
             </div>
         )
-    } else if (!empezado && fase === 'tutorial') {
+    } else if (!empezado && fase === 'tutorial' && tuto) {
         pantalla = (
             <Tutorial
                 liberado={liberado}
                 puedeSaltar={puedeSaltar}
-                onToque={toque}
+                tuto={tuto}
+                onTuto={(cambios) => cambiar({ tuto: { ...tuto, ...cambios } })}
+                onOtraVez={() => cambiar({ tuto: nuevaPractica() })}
                 onTerminar={() => empezar({ tutorialHecho: true })}
-                onVolver={() => setFase('instrucciones')}
+                onVolver={() => cambiar({ fase: 'instrucciones' })}
             />
         )
     } else {
@@ -233,7 +248,7 @@ export default function Sopa({ contenido, estado, onCambio, liberado, esProfe })
                         <button className="sopa-boton" onClick={() => setVerReglas(false)}>Volver al juego</button>
                     ) : (
                         <>
-                            <button className="sopa-boton" onClick={() => { setFase('tutorial'); toque() }} disabled={!liberado}>¿Cómo jugar?</button>
+                            <button className="sopa-boton" onClick={() => cambiar({ fase: 'tutorial', tuto: nuevaPractica() })} disabled={!liberado}>¿Cómo jugar?</button>
                             {puedeSaltar && (
                                 <button className="sopa-boton sopa-boton-sutil" onClick={() => empezar()} disabled={!liberado}>Ya sé jugar</button>
                             )}
@@ -268,10 +283,9 @@ export default function Sopa({ contenido, estado, onCambio, liberado, esProfe })
    Tutorial: una sopita de 6×6 con PIÑA y FRESA
    ══════════════════════════════════════════════════════════════════════════ */
 
-function Tutorial({ liberado, puedeSaltar, onToque, onTerminar, onVolver }) {
-    const [ronda, setRonda] = useState(0)
-    const tablero = useMemo(() => generarSopa(TUTORIAL.palabras, TUTORIAL.tamano, { diagonales: false }), [ronda])
-    const [encontradas, setEncontradas] = useState({})
+function Tutorial({ liberado, puedeSaltar, tuto, onTuto, onOtraVez, onTerminar, onVolver }) {
+    const { tablero } = tuto
+    const encontradas = tuto.encontradas ?? {}
     const lista = Object.keys(encontradas).length >= tablero.palabras.length
 
     return (
@@ -282,20 +296,22 @@ function Tutorial({ liberado, puedeSaltar, onToque, onTerminar, onVolver }) {
                 cada palabra. También puedes tocar la primera letra y luego la última.
             </p>
             <Tablero
-                key={ronda}
+                key={tablero.filas.join('')}
                 tablero={tablero}
                 encontradas={encontradas}
                 bloqueado={!liberado}
                 compacto
-                onEncontrada={(p) => { onToque(); setEncontradas(e => ({ ...e, [p]: true })) }}
-                onToque={onToque}
+                onEncontrada={(p) => onTuto({ encontradas: { ...encontradas, [p]: true }, sel: null })}
+                onToque={() => onTuto({})}
+                selRemota={tuto.sel ?? null}
+                onSeleccion={(sel) => onTuto({ sel })}
             />
             <div className="sopa-acciones">
                 <button className="sopa-boton" onClick={onTerminar} disabled={!liberado || !(lista || puedeSaltar)}>
                     ¡Entendido, a jugar!
                 </button>
                 {lista && (
-                    <button className="sopa-boton sopa-boton-sutil" onClick={() => { setEncontradas({}); setRonda(r => r + 1) }}>
+                    <button className="sopa-boton sopa-boton-sutil" onClick={onOtraVez}>
                         Practicar otra vez
                     </button>
                 )}
@@ -310,7 +326,7 @@ function Tutorial({ liberado, puedeSaltar, onToque, onTerminar, onVolver }) {
    El tablero — lo usan el juego y el tutorial
    ══════════════════════════════════════════════════════════════════════════ */
 
-function Tablero({ tablero, encontradas, verTodas = false, bloqueado, compacto = false, onEncontrada, onToque }) {
+function Tablero({ tablero, encontradas, verTodas = false, bloqueado, compacto = false, onEncontrada, onToque, selRemota = null, onSeleccion }) {
     const { filas, palabras } = tablero
     const n = filas.length
     const hueco = useRef(null)
@@ -323,8 +339,21 @@ function Tablero({ tablero, encontradas, verTodas = false, bloqueado, compacto =
     // llegar más rápido que los renders) y un contador fuerza el repintado.
     const sel = useRef({ inicio: null, fin: null, arrastrando: false })
     const [, repintar] = useState(0)
-    const fijar = (cambios) => { Object.assign(sel.current, cambios); repintar(n => n + 1) }
-    const { inicio, fin } = sel.current
+    // El trazo también se avisa (`onSeleccion`) para que quien mira lo vea
+    // dibujarse. Solo cuando cambia de casilla, no en cada movimiento.
+    const fijar = (cambios) => {
+        const antes = JSON.stringify([sel.current.inicio, sel.current.fin])
+        Object.assign(sel.current, cambios)
+        repintar(n => n + 1)
+        if (JSON.stringify([sel.current.inicio, sel.current.fin]) !== antes) {
+            onSeleccion?.(sel.current.inicio ? { inicio: sel.current.inicio, fin: sel.current.fin } : null)
+        }
+    }
+    // Lo propio manda; si no estoy trazando nada, se pinta el trazo que llegó.
+    const propio = sel.current.inicio ? sel.current : null
+    const valida = (p) => Array.isArray(p) && p.length === 2 && p.every(Number.isInteger)
+    const remoto = !propio && valida(selRemota?.inicio) ? { inicio: selRemota.inicio, fin: valida(selRemota?.fin) ? selRemota.fin : selRemota.inicio } : null
+    const { inicio, fin } = propio ?? remoto ?? { inicio: null, fin: null }
     const [error, setError] = useState(false)
 
     const colorDe = useMemo(() => {

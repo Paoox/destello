@@ -55,6 +55,12 @@ export default function Visor3D({
     giroLibre = false,
     onCalibrar,
     onInteraccion,
+    // Hacia dónde se está viendo el modelo: { az, pol, zoom }. Sirve para
+    // que lo que gira una persona lo vea otra (la profe enseñando, o la profe
+    // mirando el pizarrón de una alumna). `onVista` avisa al girar/acercar;
+    // `vista` la aplica cuando cambia desde fuera.
+    vista = null,
+    onVista,
 }) {
     const caja = useRef(null)
     const motor = useRef(null)
@@ -62,8 +68,8 @@ export default function Visor3D({
 
     // Los manejadores cambian en cada render; el motor los lee de aquí para
     // no tener que reconstruir la escena cada vez.
-    const avisos = useRef({ onCalibrar, onInteraccion, calibrar })
-    avisos.current = { onCalibrar, onInteraccion, calibrar }
+    const avisos = useRef({ onCalibrar, onInteraccion, calibrar, onVista })
+    avisos.current = { onCalibrar, onInteraccion, calibrar, onVista }
 
     // ── La escena: se arma UNA vez por modelo ─────────────────────────────
     useEffect(() => {
@@ -136,6 +142,26 @@ export default function Visor3D({
         }
         controles.addEventListener('change', m.pedir)
         controles.addEventListener('start', () => avisos.current.onInteraccion?.())
+
+        // ── Reportar la vista mientras la persona gira (no cuando se aplica
+        // una vista que llegó de fuera: eso sería un eco sin fin) ──
+        m.usuario = false
+        m.ultimaVista = 0
+        m.leerVista = () => ({
+            az:   +controles.getAzimuthalAngle().toFixed(3),
+            pol:  +controles.getPolarAngle().toFixed(3),
+            zoom: m.distanciaBase ? +(camara.position.distanceTo(controles.target) / m.distanciaBase).toFixed(3) : 1,
+        })
+        const reportar = (forzar) => {
+            if (!avisos.current.onVista) return
+            const ahora = Date.now()
+            if (!forzar && ahora - m.ultimaVista < 120) return
+            m.ultimaVista = ahora
+            avisos.current.onVista(m.leerVista())
+        }
+        controles.addEventListener('start', () => { m.usuario = true })
+        controles.addEventListener('change', () => { if (m.usuario) reportar(false) })
+        controles.addEventListener('end', () => { m.usuario = false; reportar(true) })
 
         // ── Encuadre: el modelo cabe a cualquier tamaño de caja ──
         m.encuadrar = (reiniciar) => {
@@ -296,6 +322,22 @@ export default function Visor3D({
         c.update()
     }, [giroLibre, carga.estado])
 
+    // ── Vista que llega de fuera (la de la profe, o la de una alumna) ────
+    const llaveVista = vista ? `${vista.az},${vista.pol},${vista.zoom}` : ''
+    useEffect(() => {
+        const m = motor.current
+        if (!m || !vista || carga.estado !== 'listo' || m.usuario || !m.distanciaBase) return
+        const { az, pol, zoom } = vista
+        if (![az, pol, zoom].every(Number.isFinite)) return
+        const r = m.distanciaBase * Math.min(Math.max(zoom, 0.4), 1.8)
+        const esf = new THREE.Spherical(r, pol, az)
+        m.camara.position.setFromSpherical(esf).add(m.controles.target)
+        m.camara.lookAt(m.controles.target)
+        m.controles.update()
+        m.pedir()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [llaveVista, carga.estado])
+
     // ── Bloqueado: se ve, pero no se deja girar ───────────────────────────
     useEffect(() => {
         if (motor.current) motor.current.controles.enabled = !bloqueado
@@ -304,6 +346,7 @@ export default function Visor3D({
     const vistaFrontal = () => {
         motor.current?.encuadrar(true)
         onInteraccion?.()
+        if (motor.current) onVista?.(motor.current.leerVista())
     }
 
     return (

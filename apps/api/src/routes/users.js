@@ -310,7 +310,10 @@ router.get('/me/aula/:tallerId/video-token', async (req, res, next) => {
 
     const { rows } = await query(
       'SELECT nombre, apellido FROM usuarios WHERE id = $1', [req.user.userId])
-    const nombre = [rows[0]?.nombre, rows[0]?.apellido].filter(Boolean).join(' ') || email
+    // Nombre y PRIMER apellido — es lo que se ve en la tira de personas y en
+    // la cabecera del aula; mismo criterio que `chispaService` (T-43).
+    const primerApellido = String(rows[0]?.apellido ?? '').trim().split(/\s+/)[0]
+    const nombre = [String(rows[0]?.nombre ?? '').trim(), primerApellido].filter(Boolean).join(' ') || email
 
     // Profe = asignada a este taller (T-05) o cuenta admin (`ADMIN_EMAILS`
     // del .env — la misma lista que en el front decide quién entra como profe

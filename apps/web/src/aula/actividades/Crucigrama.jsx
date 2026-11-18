@@ -27,8 +27,7 @@
  * entrar (o cuando lo ve la profe) sea el mismo. Sin tiempo límite.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { marcarCambio } from './contrato.js'
-import { barajar, normalizarPalabra, useAltoDelPizarron, useTamano, COLORES_VIVOS } from './comun.js'
+import { barajar, normalizarPalabra, useAltoDelPizarron, useCambiar, useTamano, COLORES_VIVOS } from './comun.js'
 
 const TUTORIAL = {
     filas: 5, columnas: 4,
@@ -188,20 +187,27 @@ export function resumen(contenido, estado) {
 export default function Crucigrama({ contenido, estado, onCambio, liberado, esProfe }) {
     const raiz = useRef(null)
     const alto = useAltoDelPizarron(raiz)
-    const [fase, setFase] = useState('instrucciones')
-    const [verReglas, setVerReglas] = useState(false)
-    const [verRespuestas, setVerRespuestas] = useState(false)
+    const cambiar = useCambiar(estado, onCambio)
+    // Lo que se ve va en el estado (pantalla, reglas, práctica, el cursor)
+    // para que quien mira vea lo mismo. "Ver respuestas" es solo de la profe:
+    // se queda local, si viajara el grupo vería las respuestas.
+    const fase = estado?.fase ?? 'instrucciones'
+    const setFase = (f) => cambiar({ fase: f })
+    const verReglas = estado?.verReglas === true
+    const setVerReglas = (v) => cambiar({ verReglas: v })
+    // La profe ve las respuestas desde el inicio (en SU pantalla); el botón
+    // las oculta si estorban.
+    const [verRespuestas, setVerRespuestas] = useState(esProfe)
 
     const lista = contenido?.palabras ?? []
     const cuantas = contenido?.cuantas ?? 5
     const tablero = tableroDe(estado)
     const empezado = !!tablero
-    const toque = () => onCambio(marcarCambio(estado, {}))
+    const toque = () => cambiar()
 
     const empezar = (extra = {}) => {
         if (!liberado) return
-        setVerReglas(false)
-        onCambio(marcarCambio(estado, { tablero: generarCrucigrama(lista, cuantas), letras: {}, pasos: {}, pistas: 0, ...extra }))
+        cambiar({ tablero: generarCrucigrama(lista, cuantas), letras: {}, pasos: {}, pistas: 0, verReglas: false, cursor: null, tutoLetras: null, ...extra })
     }
 
     if (!lista.length) {
@@ -225,9 +231,11 @@ export default function Crucigrama({ contenido, estado, onCambio, liberado, esPr
                     bloqueado={!liberado || terminado}
                     onLetras={(letras, extra = {}) => {
                         const pasos = Object.fromEntries(tablero.palabras.filter(p => resuelta(p, letras)).map(p => [p.id, true]))
-                        onCambio(marcarCambio(estado, { letras, pasos, ...extra }))
+                        cambiar({ letras, pasos, ...extra })
                     }}
                     pistas={estado?.pistas ?? 0}
+                    cursor={estado?.cursor ?? null}
+                    onCursor={(cursor) => cambiar({ cursor })}
                 />
                 {terminado && (
                     <div className="cruci-fin">
@@ -245,7 +253,8 @@ export default function Crucigrama({ contenido, estado, onCambio, liberado, esPr
             <Tutorial
                 liberado={liberado}
                 puedeSaltar={puedeSaltar}
-                onToque={toque}
+                letras={estado?.tutoLetras ?? {}}
+                onLetras={(l) => cambiar({ tutoLetras: l })}
                 onTerminar={() => empezar({ tutorialHecho: true })}
                 onVolver={() => setFase('instrucciones')}
             />
@@ -300,8 +309,7 @@ export default function Crucigrama({ contenido, estado, onCambio, liberado, esPr
    Tutorial: CASA y ÁRBOL
    ══════════════════════════════════════════════════════════════════════════ */
 
-function Tutorial({ liberado, puedeSaltar, onToque, onTerminar, onVolver }) {
-    const [letras, setLetras] = useState({})
+function Tutorial({ liberado, puedeSaltar, letras, onLetras, onTerminar, onVolver }) {
     const lista = TUTORIAL.palabras.every(p => resuelta(p, letras))
     return (
         <div className="cruci-panel cruci-scroll">
@@ -316,7 +324,7 @@ function Tutorial({ liberado, puedeSaltar, onToque, onTerminar, onVolver }) {
                     letras={letras}
                     bloqueado={!liberado}
                     compacto
-                    onLetras={(l) => { setLetras(l); onToque() }}
+                    onLetras={onLetras}
                     pistas={0}
                 />
             </div>
@@ -333,7 +341,7 @@ function Tutorial({ liberado, puedeSaltar, onToque, onTerminar, onVolver }) {
    El tablero — lo usan el juego y el tutorial
    ══════════════════════════════════════════════════════════════════════════ */
 
-function Tablero({ tablero, letras, verRespuestas = false, bloqueado, compacto = false, onLetras, pistas }) {
+function Tablero({ tablero, letras, verRespuestas = false, bloqueado, compacto = false, onLetras, pistas, cursor = null, onCursor }) {
     const { filas, columnas, palabras } = tablero
     const hueco = useRef(null)
     const { w, h } = useTamano(hueco)
@@ -353,7 +361,15 @@ function Tablero({ tablero, letras, verRespuestas = false, bloqueado, compacto =
         return m
     }, [palabras])
 
-    const [activa, setActiva] = useState(() => ({ celda: celdasDe(palabras[0])[0], dir: palabras[0].dir }))
+    // La casilla activa (el cursor) viaja en el estado: quien mira ve en qué
+    // palabra está trabajando. Si no llega una válida, se usa la propia.
+    const [activaLocal, setActivaLocal] = useState(() => ({ celda: celdasDe(palabras[0])[0], dir: palabras[0].dir }))
+    const cursorValido = cursor && mapa[cursor.celda] && (cursor.dir === 'h' || cursor.dir === 'v')
+    const activa = cursorValido ? cursor : activaLocal
+    const setActiva = (a) => {
+        setActivaLocal(a)
+        if (a.celda !== activa.celda || a.dir !== activa.dir) onCursor?.(a)
+    }
     const palabraActiva = mapa[activa.celda]?.palabras[activa.dir] ?? Object.values(mapa[activa.celda]?.palabras ?? {})[0] ?? palabras[0]
     const celdasActivas = new Set(celdasDe(palabraActiva))
 

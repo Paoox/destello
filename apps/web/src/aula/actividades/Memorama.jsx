@@ -60,7 +60,7 @@
  * ilumina una pareja cuando alguien lleva varios fallos seguidos.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { marcarCambio } from './contrato.js'
+import { useCambiar, useFaltan } from './comun.js'
 import ornamento from './memorama/ornamento.webp'
 import imgCaballo from './memorama/tutorial/caballo.webp'
 import imgManzana from './memorama/tutorial/manzana.webp'
@@ -151,20 +151,20 @@ export default function Memorama({ contenido, estado, onCambio, liberado, esProf
     const tablero = useMemo(() => enOrden(cartas, estado?.orden), [cartas, estado?.orden])
     const segundos = Math.max(0, Math.round(contenido?.segundosParaMemorizar ?? 0))
 
-    const [fase, setFase] = useState('instrucciones')  // antes de jugar: 'instrucciones' | 'tutorial'
-    const [verReglas, setVerReglas] = useState(false)  // releer las reglas a media partida
-    const [memorizando, setMemorizando] = useState(0)  // segundos restantes del vistazo
+    // Lo que se ve va en el estado (pantalla, reglas, el vistazo, las cartas
+    // destapadas, la práctica) para que quien mira vea lo mismo — ver
+    // `useCambiar`. "Ver todas" es solo de la profe: local a propósito.
+    const cambiar = useCambiar(estado, onCambio)
+    const fase = estado?.fase ?? 'instrucciones'      // antes de jugar: 'instrucciones' | 'tutorial'
+    const verReglas = estado?.verReglas === true      // releer las reglas a media partida
+    const setVerReglas = (v) => cambiar({ verReglas: v })
+    // El vistazo inicial: se guarda la HORA en que se tapan (no un contador),
+    // así todas las pantallas cuentan igual sin un mensaje por segundo.
+    const memorizando = useFaltan(estado?.memorizarHasta)
     const [verTodas, setVerTodas] = useState(false)    // solo la profe
     const raiz = useRef(null)
     const rejilla = useRef(null)
     const espacio = useEspacio(raiz, rejilla)
-
-    // El vistazo inicial: cuenta regresiva y luego se tapan todas.
-    useEffect(() => {
-        if (memorizando <= 0) return
-        const t = setTimeout(() => setMemorizando(s => s - 1), 1000)
-        return () => clearTimeout(t)
-    }, [memorizando])
 
     if (!pares.length) {
         return <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Este memorama todavía no tiene parejas.</p>
@@ -173,21 +173,30 @@ export default function Memorama({ contenido, estado, onCambio, liberado, esProf
     const total = pares.length
     const hechas = pares.filter(p => encontradas[p.id]).length
     const terminado = hechas >= total
-    const toque = () => onCambio(marcarCambio(estado, {}))
+    const toque = () => cambiar()
 
     const empezar = (extra = {}) => {
         if (!liberado) return
-        setVerReglas(false)
-        onCambio(marcarCambio(estado, { orden: barajar(cartas.map(c => c.id)), pasos: {}, intentos: 0, ...extra }))
-        setMemorizando(segundos)
+        cambiar({
+            orden: barajar(cartas.map(c => c.id)), pasos: {}, intentos: 0,
+            verReglas: false, juego: {}, tuto: null,
+            memorizarHasta: segundos ? Date.now() + segundos * 1000 : null,
+            ...extra,
+        })
     }
 
     const intento = (acierto, par) => {
-        onCambio(marcarCambio(estado, {
-            pasos: acierto ? { ...encontradas, [par]: true } : encontradas,
-            intentos: intentos + 1,
+        cambiar(u => ({
+            pasos: acierto ? { ...(u.pasos ?? {}), [par]: true } : (u.pasos ?? {}),
+            intentos: (u.intentos ?? 0) + 1,
         }))
     }
+
+    const nuevaPractica = () => ({
+        orden: barajar(cartasDe(TUTORIAL.pares).map(c => c.id)),
+        encontradas: {}, juego: {},
+        memorizarHasta: Date.now() + TUTORIAL.segundosParaMemorizar * 1000,
+    })
 
     const puedeSaltarTutorial = esProfe || estado?.tutorialHecho
     const { columnas, anchoCarta } = acomodo(tablero.length, espacio)
@@ -206,20 +215,25 @@ export default function Memorama({ contenido, estado, onCambio, liberado, esProf
                 columnas={columnas}
                 anchoCarta={anchoCarta}
                 rejillaRef={rejilla}
+                marcarPares={esProfe}
                 onToque={toque}
                 onIntento={intento}
                 liberado={liberado}
+                juego={estado?.juego ?? {}}
+                onJuego={(c) => cambiar(u => ({ juego: { ...(u.juego ?? {}), ...c } }))}
             />
         )
-    } else if (!empezado && fase === 'tutorial') {
+    } else if (!empezado && fase === 'tutorial' && estado?.tuto) {
         pantalla = (
             <Tutorial
                 liberado={liberado}
                 puedeSaltar={puedeSaltarTutorial}
                 espacio={espacio}
-                onToque={toque}
+                tuto={estado.tuto}
+                onTuto={(f) => cambiar(u => ({ tuto: { ...(u.tuto ?? {}), ...f(u.tuto ?? {}) } }))}
+                onOtraVez={() => cambiar({ tuto: nuevaPractica() })}
                 onTerminar={() => empezar({ tutorialHecho: true })}
-                onVolver={() => setFase('instrucciones')}
+                onVolver={() => cambiar({ fase: 'instrucciones' })}
             />
         )
     } else {
@@ -230,7 +244,7 @@ export default function Memorama({ contenido, estado, onCambio, liberado, esProf
                 segundos={segundos}
                 liberado={liberado}
                 aMedioJuego={verReglas}
-                onComoJugar={() => { setFase('tutorial'); toque() }}
+                onComoJugar={() => cambiar({ fase: 'tutorial', tuto: nuevaPractica() })}
                 onDirecto={puedeSaltarTutorial ? () => empezar() : null}
                 onVolver={() => setVerReglas(false)}
             />
@@ -368,17 +382,12 @@ function Instrucciones({ contenido, total, segundos, liberado, aMedioJuego, onCo
    Pantalla 2 — Tutorial: un ejemplo de pareja y una práctica de 2 parejas
    ══════════════════════════════════════════════════════════════════════════ */
 
-function Tutorial({ liberado, puedeSaltar, espacio, onToque, onTerminar, onVolver }) {
-    const [ronda, setRonda] = useState(0)
-    const cartas = useMemo(() => barajar(cartasDe(TUTORIAL.pares)), [ronda])
-    const [encontradas, setEncontradas] = useState({})
-    const [memorizando, setMemorizando] = useState(TUTORIAL.segundosParaMemorizar)
-
-    useEffect(() => {
-        if (memorizando <= 0) return
-        const t = setTimeout(() => setMemorizando(s => s - 1), 1000)
-        return () => clearTimeout(t)
-    }, [memorizando])
+function Tutorial({ liberado, puedeSaltar, espacio, tuto, onTuto, onOtraVez, onTerminar, onVolver }) {
+    // Todo de la práctica viene del estado (`tuto`): quien mira ve las mismas
+    // cartas, en el mismo orden, destapadas igual.
+    const cartas = useMemo(() => enOrden(cartasDe(TUTORIAL.pares), tuto.orden), [tuto.orden])
+    const encontradas = tuto.encontradas ?? {}
+    const memorizando = useFaltan(tuto.memorizarHasta)
 
     const lista = Object.keys(encontradas).length >= TUTORIAL.pares.length
     const ejemplo = cartasDe([TUTORIAL.ejemplo])
@@ -387,7 +396,7 @@ function Tutorial({ liberado, puedeSaltar, espacio, onToque, onTerminar, onVolve
     // márgenes. En un pizarrón angosto se acomodan una debajo de la otra.
     const ancho = Math.max(56, Math.min(76, Math.floor(((espacio?.w ?? 600) - 300) / 6)))
 
-    const repetir = () => { setEncontradas({}); setMemorizando(TUTORIAL.segundosParaMemorizar); setRonda(r => r + 1) }
+    const repetir = onOtraVez
 
     return (
         <div className="mem-panel">
@@ -414,7 +423,7 @@ function Tutorial({ liberado, puedeSaltar, espacio, onToque, onTerminar, onVolve
                 <div className="mem-caja mem-caja-practica">
                     <h3>Práctica rápida</h3>
                     <Tablero
-                        key={ronda}
+                        key={(tuto.orden ?? []).join('|')}
                         cartas={cartas}
                         pares={TUTORIAL.pares}
                         encontradas={encontradas}
@@ -424,13 +433,14 @@ function Tutorial({ liberado, puedeSaltar, espacio, onToque, onTerminar, onVolve
                         columnas={4}
                         anchoCarta={ancho}
                         practica
-                        onToque={onToque}
+                        onToque={() => onTuto(() => ({}))}
                         onIntento={(acierto, par) => {
-                            onToque()
-                            if (acierto) setEncontradas(e => ({ ...e, [par]: true }))
+                            if (acierto) onTuto(t => ({ encontradas: { ...(t.encontradas ?? {}), [par]: true } }))
                         }}
                         liberado={liberado}
                         pistaTras={3}
+                        juego={tuto.juego ?? {}}
+                        onJuego={(c) => onTuto(t => ({ juego: { ...(t.juego ?? {}), ...c } }))}
                     />
                 </div>
             </div>
@@ -462,11 +472,18 @@ function Tablero({
     cartas, pares, encontradas, bloqueado, mostrarTodas, mensaje,
     columnas, anchoCarta, rejillaRef, practica = false,
     onToque, onIntento, liberado, pistaTras = FALLOS_PARA_PISTA,
+    juego = {}, onJuego, marcarPares = false,
 }) {
-    const [volteadas, setVolteadas] = useState([])  // ids destapados ahorita (máx. 2)
-    const [ocupado, setOcupado] = useState(false)   // esperando a que se tapen
-    const [ultima, setUltima] = useState(null)      // la última jugada, para la tira de lectura
-    const [pista, setPista] = useState(null)        // par que brilla para ayudar
+    // Lo que se ve de la jugada vive en `juego` (dentro del estado), no aquí:
+    // así quien mira ve las mismas cartas destapadas. Ver `useCambiar`.
+    const volteadas = Array.isArray(juego.volteadas) ? juego.volteadas : []  // ids destapados ahorita (máx. 2)
+    const ocupado = juego.ocupado === true                                    // esperando a que se tapen
+    const ultima = juego.ultima ?? null                                       // la última jugada, para la tira de lectura
+    const pista = juego.pista ?? null                                         // par que brilla para ayudar
+    const setVolteadas = (v) => onJuego({ volteadas: v })
+    const setOcupado = (v) => onJuego({ ocupado: v })
+    const setUltima = (v) => onJuego({ ultima: v })
+    const setPista = (v) => onJuego({ pista: v })
     const fallosSeguidos = useRef(0)
     const relojes = useRef([])
 
@@ -560,6 +577,11 @@ function Tablero({
                                 <Reverso />
                                 <Cara carta={carta} />
                             </div>
+                            {/* Solo la profe: qué carta va con cuál, sin destaparlas
+                                (así puede jugar y enseñar con el tablero tapado). */}
+                            {marcarPares && !arriba && (
+                                <span className="mem-par-profe">{pares.findIndex(p => p.id === carta.par) + 1}</span>
+                            )}
                         </button>
                     )
                 })}
@@ -787,6 +809,12 @@ const CSS = `
 
 /* La carta: un botón con proporción de naipe y su propio contenedor, para que
    todo adentro (letra, bordes, sombra) se mida contra el ancho de la carta. */
+.mem-par-profe {
+    position: absolute; top: 4px; right: 4px; z-index: 3; min-width: 20px; height: 20px; padding: 0 5px;
+    border-radius: 999px; background: var(--brillo, #10b981); color: #0f172a;
+    font: 800 11px/20px 'Outfit', sans-serif; text-align: center; pointer-events: none;
+    box-shadow: 0 0 0 2px rgba(15, 23, 42, .55);
+}
 .mem-carta {
     position: relative; aspect-ratio: 5 / 7; width: 100%;
     padding: 0; border: 0; background: none; cursor: pointer;

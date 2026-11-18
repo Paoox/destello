@@ -581,6 +581,13 @@ export async function getTalleresDelUsuario(email, usuarioId = null) {
              -- Vía chispa (como siempre)
              SELECT t.id AS taller_id, t.nombre, t.descripcion, t.categoria,
                     t.horario, t.hora_inicio, t.hora_fin, t.fecha_inicio, t.fecha_fin, t.imagen_url,
+                    t.instructor,
+                    -- Quién da la clase según el panel (T-43): las profesoras
+                    -- asignadas, como están registradas en la base — nombre
+                    -- y PRIMER apellido ("Paola Arreola", no "Paola Arreola García").
+                    (SELECT string_agg(NULLIF(TRIM(CONCAT_WS(' ', TRIM(u.nombre), split_part(TRIM(u.apellido), ' ', 1))), ''), ' y ' ORDER BY tpn.created_at)
+                       FROM taller_profesores tpn JOIN usuarios u ON u.id = tpn.usuario_id
+                      WHERE tpn.taller_id = t.id) AS profesores_nombres,
                     c.code, c.used_at, c.created_at, c.expires_at, c.is_demo,
                     EXISTS (
                         SELECT 1 FROM taller_profesores tp
@@ -611,6 +618,13 @@ export async function getTalleresDelUsuario(email, usuarioId = null) {
              -- ESA (prioridad 1), no con esta sintética.
              SELECT t.id AS taller_id, t.nombre, t.descripcion, t.categoria,
                     t.horario, t.hora_inicio, t.hora_fin, t.fecha_inicio, t.fecha_fin, t.imagen_url,
+                    t.instructor,
+                    -- Quién da la clase según el panel (T-43): las profesoras
+                    -- asignadas, como están registradas en la base — nombre
+                    -- y PRIMER apellido ("Paola Arreola", no "Paola Arreola García").
+                    (SELECT string_agg(NULLIF(TRIM(CONCAT_WS(' ', TRIM(u.nombre), split_part(TRIM(u.apellido), ' ', 1))), ''), ' y ' ORDER BY tpn.created_at)
+                       FROM taller_profesores tpn JOIN usuarios u ON u.id = tpn.usuario_id
+                      WHERE tpn.taller_id = t.id) AS profesores_nombres,
                     NULL AS code, NULL AS used_at, tp.created_at, NULL AS expires_at, FALSE AS is_demo,
                     TRUE AS es_profesor,
                     2 AS prioridad
@@ -635,6 +649,9 @@ export async function getTalleresDelUsuario(email, usuarioId = null) {
             fechaInicio: r.fecha_inicio,
             fechaFin:    r.fecha_fin,
             imagenUrl:   r.imagen_url,
+            // Nombre de quien da el taller: la cuenta asignada en Profesores
+            // gana sobre el campo de texto suelto `instructor` (casi siempre vacío).
+            instructor:  r.profesores_nombres || r.instructor || null,
             esDemo:      r.is_demo,
             asignadaAt:  r.created_at,
             canjeadaAt:  r.used_at,

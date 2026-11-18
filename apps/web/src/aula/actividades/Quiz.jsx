@@ -18,9 +18,8 @@
  * justamente donde se aprende. La profe sí ve el avance en su rejilla; el
  * grupo, no.
  */
-import { useState } from 'react'
 import { CheckCircle, Circle } from '@phosphor-icons/react'
-import { marcarCambio } from './contrato.js'
+import { useCambiar } from './comun.js'
 
 /** Resumen para la miniatura de la profe, sin montar el quiz completo. */
 export function resumen(contenido, estado) {
@@ -37,7 +36,9 @@ export function resumen(contenido, estado) {
 export default function Quiz({ contenido, estado, onCambio, liberado, esProfe }) {
     const preguntas = contenido?.preguntas ?? []
     const respuestas = estado?.pasos ?? {}
-    const [indice, setIndice] = useState(0)
+    const cambiar = useCambiar(estado, onCambio)
+    // En qué pregunta va: en el estado, para que quien mira vea la misma.
+    const indice = Math.min(Math.max(0, estado?.indice ?? 0), Math.max(0, preguntas.length - 1))
 
     if (!preguntas.length) {
         return <Vacio texto="Esta actividad todavía no tiene preguntas." />
@@ -50,22 +51,18 @@ export default function Quiz({ contenido, estado, onCambio, liberado, esProfe })
 
     const responder = (opcionId) => {
         if (!liberado) return
-        onCambio(marcarCambio(estado, {
-            pasos: { ...respuestas, [pregunta.id]: opcionId },
-        }))
+        cambiar({ pasos: { ...respuestas, [pregunta.id]: opcionId } })
         // Avanzar solo si queda siguiente. Que no salte al final y parezca que
         // se cerró: la persona quiere ver que terminó.
         if (indice < preguntas.length - 1) {
-            setTimeout(() => setIndice(i => i + 1), 260)
+            const siguiente = indice + 1
+            setTimeout(() => cambiar({ indice: siguiente }), 260)
         }
     }
 
     // Moverse entre preguntas TAMBIÉN es interactuar. Sin esto, alguien
     // releyendo el ejercicio se pinta de rojo aunque esté trabajando.
-    const irA = (i) => {
-        setIndice(i)
-        onCambio(marcarCambio(estado, {}))
-    }
+    const irA = (i) => cambiar({ indice: i })
 
     return (
         <div style={{

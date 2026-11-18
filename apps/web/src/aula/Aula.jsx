@@ -20,8 +20,8 @@
  */
 import { useState, useEffect, useRef } from 'react'
 import {
-    Microphone, MicrophoneSlash, VideoCamera, VideoCameraSlash, Hand,
-    ChatCircleDots, Gear, Question, Lock, LockOpen, Stack, X, Sparkle,
+    Microphone, MicrophoneSlash, VideoCamera, VideoCameraSlash,
+    ChatCircleDots, Gear, Question, ImageSquare, Drop, Lock, LockOpen, Stack, X, Sparkle,
 } from '@phosphor-icons/react'
 import Avatar from './Avatar.jsx'
 import Sello from './Sello.jsx'
@@ -29,7 +29,7 @@ import BandejaSellos from './BandejaSellos.jsx'
 import PistaVideo from './video/PistaVideo.jsx'
 import { useVideoAula } from './video/useVideoAula.js'
 import { MARCA_DESTELLO, MINUTOS_SIN_TOCAR } from './contrato.js'
-import { SELLOS, REACCIONES, selloPorId, reaccionPorId, SELLOS_VISIBLES_EN_PIZARRON } from './catalogo.js'
+import { REACCIONES, MANO, selloPorId, reaccionPorId, SELLOS_VISIBLES_EN_PIZARRON } from './catalogo.js'
 import { tipoDe, resumenDe } from './actividades/registro.js'
 import { ESTADO_INICIAL } from './actividades/contrato.js'
 
@@ -76,9 +76,14 @@ function BarraSuperior({ sesion }) {
                 }}>
                     {taller.nombre}
                 </div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                    {taller.instructor}
-                </div>
+                {taller.instructor && (
+                    <div style={{
+                        fontSize: 'var(--text-xs)', color: 'var(--text-muted)',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>
+                        Imparte <strong style={{ color: 'var(--color-jade-400)', fontWeight: 600 }}>{taller.instructor}</strong>
+                    </div>
+                )}
             </div>
 
             {restante && (
@@ -170,7 +175,171 @@ function Semaforo({ activo, size = 8 }) {
    Ventana izquierda — el video
    ══════════════════════════════════════════════════════════════════════════ */
 
-function VentanaVideo({ sesion, video, pistasCamara, onAbrirChat, chatAbierto, chatNuevos, onMicro, onMano, onReaccionar, onSilenciarATodos }) {
+/**
+ * Las reacciones CAEN sobre la ventana de la profe, en la pantalla de todos.
+ *
+ * Así la clase entera ve que alguien aplaudió o se sorprendió — como en un
+ * salón, donde una risa se oye en todo el cuarto y no solo en el escritorio
+ * de la maestra. La mano levantada NO pasa por aquí: esa se queda fija en el
+ * avatar hasta que la profe da la palabra.
+ *
+ * Cada reacción suelta varias copias con posición, tamaño y retraso al azar
+ * (calculados una sola vez, al llegar), y se borra sola al terminar de caer.
+ * `pointer-events: none`: nunca estorba para picarle al video.
+ */
+const COPIAS_POR_REACCION = 6
+const DURACION_LLUVIA_MS = 3600
+
+function nuevaLluvia(reaccionId) {
+    return {
+        id: `${reaccionId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        reaccionId,
+        gotas: Array.from({ length: COPIAS_POR_REACCION }, () => ({
+            x:       4 + Math.random() * 82,           // % desde la izquierda
+            tam:     30 + Math.round(Math.random() * 26),
+            retraso: Math.round(Math.random() * 900),   // ms
+            dura:    2200 + Math.round(Math.random() * 500),
+            giro:    Math.round(Math.random() * 50 - 25),
+        })),
+    }
+}
+
+function LluviaReacciones({ lluvia }) {
+    if (!lluvia?.length) return null
+    return (
+        <div aria-hidden style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 3 }}>
+            {lluvia.flatMap(l => {
+                const r = reaccionPorId(l.reaccionId)
+                if (!r) return []
+                return l.gotas.map((g, i) => (
+                    // El envoltorio mide lo mismo que la ventana: su
+                    // `translateY(100%)` recorre exactamente la altura del video.
+                    <div key={`${l.id}-${i}`} className="aula-gota" style={{
+                        position: 'absolute', inset: 0,
+                        animationDuration: `${g.dura}ms`, animationDelay: `${g.retraso}ms`,
+                    }}>
+                        <div className="aula-gota__cara" style={{
+                            position: 'absolute', top: 0, left: `${g.x}%`,
+                            '--giro': `${g.giro}deg`,
+                            filter: 'drop-shadow(0 3px 6px rgba(0,0,0,.35))',
+                        }}>
+                            <Sello sello={r} size={g.tam} />
+                        </div>
+                    </div>
+                ))
+            })}
+            <style>{`
+                .aula-gota { transform: translateY(-70px); opacity: 0;
+                    animation-name: aula-caer; animation-timing-function: cubic-bezier(.45,.05,.75,.95);
+                    animation-fill-mode: both; }
+                .aula-gota__cara { animation: aula-mecer 900ms ease-in-out infinite alternate; }
+                @keyframes aula-caer {
+                    0%   { transform: translateY(-70px); opacity: 0; }
+                    12%  { opacity: 1; }
+                    85%  { opacity: 1; }
+                    100% { transform: translateY(100%); opacity: 0; }
+                }
+                @keyframes aula-mecer {
+                    from { transform: translateX(-8px) rotate(calc(var(--giro) * -1)); }
+                    to   { transform: translateX(8px)  rotate(var(--giro)); }
+                }
+                @media (prefers-reduced-motion: reduce) {
+                    .aula-gota__cara { animation: none; }
+                }
+            `}</style>
+        </div>
+    )
+}
+
+/**
+ * El sello EN GRANDE: cuando la profe se lo pone a alguien, en el pizarrón
+ * de esa persona aparece el dibujo con un golpe de sello, destellos y su
+ * frase ("¡Excelente trabajo!", "¡Qué velocidad!"…). Dura unos segundos y se
+ * va solo — o antes, si le pica. El sello chiquito se queda arriba a la
+ * derecha como siempre.
+ */
+const DURACION_FESTEJO_MS = 3800
+
+function FestejoSello({ festejo, onCerrar }) {
+    const sello = festejo ? selloPorId(festejo.selloId) : null
+    useEffect(() => {
+        if (!festejo) return
+        const t = setTimeout(onCerrar, DURACION_FESTEJO_MS)
+        return () => clearTimeout(t)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [festejo?.key])
+    if (!sello) return null
+
+    return (
+        <div key={festejo.key} className="aula-festejo" onClick={onCerrar} role="status" style={{
+            position: 'absolute', inset: 0, zIndex: 30, cursor: 'pointer',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 10, padding: 20, textAlign: 'center',
+            background: `radial-gradient(circle at 50% 42%, ${sello.color}55 0%, rgba(6,26,24,.82) 62%)`,
+            animationDuration: `${DURACION_FESTEJO_MS}ms`,
+        }}>
+            <div style={{ position: 'relative', width: 'min(46%, 210px)', aspectRatio: '1' }}>
+                {/* Destellos alrededor */}
+                {Array.from({ length: 8 }, (_, i) => (
+                    <span key={i} className="aula-festejo__chispa" style={{
+                        '--ang': `${i * 45}deg`, background: i % 2 ? '#FDE68A' : sello.color,
+                    }} />
+                ))}
+                <div className="aula-festejo__sello" style={{ width: '100%', height: '100%' }}>
+                    {sello.imagen
+                        ? <img src={sello.imagen} alt={sello.nombre} style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 8px 22px rgba(0,0,0,.45))' }} />
+                        : <span style={{ fontSize: 120, lineHeight: 1 }}>{sello.emoji}</span>}
+                </div>
+            </div>
+            <div className="aula-festejo__frase" style={{
+                fontSize: 'clamp(1.4rem, 3.4vw, 2.3rem)', fontWeight: 800, color: '#fff',
+                textShadow: `0 2px 0 ${sello.color}, 0 4px 18px rgba(0,0,0,.5)`,
+                lineHeight: 1.1,
+            }}>
+                {sello.frase ?? sello.nombre}
+            </div>
+            <div className="aula-festejo__mensaje" style={{
+                fontSize: 'var(--text-sm)', color: '#FDE68A', fontWeight: 600,
+            }}>
+                {sello.mensaje}
+            </div>
+            <style>{`
+                .aula-festejo { animation-name: aula-festejo-in; animation-fill-mode: both; }
+                @keyframes aula-festejo-in {
+                    0% { opacity: 0 } 6% { opacity: 1 } 88% { opacity: 1 } 100% { opacity: 0 }
+                }
+                .aula-festejo__sello { animation: aula-sellazo 700ms cubic-bezier(.2,1.6,.4,1) both; }
+                @keyframes aula-sellazo {
+                    0%   { transform: scale(2.6) rotate(-18deg); opacity: 0; }
+                    55%  { transform: scale(.88) rotate(4deg);   opacity: 1; }
+                    75%  { transform: scale(1.06) rotate(-2deg); }
+                    100% { transform: scale(1) rotate(0); }
+                }
+                .aula-festejo__frase   { animation: aula-subir 500ms 450ms ease-out both; }
+                .aula-festejo__mensaje { animation: aula-subir 500ms 650ms ease-out both; }
+                @keyframes aula-subir {
+                    from { transform: translateY(14px); opacity: 0; }
+                    to   { transform: translateY(0);    opacity: 1; }
+                }
+                .aula-festejo__chispa {
+                    position: absolute; left: 50%; top: 50%; width: 12px; height: 12px;
+                    margin: -6px; border-radius: 50%;
+                    animation: aula-chispa 900ms 380ms ease-out both;
+                }
+                @keyframes aula-chispa {
+                    0%   { transform: rotate(var(--ang)) translateY(0) scale(.4); opacity: 0; }
+                    30%  { opacity: 1; }
+                    100% { transform: rotate(var(--ang)) translateY(-125px) scale(1); opacity: 0; }
+                }
+                @media (prefers-reduced-motion: reduce) {
+                    .aula-festejo__sello, .aula-festejo__frase, .aula-festejo__mensaje, .aula-festejo__chispa { animation: none; }
+                }
+            `}</style>
+        </div>
+    )
+}
+
+function VentanaVideo({ sesion, video, pistasCamara, lluvia, onAbrirChat, chatAbierto, chatNuevos, onMicro, onMano, onReaccionar, onSilenciarATodos }) {
     const { rol, taller, personas, yo } = sesion
     const esProfe = rol === 'profe'
 
@@ -218,8 +387,9 @@ function VentanaVideo({ sesion, video, pistasCamara, onAbrirChat, chatAbierto, c
                         </div>
                     </>
                 )}
+                <LluviaReacciones lluvia={lluvia} />
                 <span style={{
-                    position: 'absolute', top: 10, left: 12,
+                    position: 'absolute', top: 10, left: 12, zIndex: 4,
                     fontSize: 'var(--text-xs)', color: 'var(--text-muted)',
                     background: 'rgba(0,0,0,0.35)', padding: '2px 8px',
                     borderRadius: 'var(--radius-full)',
@@ -295,12 +465,14 @@ function FichaPersona({ persona, pista, esProfe, soyYo, onMicro }) {
             {/* La mano y la reacción van ENCIMA del avatar: son cosas que la
                 profe tiene que cachar de reojo, sin ponerse a leer. */}
             {manoArriba && (
-                <span style={{ position: 'absolute', top: -4, right: 2, fontSize: 15 }}
-                      title="Levantó la mano">✋</span>
+                <span className="aula-mano-arriba" style={{ position: 'absolute', top: -6, right: 0 }}
+                      title="Levantó la mano">
+                    <Sello sello={MANO} size={20} />
+                </span>
             )}
             {reaccion && !manoArriba && (
-                <span style={{ position: 'absolute', top: -4, right: 2 }}>
-                    <Sello sello={reaccionPorId(reaccion)} size={16} />
+                <span style={{ position: 'absolute', top: -6, right: 0 }}>
+                    <Sello sello={reaccionPorId(reaccion)} size={20} />
                 </span>
             )}
 
@@ -405,9 +577,23 @@ function BarraControles({ sesion, video, onAbrirChat, chatAbierto, chatNuevos = 
                 {camara ? <VideoCamera size={17} /> : <VideoCameraSlash size={17} />}
             </BotonIcono>
 
+            {esProfe && video?.fondoDisponible && (
+                <BotonIcono
+                    titulo={{
+                        marca:      'Fondo: Destello · picar para desenfocar tu cuarto',
+                        desenfoque: 'Fondo: desenfocado · picar para quitarlo',
+                        ninguno:    'Sin fondo · picar para poner el de Destello',
+                    }[video.modoFondo]}
+                    activo={video.modoFondo !== 'ninguno'}
+                    onClick={() => video.toggleFondo()}
+                >
+                    {video.modoFondo === 'desenfoque' ? <Drop size={17} /> : <ImageSquare size={17} />}
+                </BotonIcono>
+            )}
+
             {!esProfe && (
                 <BotonIcono titulo={mano ? 'Bajar la mano' : 'Levantar la mano'} activo={mano} onClick={onMano}>
-                    <Hand size={17} />
+                    <Sello sello={MANO} size={20} />
                 </BotonIcono>
             )}
 
@@ -468,13 +654,18 @@ function BarraControles({ sesion, video, onAbrirChat, chatAbierto, chatNuevos = 
    Ventana derecha — el pizarrón
    ══════════════════════════════════════════════════════════════════════════ */
 
-function VentanaPizarron({ sesion, onSellar, onSellarATodos, onElegirActividad, onLiberar, onAvanzar }) {
+function VentanaPizarron({ sesion, festejo, onCerrarFestejo, onSellar, onSellarATodos, onElegirActividad, onLiberar, onAvanzar }) {
     const { rol, personas, yo, pizarron } = sesion
     const esProfe = rol === 'profe'
     // El candado lo guarda el aula (no esta ventana) porque viaja a todas.
     const liberado = pizarron.liberado === true
     const [soloLosQueNecesitan, setSoloLosQueNecesitan] = useState(false)
-    const [abierta, setAbierta] = useState(null)   // pizarrón de quién estoy viendo
+    // Pizarrón de quién estoy viendo. Se guarda el ID, no la persona: la
+    // persona se busca en vivo en `personas`, para que la profe vea cada
+    // movimiento de la alumna y no una foto del momento en que lo abrió.
+    const [abiertaId, setAbiertaId] = useState(null)
+    const abierta = abiertaId ? personas.find(p => p.id === abiertaId) ?? null : null
+    const setAbierta = (p) => setAbiertaId(p?.id ?? null)
     const [bandeja, setBandeja] = useState(false)  // ¿está abierta la bandeja de sellos?
     const [cargado, setCargado] = useState(null)   // el sello que trae en la mano
     const [menu, setMenu] = useState(false)        // el menú de qué se muestra
@@ -488,7 +679,12 @@ function VentanaPizarron({ sesion, onSellar, onSellarATodos, onElegirActividad, 
     const tipo = tipoDe(actividadActiva)
     const Actividad = tipo?.Componente ?? null
     const quienTrabaja = abierta?.id ?? yo.id
-    const estadoVisible = (abierta ?? yo).estadoActividad ?? ESTADO_INICIAL
+    // Alumno con el candado cerrado: ve el pizarrón de la profe (lo que ella
+    // va marcando), sin poder tocarlo. Al abrirlo vuelve a su propio trabajo.
+    const viendoAProfe = !esProfe && !liberado && pizarron.estadoProfe != null
+    const estadoVisible = viendoAProfe
+        ? pizarron.estadoProfe
+        : (abierta ?? yo).estadoActividad ?? ESTADO_INICIAL
 
     // Al plantar un sello, la persona se ve actualizada al instante. Si además
     // estaba abierto su pizarrón en grande, se refresca ahí también.
@@ -512,6 +708,9 @@ function VentanaPizarron({ sesion, onSellar, onSellarATodos, onElegirActividad, 
             overflow: 'hidden',
             position: 'relative',
         }}>
+            {/* El sello en grande, encima de todo el pizarrón */}
+            <FestejoSello festejo={festejo} onCerrar={onCerrarFestejo} />
+
             {/* Lo que se está trabajando */}
             <div style={{
                 flex: '1 1 auto', minHeight: 170, position: 'relative',
@@ -528,7 +727,9 @@ function VentanaPizarron({ sesion, onSellar, onSellarATodos, onElegirActividad, 
                         key={actividadActiva.id}
                         contenido={actividadActiva.contenido}
                         estado={estadoVisible}
-                        onCambio={(nuevo) => onAvanzar?.(quienTrabaja, nuevo)}
+                        // Viendo el pizarrón de la profe no se guarda nada: es de ella,
+                        // y lo que llegara se copiaría encima del trabajo propio.
+                        onCambio={(nuevo) => { if (!viendoAProfe) onAvanzar?.(quienTrabaja, nuevo) }}
                         liberado={esProfe ? true : liberado}
                         esProfe={esProfe}
                     />
@@ -812,7 +1013,7 @@ function MiniPizarron({ persona, onClick, sellando = null, resumen = null }) {
                     {nombre.split(' ')[0]}
                 </span>
                 {resumen?.terminado && <span style={{ fontSize: 10 }} title="Ya terminó">✓</span>}
-                {manoArriba && <span style={{ fontSize: 11 }}>✋</span>}
+                {manoArriba && <Sello sello={MANO} size={15} title="Levantó la mano" />}
             </div>
 
             {/* Qué tan avanzada va — una barra basta, un número sería ruido */}
@@ -930,10 +1131,13 @@ function Chat({ mensajes, onEnviar, onCerrar }) {
  *     sellos     { porPersona: { id: [sellos] } }   — al que llega, para ponerlo al día
  *     tu_estado  { actividadId, estado }            — su avance de vuelta (si recargó,
  *                                                     o si la profe trabajó en su pizarrón)
+ *     pizarron_profe { actividadId, estado }        — lo que la profe hace en SU pizarrón;
+ *                                                     con el candado cerrado es lo que ven todos
+ *     chat_historial { mensajes }                   — al que llega, el chat de la clase hasta ahora
  *   De cualquiera:
  *     mano       { arriba }
  *     reaccion   { reaccion }
- *     chat       { texto }
+ *     chat       { id, texto }
  *     avance     { actividadId, estado }            — de alumno a profe(s), para la rejilla
  *
  * Nada de esto pasa por la API de Destello ni se guarda en la base: vive lo
@@ -942,10 +1146,27 @@ function Chat({ mensajes, onEnviar, onCerrar }) {
  */
 const LARGO_CHAT = 500
 const MAX_MENSAJES_CHAT = 200
+// Al que llega se le manda el chat reciente en UN mensaje del canal de datos,
+// que tiene tope de tamaño (~15 KB): se mandan los últimos, cortando por ahí.
+const MAX_HISTORIAL_BYTES = 12000
+// Cada cuánto, como mucho, viaja el pizarrón de la profe. Girar el modelo 3D
+// dispara decenas de cambios por segundo; a todos les basta con ~6 por segundo.
+const PIZARRON_PROFE_CADA_MS = 150
+
+const claveChat = (claseId) => `destello-aula-chat:${claseId}`
+function leerChatGuardado(claseId) {
+    if (!claseId) return []
+    try {
+        const lista = JSON.parse(sessionStorage.getItem(claveChat(claseId)) ?? '[]')
+        return Array.isArray(lista) ? lista.slice(-MAX_MENSAJES_CHAT) : []
+    } catch { return [] }
+}
 
 export default function Aula({ sesion }) {
     const [chatAbierto, setChatAbierto] = useState(false)
-    const [chat, setChat] = useState([])          // { id, de, texto, mio }
+    // { id, deId, de, texto, mio }. Arranca con lo guardado de ESTA clase:
+    // recargar la pestaña no borra la conversación.
+    const [chat, setChat] = useState(() => leerChatGuardado(sesion.claseId))
     const [chatNuevos, setChatNuevos] = useState(0)
 
     // ── La conexión real de video (T-01) ──────────────────────────────────
@@ -957,6 +1178,8 @@ export default function Aula({ sesion }) {
     const video = useVideoAula(sesion.video, {
         alRecibir: (m, de) => recibir(m, de),
         alLlegar:  (identity, rol) => ponerAlDia(identity, rol),
+        // Solo la cámara de la profe lleva el fondo de la marca.
+        fondo: sesion.rol === 'profe' ? (sesion.marca ?? MARCA_DESTELLO).fondoVideo ?? null : null,
     })
     const esProfe = sesion.rol === 'profe'
 
@@ -978,6 +1201,15 @@ export default function Aula({ sesion }) {
     // pizarrón y luego "tu estado") llegan antes de que React vuelva a pintar,
     // y el segundo tiene que compararse contra la actividad que trajo el primero.
     const actividadRef = useRef(actividadId)
+    // Lo que la profe tiene en SU pizarrón (solo lo usan los alumnos). Con el
+    // candado cerrado es lo que se les muestra: la profe explica y todos ven
+    // lo mismo — los puntos que marca en la oreja, la carta que voltea…
+    const [estadoProfe, setEstadoProfe] = useState(null)
+    // Las reacciones que van cayendo sobre la ventana de la profe, y el sello
+    // que se está festejando en grande en MI pizarrón (solo alumnos).
+    const [lluvia, setLluvia] = useState([])
+    const [festejo, setFestejo] = useState(null)
+    const envioProfe = useRef({ timer: null, pendiente: null })
 
     // Memoria de la clase por persona: si alguien se cae y vuelve a entrar,
     // LiveKit la saca y la vuelve a meter a la lista — sin esto perdería sus
@@ -1087,6 +1319,7 @@ export default function Aula({ sesion }) {
         })
         setPersonas(lista => lista.map(limpiar))
         setYo(limpiar)
+        setEstadoProfe(null)
     }
 
     /**
@@ -1104,11 +1337,30 @@ export default function Aula({ sesion }) {
         if (personaId === yo.id) {
             // Mi propio avance: a la(s) profe(s), para su rejilla y semáforo.
             if (!esProfe) video.enviar({ tipo: 'avance', actividadId, estado: estadoNuevo }, profesEnSala())
+            else mandarPizarronProfe(estadoNuevo)
         } else if (esProfe) {
             // La profe movió el pizarrón de una alumna: que ella lo vea también.
             video.enviar({ tipo: 'tu_estado', actividadId, estado: estadoNuevo }, personaId)
         }
     }
+
+    /**
+     * La profe trabajó en SU pizarrón: que lo vean todos. Con tope de
+     * frecuencia (ver PIZARRON_PROFE_CADA_MS), siempre mandando el último.
+     */
+    const mandarPizarronProfe = (estado) => {
+        const e = envioProfe.current
+        e.pendiente = { actividadId: actividadRef.current, estado }
+        if (e.timer) return
+        const salir = () => {
+            if (!e.pendiente) { e.timer = null; return }
+            video.enviar({ tipo: 'pizarron_profe', ...e.pendiente })
+            e.pendiente = null
+            e.timer = setTimeout(salir, PIZARRON_PROFE_CADA_MS)
+        }
+        salir()
+    }
+    useEffect(() => () => clearTimeout(envioProfe.current.timer), [])
 
     const aplicarAvance = (personaId, estadoNuevo) => {
         const aplicar = (p) => ({ ...p, estadoActividad: estadoNuevo, interactuando: true })
@@ -1127,6 +1379,7 @@ export default function Aula({ sesion }) {
      * ser una reacción y se vuelve un adorno que la profe aprende a ignorar.
      */
     const reaccionar = (reaccionId) => {
+        llover(reaccionId)
         setYo(a => ({ ...a, reaccion: reaccionId }))
         setTimeout(() => setYo(a => a.reaccion === reaccionId ? { ...a, reaccion: null } : a), 4000)
         video.enviar({ tipo: 'reaccion', reaccion: reaccionId })
@@ -1134,9 +1387,21 @@ export default function Aula({ sesion }) {
 
     /** Lo mismo, cuando la reacción es de alguien más. */
     const verReaccion = (personaId, reaccionId) => {
+        llover(reaccionId)
         setPersonas(lista => lista.map(p => p.id === personaId ? { ...p, reaccion: reaccionId } : p))
         setTimeout(() => setPersonas(lista => lista.map(p =>
             p.id === personaId && p.reaccion === reaccionId ? { ...p, reaccion: null } : p)), 4000)
+    }
+
+    /**
+     * Suelta una reacción a caer sobre la ventana de la profe. Con tope: si
+     * 30 personas aplauden a la vez, se ven las últimas 8, no 180 caritas
+     * trabando la compu de quien tenga menos máquina.
+     */
+    const llover = (reaccionId) => {
+        const l = nuevaLluvia(reaccionId)
+        setLluvia(lista => [...lista, l].slice(-8))
+        setTimeout(() => setLluvia(lista => lista.filter(x => x.id !== l.id)), DURACION_LLUVIA_MS + 900)
     }
 
     /** Levantar / bajar la mano. */
@@ -1148,13 +1413,41 @@ export default function Aula({ sesion }) {
     /** Un mensaje al chat de la clase. */
     const enviarChat = (texto) => {
         const t = String(texto).slice(0, LARGO_CHAT)
-        agregarAlChat({ de: 'Tú', texto: t, mio: true })
-        video.enviar({ tipo: 'chat', texto: t })
+        // El id lo pone quien escribe y viaja con el mensaje: así, cuando a
+        // alguien le llega el historial, no se duplica lo que ya tenía.
+        const id = `${yo.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+        agregarAlChat({ id, deId: yo.id, de: 'Tú', texto: t, mio: true })
+        video.enviar({ tipo: 'chat', id, texto: t })
     }
 
     const agregarAlChat = (m) => {
-        setChat(lista => [...lista, { ...m, id: `${Date.now()}-${Math.random()}` }].slice(-MAX_MENSAJES_CHAT))
+        const id = m.id ?? `${Date.now()}-${Math.random()}`
+        setChat(lista => lista.some(x => x.id === id)
+            ? lista
+            : [...lista, { ...m, id }].slice(-MAX_MENSAJES_CHAT))
         if (!m.mio && !chatAbierto) setChatNuevos(n => n + 1)
+    }
+
+    // El chat se guarda en el navegador mientras dura la clase (sessionStorage:
+    // se queda al recargar, se va al cerrar la pestaña). Es del navegador, no
+    // de la API — el aula sigue sin hablar con nadie.
+    useEffect(() => {
+        if (!sesion.claseId) return
+        try { sessionStorage.setItem(claveChat(sesion.claseId), JSON.stringify(chat)) } catch { /* sin almacenamiento: solo no se guarda */ }
+    }, [chat, sesion.claseId])
+
+    /** El chat reciente, listo para mandárselo a quien llega (cabe en un mensaje). */
+    const historialParaMandar = () => {
+        const salida = []
+        let bytes = 0
+        for (let i = chat.length - 1; i >= 0; i--) {
+            const m = chat[i]
+            const item = { id: m.id, deId: m.deId ?? (m.mio ? yo.id : null), de: m.mio ? (yo.nombre || 'Profe') : m.de, texto: m.texto }
+            bytes += JSON.stringify(item).length * 2
+            if (bytes > MAX_HISTORIAL_BYTES) break
+            salida.unshift(item)
+        }
+        return salida
     }
 
     /**
@@ -1235,6 +1528,12 @@ export default function Aula({ sesion }) {
             case 'sello':
                 if (!deLaProfe || !selloPorId(m.sello)) return
                 aplicarSello(m.persona ?? null, m.sello)
+                // Si es para mí (o para todo el grupo), se festeja en grande.
+                // Solo aquí, en el sello recién puesto — NO en `sellos`, que es
+                // ponerse al día al entrar: ahí serían festejos repetidos.
+                if (!esProfe && (m.persona == null || m.persona === yo.id)) {
+                    setFestejo({ key: Date.now(), selloId: m.sello })
+                }
                 return
             case 'sellos':
                 if (!deLaProfe || esProfe || typeof m.porPersona !== 'object') return
@@ -1242,6 +1541,26 @@ export default function Aula({ sesion }) {
                     for (const sello of [].concat(lista ?? [])) if (selloPorId(sello)) aplicarSello(id, sello)
                 }
                 return
+            case 'pizarron_profe':
+                if (!deLaProfe || esProfe || m.actividadId !== actividadRef.current || !m.estado || typeof m.estado !== 'object') return
+                setEstadoProfe(m.estado)
+                return
+            case 'chat_historial': {
+                if (!deLaProfe || esProfe || !Array.isArray(m.mensajes)) return
+                const llegados = m.mensajes
+                    .filter(x => x && typeof x.id === 'string' && typeof x.texto === 'string')
+                    .map(x => {
+                        const mio = x.deId === yo.id
+                        return { id: x.id, deId: x.deId ?? null, de: mio ? 'Tú' : String(x.de ?? 'Alguien'), texto: x.texto.slice(0, LARGO_CHAT), mio }
+                    })
+                // Se mezcla con lo que ya tenía (lo guardado al recargar), sin
+                // duplicar, en el orden en que la profe lo vio.
+                setChat(lista => {
+                    const ya = new Set(lista.map(x => x.id))
+                    return [...llegados.filter(x => !ya.has(x.id)), ...lista].slice(-MAX_MENSAJES_CHAT)
+                })
+                return
+            }
             case 'tu_estado':
                 if (!deLaProfe || esProfe || m.actividadId !== actividadRef.current || !m.estado) return
                 setYo(a => ({ ...a, estadoActividad: m.estado }))
@@ -1262,7 +1581,8 @@ export default function Aula({ sesion }) {
                 const texto = String(m.texto ?? '').slice(0, LARGO_CHAT).trim()
                 if (!texto) return
                 const nombre = video.remotos.find(r => r.identity === de.identity)?.nombre ?? 'Alguien'
-                agregarAlChat({ de: nombre, texto })
+                const id = typeof m.id === 'string' ? m.id.slice(0, 80) : undefined
+                agregarAlChat({ id, deId: de.identity, de: nombre, texto })
                 return
             }
             default:
@@ -1283,6 +1603,9 @@ export default function Aula({ sesion }) {
             if (Object.keys(porPersona).length) video.enviar({ tipo: 'sellos', porPersona }, identity)
             const suEstado = memoria.current.estados[identity]
             if (suEstado) video.enviar({ tipo: 'tu_estado', actividadId, estado: suEstado }, identity)
+            // Lo que la profe tiene en su pizarrón, y el chat de la clase hasta ahora.
+            if (actividadId && yo.estadoActividad) video.enviar({ tipo: 'pizarron_profe', actividadId, estado: yo.estadoActividad }, identity)
+            if (chat.length) video.enviar({ tipo: 'chat_historial', mensajes: historialParaMandar() }, identity)
         } else {
             if (yo.manoArriba) video.enviar({ tipo: 'mano', arriba: true }, identity)
             // Si la que llega es la profe (o recargó), que vea por dónde voy.
@@ -1314,14 +1637,19 @@ export default function Aula({ sesion }) {
     }, [])
 
     const actividad = (sesion.pizarron.materiales ?? []).find(m => m.id === actividadId) ?? null
+    // Quién imparte: manda la frontera (la profesora asignada al taller, como
+    // está registrada en la base). Solo si no hay ninguna asignada se usa el
+    // nombre de quien está dando la clase en vivo como profe (ej. una admin).
+    const profeEnVivo = esProfe ? yo.nombre : personas.find(p => p.rol === 'profe')?.nombre
     const s = {
         ...sesion,
+        taller: { ...sesion.taller, instructor: sesion.taller.instructor || profeEnVivo || null },
         marca: sesion.marca ?? MARCA_DESTELLO,
         personas,
         // Cámara/micrófono de "yo" salen de LiveKit, no del estado que se usa
         // para sellos/insignias — mismo criterio que `personas` arriba.
         yo: { ...yo, camara: video.camaraActiva, micro: video.microActivo },
-        pizarron: { ...sesion.pizarron, actividadId, actividad, liberado },
+        pizarron: { ...sesion.pizarron, actividadId, actividad, liberado, estadoProfe },
     }
 
     return (
@@ -1346,6 +1674,7 @@ export default function Aula({ sesion }) {
                         sesion={s}
                         video={video}
                         pistasCamara={pistasCamara}
+                        lluvia={lluvia}
                         chatAbierto={chatAbierto}
                         chatNuevos={chatNuevos}
                         onAbrirChat={() => { setChatAbierto(v => !v); setChatNuevos(0) }}
@@ -1360,6 +1689,8 @@ export default function Aula({ sesion }) {
 
                 <VentanaPizarron
                     sesion={s}
+                    festejo={festejo}
+                    onCerrarFestejo={() => setFestejo(null)}
                     onSellar={sellar}
                     onSellarATodos={sellarATodos}
                     onElegirActividad={elegirActividad}

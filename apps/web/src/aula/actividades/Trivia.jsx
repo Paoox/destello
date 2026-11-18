@@ -34,8 +34,7 @@
  * pantalla de "perdiste".
  */
 import { useEffect, useRef, useState } from 'react'
-import { marcarCambio } from './contrato.js'
-import { barajar, useAltoDelPizarron } from './comun.js'
+import { barajar, useAltoDelPizarron, useCambiar } from './comun.js'
 
 import logo from './trivia/logo.webp'
 import buhoAtento from './trivia/buho-atento.webp'
@@ -99,12 +98,15 @@ export function resumen(contenido, estado) {
 export default function Trivia({ contenido, estado, onCambio, liberado, esProfe }) {
     const raiz = useRef(null)
     const alto = useAltoDelPizarron(raiz)
-    const [fase, setFase] = useState('instrucciones')
+    const cambiar = useCambiar(estado, onCambio)
+    // Instrucciones o práctica: en el estado, para que quien mira vea lo mismo.
+    const fase = estado?.fase ?? 'instrucciones'
+    const setFase = (f) => cambiar({ fase: f })
 
     const preguntas = (contenido?.preguntas ?? []).filter(p => p?.opciones?.length >= 2)
     const porId = Object.fromEntries(preguntas.map((p, i) => [idDe(p, i), p]))
     const segundos = Math.max(0, Math.round(contenido?.segundosPorPregunta ?? 0))
-    const toque = () => onCambio(marcarCambio(estado, {}))
+    const toque = () => cambiar()
 
     if (!preguntas.length) {
         return <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Esta trivia todavía no tiene preguntas.</p>
@@ -119,7 +121,7 @@ export default function Trivia({ contenido, estado, onCambio, liberado, esProfe 
             const idx = p.opciones.map((_, j) => j)
             return [idDe(p, i), mezclar ? barajar(idx) : idx]
         }))
-        onCambio(marcarCambio(estado, { orden, opciones, pasos: {}, actual: 0, ...extra }))
+        cambiar({ orden, opciones, pasos: {}, actual: 0, tutoElegida: null, ...extra })
     }
 
     const orden = (estado?.orden ?? []).filter(id => porId[id])
@@ -146,8 +148,8 @@ export default function Trivia({ contenido, estado, onCambio, liberado, esProfe 
                 segundos={segundos}
                 liberado={liberado}
                 esProfe={esProfe}
-                onResponder={(j) => onCambio(marcarCambio(estado, { pasos: { ...pasos, [id]: j } }))}
-                onSiguiente={() => onCambio(marcarCambio(estado, { actual: actual + 1 }))}
+                onResponder={(j) => cambiar({ pasos: { ...pasos, [id]: j } })}
+                onSiguiente={() => cambiar({ actual: actual + 1 })}
             />
         )
     } else if (fase === 'tutorial') {
@@ -155,7 +157,8 @@ export default function Trivia({ contenido, estado, onCambio, liberado, esProfe 
             <TutorialTrivia
                 liberado={liberado}
                 puedeSaltar={puedeSaltar}
-                onToque={toque}
+                elegida={estado?.tutoElegida ?? undefined}
+                onElegir={(j) => cambiar({ tutoElegida: j ?? null })}
                 onTerminar={() => empezar({ tutorialHecho: true })}
                 onVolver={() => setFase('instrucciones')}
             />
@@ -248,6 +251,7 @@ function Pregunta({ pregunta, ordenOpciones, elegida, numero, total, aciertos, s
                                 ? <img className="tri-letra" src={LETRAS[pos]} alt={LETRA_TEXTO[pos]} />
                                 : <span className="tri-letra tri-letra-texto">{LETRA_TEXTO[pos]}</span>}
                             <span className="tri-opcion-texto">{o.texto}</span>
+                            {esProfe && !respondida && j === correcta && <span className="tri-etiqueta-profe">correcta</span>}
                             {respondida && j === correcta && <img className="tri-marca" src={paloma} alt="Correcta" />}
                             {respondida && j === elegida && j !== correcta && <img className="tri-marca" src={tache} alt="Incorrecta" />}
                         </button>
@@ -271,8 +275,8 @@ function Pregunta({ pregunta, ordenOpciones, elegida, numero, total, aciertos, s
     )
 }
 
-function TutorialTrivia({ liberado, puedeSaltar, onToque, onTerminar, onVolver }) {
-    const [elegida, setElegida] = useState(undefined)
+function TutorialTrivia({ liberado, puedeSaltar, elegida, onElegir, onTerminar, onVolver }) {
+    const setElegida = (j) => onElegir(j)
     return (
         <div className="tri-tuto">
             <div className="tri-tuto-cabeza">
@@ -286,7 +290,7 @@ function TutorialTrivia({ liberado, puedeSaltar, onToque, onTerminar, onVolver }
                 segundos={0}
                 liberado={liberado}
                 practica
-                onResponder={(j) => { setElegida(j); onToque() }}
+                onResponder={(j) => setElegida(j)}
                 onSiguiente={onTerminar}
                 textoSiguiente="¡Entendido, a jugar!"
             />
@@ -403,7 +407,8 @@ const CSS = `
 .tri-mal { border-color: #f43f5e !important; background: rgba(244, 63, 94, .18) !important; animation: tri-temblor .35s; }
 @keyframes tri-temblor { 25% { transform: translateX(5px); } 75% { transform: translateX(-5px); } }
 .tri-apagada { opacity: .45; }
-.tri-pista-profe { box-shadow: inset 0 0 0 1px rgba(16, 185, 129, .6); }
+.tri-pista-profe { box-shadow: inset 0 0 0 2px #10b981; background: rgba(16, 185, 129, .12); }
+.tri-etiqueta-profe { font-size: 11px; font-weight: 700; color: #10b981; text-transform: uppercase; letter-spacing: .04em; }
 
 .tri-explicacion {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border-radius: 16px;

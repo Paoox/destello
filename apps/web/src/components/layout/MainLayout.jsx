@@ -3,7 +3,7 @@
  * Layout principal con navbar lateral y barra superior.
  * Todas las páginas autenticadas usan este layout.
  */
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import Navbar from './Navbar.jsx'
 import Constellation from '../Constellation.jsx'
 
@@ -20,6 +20,10 @@ const LAYOUT_CSS = `
   margin-left: var(--navbar-width, 240px);
   transition: margin-left 0.25s ease;
 }
+/* En el aula el menú se encoge a una tira de íconos (ver Navbar). */
+@media (min-width: 769px) {
+  .ds-main--compacta { margin-left: 68px; }
+}
 @media (max-width: 768px) {
   .ds-main {
     margin-left: 0;
@@ -29,6 +33,9 @@ const LAYOUT_CSS = `
 `
 
 export default function MainLayout() {
+  // En el aula el menú se encoge a íconos: el aula necesita todo el ancho
+  // (video + pizarrón) y el menú solo le robaba espacio.
+  const compacta = useLocation().pathname.startsWith('/aula/')
   return (
     <div style={{
       display: 'flex',
@@ -43,10 +50,10 @@ export default function MainLayout() {
       <Constellation />
 
       {/* Sidebar / drawer */}
-      <Navbar />
+      <Navbar compacta={compacta} />
 
       {/* Contenido principal */}
-      <main className="ds-main">
+      <main className={compacta ? 'ds-main ds-main--compacta' : 'ds-main'}>
         <Outlet />
       </main>
     </div>

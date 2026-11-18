@@ -561,8 +561,9 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
 ### 🟡 Pendiente
 - **▶ Siguiente: Paola prueba el aula en vivo (T-41/T-42)** — sellos,
   chat, mano, reacciones, actividad/candado y avance, con OpenVidu local y
-  dos cuentas. Después: T-39 → T-17 → T-43 → T-03 → material real de cada
-  taller (al final). Lista completa en `docs/backlog-tickets.md` (sección 5,
+  dos cuentas. Después: confirmar que un profe dado de alta (T-40) entra
+  a su cuenta (Google / número + código) y ve su taller → T-39 (dashboard
+  del profe) → T-17 → T-43 → T-03 → material real de cada taller (al final). Lista completa en `docs/backlog-tickets.md` (sección 5,
   "Siguientes").
 - **T-06 — Respaldo de BD + ping diario** *(movido aquí desde "Bloquea el
   lanzamiento", 18 sep 2026)*: la BD todavía tiene cambios frecuentes, no
@@ -588,18 +589,23 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
     `rol: 'profe'` (lo firma la API). ⚠️ Al desplegar: agregar
     `ADMIN_EMAILS=pao.arreola.g@gmail.com` al `.env` de la Toshiba y
     reconstruir la API (✅ hecho el 13 nov 2026). Detalle en `docs/backlog-tickets.md` (T-41).
-  - **T-43** — nombre real del profesor/taller en el aula, aprovechando
-    la cuenta real que ya da T-05 (hoy depende de un campo de texto
-    suelto casi siempre vacío).
+  - **T-43 — ✅ en código (18 nov 2026):** la cabecera del aula dice
+    "Imparte <nombre y primer apellido>" de la profesora asignada
+    (`taller_profesores` → `usuarios`, en `chispaService`). ⚠️ Toca
+    `apps/api`: reconstruir Docker en la Toshiba al desplegar.
   - **T-44/T-45** — Notificaciones y Ajustes: links muertos en el menú
     (`/notifs`, `/settings`, ninguna ruta existe) — falta primero definir
     qué son, antes de construir nada.
   - **T-46** — catálogo de avatares para alumnos con cámara apagada (el
     campo `Persona.avatarUrl` ya existe, falta la mitad de "elegir y
     guardar").
-  - **T-47** — fondos de video seleccionables para el profesor —
-    ⚠️ marcado a propósito como función de video real (segmentación en
-    vivo antes de publicar la pista), no un ajuste chico de UI.
+  - **T-47 — ✅ en código (18 nov 2026), probado en local por Paola:**
+    la cámara de la profe sale por default con el fondo de Destello
+    (`MARCA_DESTELLO.fondoVideo`); botón Destello → desenfocado → sin
+    fondo. Procesador propio `aula/video/fondoVirtual.js` (MediaPipe
+    multiclase + suavizado entre cuadros) — se descartó
+    `@livekit/track-processors` porque dejaba manchas. Detalle en
+    `docs/backlog-tickets.md`.
 - **T-34** — `PageLanding.jsx` (🔒 CONGELADA) todavía menciona "Resplandor y
   Chispa" en su copy de marketing, un mecanismo que ya no existe en el
   código (T-14, 18 sep 2026). Decisión de Paola: se actualiza al final,

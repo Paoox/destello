@@ -815,11 +815,22 @@ se llama desde el manejador principal de mensajes.
    "dar la palabra" (baja la mano) · reacciones · **chat** (contador de
    nuevos) · recargar la pestaña de la alumna y que recupere todo.
    Requisito ya cumplido: `ADMIN_EMAILS` en el `.env` de la Toshiba.
-2. **T-39** — pantalla del profe (sus talleres, horarios, material).
-3. **T-17** — aula de práctica del profe con su material.
-4. **T-43** — nombre real del profe/taller en el aula.
-5. **T-03** — actividad "armar".
-6. **Al final:** material didáctico real de cada taller, con cada profe.
+2. **Probar que un profe dado de alta (T-40) puede entrar a su cuenta** —
+   Paola. Darlo de alta desde el panel real (destello.courses/admin →
+   Profesores) con un correo de prueba y comprobar: (a) entra con Google
+   usando ese correo; (b) si se capturó WhatsApp, entra con número +
+   código; (c) en `/home` le aparece el taller asignado y al abrir el aula
+   entra como profe. Según el código debería funcionar (el login exige que
+   la cuenta exista y esté `activo`, y el alta deja ambas cosas; `/home` ya
+   incluye los talleres donde es profe desde T-05), pero falta confirmarlo
+   con una cuenta real. Al terminar, quitarle el taller con la ×.
+3. **T-39 — dashboard / perfil del profe** — su propia pantalla (no
+   `/admin`) con sus talleres asignados, fechas, horarios y material, y
+   desde ahí entrar al aula o al aula de práctica.
+4. **T-17** — aula de práctica del profe con su material.
+5. **T-43** — nombre real del profe/taller en el aula.
+6. **T-03** — actividad "armar".
+7. **Al final:** material didáctico real de cada taller, con cada profe.
 
 - **T-06 — Respaldo de BD + ping diario** *(movido aquí desde "Bloquea el
   lanzamiento", 18 sep 2026)*. Backup de Supabase (el plan free no incluye
@@ -1239,6 +1250,46 @@ se llama desde el manejador principal de mensajes.
 - **Criterio de terminado:** un mensaje que escribe cualquier persona en
   el aula lo ven las demás, en tiempo real, mientras la clase sigue
   conectada.
+- **Cambio de decisión (Paola, 18 nov 2026, al probar en vivo):** el chat
+  SÍ se recupera, pero solo dentro de la misma sesión de clase (taller +
+  día). Sigue sin pasar por la API ni la base: cada navegador lo guarda en
+  `sessionStorage` (sobrevive recargar, se va al cerrar la pestaña) y la
+  profe le manda el chat reciente a quien entra o recarga
+  (`chat_historial`, ~12 KB máx). Nuevo campo `sesion.claseId` en el
+  contrato.
+
+### Ajustes de la prueba en vivo (18 nov 2026) — en código, falta probar
+- **Pizarrón de la profe visible para todos:** antes solo viajaba lo que la
+  profe hacía en el pizarrón DE UNA ALUMNA; lo que hacía en el suyo (ej.
+  marcar puntos de la oreja) no le llegaba a nadie. Ahora viaja
+  (`pizarron_profe`, máx ~6 por segundo) y, **con el candado cerrado**, el
+  alumno ve el pizarrón de la profe sin poder tocarlo; al abrirlo vuelve a
+  su propio trabajo.
+- **Causa real de que no se viera (encontrada al reprobar):** cada
+  actividad guarda parte de lo que se VE en estado local del componente,
+  no en `estado` — y solo `estado` viaja. Corregido en **modelo3d**:
+  punto elegido, "Ver todos" y la vista del modelo (giro/zoom,
+  `Visor3D` props `vista`/`onVista`) ya van en `estado`. Además la profe
+  veía una foto fija del pizarrón de la alumna que abría (`abierta`
+  guardaba la persona, no su id) — corregido para todas las actividades.
+  **Las otras 6 también (18 nov 2026), falta probarlas en vivo:** nuevo
+  `useCambiar(estado, onCambio)` en `comun.js` (parte siempre del último
+  estado, acepta función para mezclar anidados) y `useFaltan(hasta)` para
+  cuentas regresivas por hora guardada. Quiz: `indice`. Caso: `pantalla`,
+  `indice`, `previa`, `vista`. Trivia: `fase`, `tutoElegida`. Sopa: `fase`,
+  `verReglas`, `tuto` (su tablerito), `sel` (trazo en curso). Crucigrama:
+  `fase`, `verReglas`, `tutoLetras`, `cursor`. Memorama: `fase`,
+  `verReglas`, `memorizarHasta`, `juego` (cartas destapadas, pista,
+  última jugada), `tuto`. **Se quedan locales a propósito** los botones de
+  solo-profe ("Ver soluciones/respuestas/todas", "Coordenadas"): si
+  viajaran, el grupo vería las respuestas. Regla para actividades nuevas:
+  lo que se ve va en `estado` (anotado en `comun.js`).
+  Además: mientras la alumna ve el pizarrón de la profe, su `onCambio` no
+  hace nada (no se copia el de la profe encima de su trabajo).
+- **Menú lateral compacto en el aula:** en `/aula/:id` el menú se encoge a
+  íconos (68 px, nombre al pasar el mouse) para darle el ancho al aula.
+- **Material de ensayo en el aula real, solo en local** (`import.meta.env.DEV`
+  en `PageAula.jsx`) mientras no exista el material real de cada taller.
 
 ### T-43 — Personalizar datos reales del profe y del taller en el aula
 - **Pedido por Paola (18 sep 2026), tras probar T-01:** hoy
@@ -1347,6 +1398,84 @@ se llama desde el manejador principal de mensajes.
   demás participantes la ven con ese fondo compuesto en tiempo real, sin
   que la calidad de video se sienta rota.
 
+### T-48 — Al confirmar el pago, a la alumna le vuelven a llegar los datos de pago por WhatsApp
+*(Reportado por Paola, 18 nov 2026.)*
+- **Qué pasa:** después de "Confirmar pago" en Lista de espera, la persona
+  recibe otra vez los medios de pago (CLABE/tarjeta). La parte de datos
+  está bien — el taller sí queda en su `/home` — el problema es solo el
+  mensaje.
+- **Lo que debería recibir:** UN solo mensaje: confirmación de que
+  recibimos su pago + bienvenida al taller (nombre, fecha, horario, liga a
+  `/login`). Nada de datos de pago.
+- **Pistas (revisión rápida del código, sin confirmar):**
+  - El WhatsApp que manda `POST /admin/lista-espera/:id/confirmar-pago`
+    (`routes/admin.js`) **no** trae datos de pago — dice "Tu pago quedó
+    confirmado" + liga. Ese no es.
+  - `recordatorioAutoService.js` filtra `estado IN ('pendiente',
+    'cupo_confirmado','confirmado')` — un `pagado` no debería recibirlo.
+  - **Sospechoso principal:** el botón verde de WA en
+    `ListaEsperaAdmin.jsx` (`enviarWa` → `buildWaMensaje`) siempre manda la
+    invitación "¡Alcanzaste un lugar!" con CLABE y tarjeta, **sin importar
+    el estado del renglón**. Si se presiona en un renglón ya `pagado`, sale
+    el mensaje de pago.
+  - Otro posible: si la alumna le escribe al bot después, `flujo.js`
+    responde según el estado; en `cupo_confirmado`/`pendiente` repite
+    `PAGO_TEXTO` (pasaría si el estado no alcanzó a cambiar a `pagado`).
+- **Dónde tocar:** primero reproducir y ver cuál de los dos mensajes llega
+  (el texto lo delata). Luego: que el botón WA mande el mensaje según el
+  estado (en `pagado` → bienvenida, o esconderlo), y enriquecer el WA de
+  `confirmar-pago` con fecha/horario del taller.
+- **Criterio de terminado:** confirmar un pago real → la alumna recibe
+  exactamente un WhatsApp de bienvenida sin datos de pago.
+
+
+### Arte de sellos y reacciones (18 nov 2026) — en código, falta probar
+
+- **Arte de Paola conectado.** 11 sellos y 9 reacciones + la mano, en
+  `.webp` (5-60 KB) dentro de `aula/sellos/` y `aula/reacciones/`, importados
+  en `aula/catalogo.js`. Los PNG originales (1-5 MB c/u) quedaron fuera del
+  repo en `arte-original/` (ignorada en git). A las reacciones con fondo
+  blanco se les quitó el fondo; los dos monitos de línea (ok, lentes) van
+  como calcomanía blanca para que se lean sobre el video oscuro.
+- **Catálogo nuevo de sellos:** excelente, volando, veloz, acertado,
+  buenaidea, trabajadora, disciplinado, aprendiendo, creciendo, reflejos,
+  diamante. Se retiraron pensativo, cariño, valiente y compañera (sin
+  dibujo); los ids no se guardan en la base, no hay nada que migrar.
+  Cada sello trae `frase` (lo que sale en grande) además de `mensaje`.
+- **Festejo del sello:** al alumno que recibe un sello (o a todos, si fue
+  "a todo el grupo") le aparece en su pizarrón el dibujo en grande con golpe
+  de sello, destellos, la frase y el mensaje; se va solo a los ~4 s o al
+  picarle. No se repite al entrar/recargar (solo con el sello recién puesto).
+- **Lluvia de reacciones:** la reacción cae sobre la ventana de video de la
+  profe en la pantalla de TODOS (tope: las últimas 8 a la vez) y se queda
+  4 s en el avatar de quien la mandó. La mano NO cae: se queda fija en el
+  avatar hasta que la profe da la palabra, ahora con el dibujo de Paola.
+- **Pendiente:** "aplauso" se quedó sin reacción (no había dibujo); se
+
+### Cabecera y fondo de la profe (18 nov 2026) — en código, falta probar
+
+- **Cabecera:** "Imparte <nombre>" con la profesora asignada al taller
+  (`taller_profesores` → `usuarios`), nombre + PRIMER apellido, calculado
+  en `chispaService.getTalleresDelUsuario` (campo `instructor`). Solo si el
+  taller no tiene profe asignada se usa el nombre de quien da la clase en
+  vivo. El token de video también usa nombre + primer apellido. Adelanta
+  T-43. ⚠️ Toca `apps/api`: reconstruir Docker al desplegar.
+- **T-47 (fondo virtual) — en código:** la cámara de la profe sale por
+  default con `aula/video/fondo-destello.webp` (verde Destello + logo).
+  Botón de 3 modos en sus controles: Destello → su cuarto desenfocado →
+  sin fondo (se recuerda en el navegador). La imagen es parte de la marca
+  (`MARCA_DESTELLO.fondoVideo`), así otra escuela pone el suyo.
+  - Primer intento con `@livekit/track-processors`: Paola vio manchas
+    (bloques del cuarto asomándose). Esa librería usa máscara de "todo o
+    nada" sin memoria entre cuadros. Se reemplazó por un procesador propio,
+    `aula/video/fondoVirtual.js` (MediaPipe directo): modelo multiclase,
+    máscara de confianza, suavizado entre cuadros, relleno de huecos y borde
+    suave — lo mismo que hacen Meet/Zoom. Ver su encabezado.
+  - El modelo (~16 MB) y el wasm se bajan de las CDN de Google/jsdelivr la
+    primera vez. Si algún día molesta, servirlos desde nuestro dominio.
+    `@mediapipe/tasks-vision` va fijo en 0.10.17: la URL del wasm en
+    `fondoVirtual.js` debe coincidir con esa versión.
+  agrega igual que las demás cuando exista.
 ---
 
 ## 6. 🔮 Futuro (post-lanzamiento)
