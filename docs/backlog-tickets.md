@@ -1400,6 +1400,19 @@ se llama desde el manejador principal de mensajes.
 
 ### T-48 — Al confirmar el pago, a la alumna le vuelven a llegar los datos de pago por WhatsApp
 *(Reportado por Paola, 18 nov 2026.)*
+- **✅ Arreglado en código (18 nov 2026), falta probar con un pago real.**
+  Causa: el botón verde de WhatsApp del panel decía "Enviar confirmación"
+  pero SIEMPRE mandaba "¡Alcanzaste un lugar!" + CLABE/tarjeta. El bot y
+  `confirmar-pago` no mandaban datos de pago. Cambios:
+  - Botón verde: ahora dice "Enviar datos de pago" y ya no aparece en
+    renglones `pagado`/`rechazado` (para `pagado` está "Reenviar acceso").
+  - WhatsApp de `confirmar-pago`: `services/mensajeBienvenidaPago.js` —
+    confirmación + bienvenida con nombre, fecha y horario del taller +
+    liga a /login; con prueba que verifica que NO lleve CLABE/tarjeta.
+  - Correo `sendBienvenida`: mismo contenido; ya no dice "crea tu cuenta"
+    (la cuenta existe desde el bot), el botón dice "Entrar a Destello".
+  - La fecha viaja como texto `YYYY-MM-DD` (`to_char`), no como Date de pg,
+    para no correrse un día en CDMX.
 - **Qué pasa:** después de "Confirmar pago" en Lista de espera, la persona
   recibe otra vez los medios de pago (CLABE/tarjeta). La parte de datos
   está bien — el taller sí queda en su `/home` — el problema es solo el

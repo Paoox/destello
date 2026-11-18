@@ -8,6 +8,10 @@
  */
 
 import { Resend } from 'resend'
+import { fechaLarga } from './mensajeBienvenidaPago.js'
+
+/** El nombre del taller lo escribe una persona en el panel: no se mete crudo al HTML. */
+const escaparHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -45,12 +49,18 @@ export async function sendConfirmacionTaller({ to, nombre, taller, chispaCode })
 }
 
 /**
- * Bienvenida tras confirmar el pago. Ya no lleva código: invita a crear la
- * cuenta en /login (por Google o número). Incluye botón + QR a /login.
+ * Bienvenida tras confirmar el pago: confirmación + su taller + cómo entrar
+ * a /login (Google o número). Sin códigos ni datos de pago (T-48). La cuenta
+ * ya existe desde que el bot tomó sus datos: no se le pide "crearla".
+ *
+ * @param {{ nombre?: string, fecha?: string, horario?: string }} [taller]
+ *        `fecha` como 'YYYY-MM-DD' (texto, nunca Date — ver mensajeBienvenidaPago.js)
  */
-export async function sendBienvenida({ to, nombre }) {
-    const subject = `¡Tu pago está confirmado! Crea tu cuenta en Destello ✦`
-    const html    = templateBienvenida({ nombre })
+export async function sendBienvenida({ to, nombre, taller = {} }) {
+    const subject = taller.nombre
+        ? `¡Pago confirmado! Te damos la bienvenida a "${taller.nombre}" ✦`
+        : `¡Tu pago está confirmado! Bienvenida a Destello ✦`
+    const html    = templateBienvenida({ nombre, taller })
     return sendMail({ to, subject, html })
 }
 
@@ -140,7 +150,7 @@ function templateBase(content) {
 
 // ── Template: Bienvenida (pago confirmado, sin código) ───────────────────────
 
-function templateBienvenida({ nombre }) {
+function templateBienvenida({ nombre, taller = {} }) {
     const nombreCorto = nombre?.trim().split(' ')[0] || 'bienvenido/a'
     const loginUrl    = 'https://destello.courses/login'
     const qrUrl       = 'https://destello.courses/qr-login.png'
@@ -154,12 +164,25 @@ function templateBienvenida({ nombre }) {
     <div class="body">
       <div class="greeting">¡Hola, ${nombreCorto}! 🎉</div>
       <p class="text">
-        ¡Tu pago quedó <strong style="color:#22c55e;">confirmado</strong>! Ya eres parte de Destello.
-        Solo falta un paso: crear tu cuenta para entrar a la plataforma y a tu taller.
+        Recibimos tu pago y quedó <strong style="color:#22c55e;">confirmado</strong>.
+        ${taller.nombre
+            ? `¡Te damos la bienvenida a <strong style="color:#FAF7F2;">${escaparHtml(taller.nombre)}</strong>!`
+            : '¡Ya eres parte de Destello!'}
       </p>
+      ${(() => {
+          const cuando = fechaLarga(taller.fecha)
+          const filas = [
+              cuando        && `📅 ${cuando.charAt(0).toUpperCase() + cuando.slice(1)}`,
+              taller.horario && `🕐 ${escaparHtml(taller.horario)} (hora CDMX)`,
+          ].filter(Boolean)
+          return filas.length
+              ? `<p class="text" style="text-align:center;">${filas.join('<br>')}</p>`
+              : ''
+      })()}
+      <p class="text">Tu taller ya te espera en la plataforma.</p>
 
       <div class="btn-wrap">
-        <a href="${loginUrl}" class="btn">Crear mi cuenta →</a>
+        <a href="${loginUrl}" class="btn">Entrar a Destello →</a>
       </div>
 
       <p class="text" style="text-align:center;font-size:13px;margin-top:8px;">

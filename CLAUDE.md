@@ -364,7 +364,7 @@ PATCH /admin/usuarios/:email/bloqueo  → bloquea/desbloquea acceso o compras (r
 
 - FROM: `Destello ✦ <hola@destello.courses>`
 - Templates activos en `mailService.js`:
-  - `sendBienvenida` — invita a crear cuenta en `/login` tras confirmar el pago
+  - `sendBienvenida` — tras confirmar el pago: bienvenida al taller (nombre, fecha, horario) + entrar en `/login`, sin datos de pago (T-48)
   - `sendConfirmacionTaller` — chispa + detalles del taller
   - `sendConfirmacionLugar` — confirmación de lugar + métodos de pago
 

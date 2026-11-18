@@ -309,7 +309,7 @@ export default function ListaEsperaAdmin({ adminToken }) {
         const esRecordatorio = tipo === 'recordatorio'
         const pregunta = esRecordatorio
             ? `¿Mandar recordatorio de pago a ${r.nombre || r.email}?\n\nSe le avisa que el plazo ya venció y que su lugar podría liberarse.`
-            : `¿Enviar mensaje de confirmación por WhatsApp a ${r.nombre || r.email}?\n\nSe enviará desde el número del bot Faro.`
+            : `¿Enviar los DATOS DE PAGO por WhatsApp a ${r.nombre || r.email}?\n\nLe llega "¡Alcanzaste un lugar!" con la CLABE y la tarjeta, desde el número del bot Faro.`
         if (!confirm(pregunta)) return
 
         setEnviandoWa(r.id)
@@ -387,11 +387,11 @@ export default function ListaEsperaAdmin({ adminToken }) {
         const esReenvio = r.estado === 'pagado'
         const msg = esReenvio
             ? `¿Reenviar el acceso a ${r.nombre || r.email}?\n\n` +
-              `Se volverá a enviar la bienvenida por WhatsApp y correo (con el enlace para crear su cuenta). ` +
+              `Se volverá a enviar la bienvenida al taller por WhatsApp y correo (sin datos de pago). ` +
               `La cuenta y el taller que ya existen se conservan.`
             : `¿Confirmar el pago de ${r.nombre || r.email}?\n\n` +
               `Se creará/activará su cuenta, se le asignará el taller y se le enviará ` +
-              `la bienvenida por WhatsApp y correo (con el enlace para crear su cuenta).`
+              `la bienvenida al taller por WhatsApp y correo (sin datos de pago).`
         if (!confirm(msg)) return
 
         setConfirmandoPago(r.id)
@@ -598,7 +598,7 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                                     onClick={() => confirmarPago(r)}
                                                     disabled={confirmandoPago === r.id}
                                                     title={esReenvio
-                                                        ? 'Reenviar acceso (bienvenida por correo + WhatsApp)'
+                                                        ? 'Reenviar acceso (bienvenida al taller por correo + WhatsApp, sin datos de pago)'
                                                         : 'Confirmar pago → crea la cuenta, asigna el taller y envía la bienvenida'}
                                                     style={{
                                                         display: 'flex', alignItems: 'center', gap: 5,
@@ -617,12 +617,16 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                                 </button>
                                             )
                                         })()}
-                                        {/* WA — envía directo desde el bot Faro */}
-                                        {r.whatsapp && (
+                                        {/* WA — manda los DATOS DE PAGO ("¡Alcanzaste un lugar!"
+                                            + CLABE/tarjeta) desde el bot Faro. Solo mientras
+                                            falta pagar: en un renglón `pagado` mandaba otra vez
+                                            la CLABE a quien ya pagó (T-48, 18 nov 2026). Para
+                                            `pagado` el botón que toca es "Reenviar acceso". */}
+                                        {r.whatsapp && !['pagado', 'rechazado'].includes(r.estado) && (
                                             <button
                                                 onClick={() => enviarWa(r)}
                                                 disabled={enviandoWa === r.id}
-                                                title="Enviar confirmación por WhatsApp (bot Faro)"
+                                                title="Enviar datos de pago por WhatsApp (bot Faro)"
                                                 style={{
                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                     width: 28, height: 28,

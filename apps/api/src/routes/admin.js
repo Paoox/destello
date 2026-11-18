@@ -31,6 +31,7 @@ import { crearTaller, actualizarTaller, getTallerById } from '../services/taller
 import { AppError }          from '../middleware/errorHandler.js'
 import { query }             from '../db/db.js'
 import { sendConfirmacionTaller, sendConfirmacionLugar, sendBienvenida } from '../services/mailService.js'
+import { mensajeBienvenidaPago } from '../services/mensajeBienvenidaPago.js'
 import { sendWhatsapp }      from '../services/botService.js'
 import { cuentaConWhatsapp, normalizarWhatsapp } from '../services/usuarioService.js'
 import { listReportes, resolverReporte } from '../services/reporteService.js'
@@ -336,26 +337,24 @@ router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
         let waEnviado   = false
 
         try {
-            await sendBienvenida({ to: usuario.email, nombre: usuario.nombre ?? registro.nombre ?? '' })
+            await sendBienvenida({
+                to:     usuario.email,
+                nombre: usuario.nombre ?? registro.nombre ?? '',
+                taller: { nombre: registro.taller_nombre, fecha: registro.taller_fecha, horario: registro.taller_horario },
+            })
             mailEnviado = true
         } catch (e) { console.error('[bienvenida mail]', e.message) }
 
         if (waDestino) {
             try {
-                const primerNombre = (usuario.nombre ?? registro.nombre ?? '').split(' ')[0]
-                // DE QUÉ TALLER. Antes el mensaje solo decía "tu pago quedó
-                // confirmado" — y quien está apuntado a dos talleres no tenía
-                // forma de saber cuál le confirmamos. El nombre viene en el
-                // registro (`activarAlumno` lo trae con JOIN a talleres).
-                const deTaller = registro.taller_nombre ? ` de *${registro.taller_nombre}*` : ''
-                // NO se habla de "crear cuenta": la cuenta ya existe desde que el
-                // bot tomó sus datos. Aquí solo se le dice que ya puede entrar.
-                const msg =
-                    `✦ *Destello*\n\n` +
-                    `¡Hola ${primerNombre}! Tu pago${deTaller} quedó *confirmado* y tu lugar está apartado. 🎉\n\n` +
-                    `Ya puedes entrar aquí:\n` +
-                    `https://destello.courses/login\n\n` +
-                    `Entra con Google o con tu número. ¡Nos vemos dentro! 🌟`
+                // Confirmación + bienvenida a SU taller (nombre, fecha,
+                // horario) y cómo entrar. Sin datos de pago (T-48).
+                const msg = mensajeBienvenidaPago({
+                    nombre:  usuario.nombre ?? registro.nombre ?? '',
+                    taller:  registro.taller_nombre,
+                    fecha:   registro.taller_fecha,
+                    horario: registro.taller_horario,
+                })
                 await sendWhatsapp(waDestino, msg)
                 waEnviado = true
             } catch (e) { console.error('[bienvenida wa]', e.message) }

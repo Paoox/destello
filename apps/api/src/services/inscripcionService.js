@@ -106,7 +106,11 @@ export async function activarAlumno(listaEsperaId, opts = {}) {
     return withTransaction(async (q) => {
         // ── 1. El registro de lista de espera, con datos del taller ──────────
         const { rows: regs } = await q(
-            `SELECT le.*, t.nombre AS taller_nombre, t.precio AS taller_precio
+            `SELECT le.*, t.nombre AS taller_nombre, t.precio AS taller_precio,
+                    -- Para la bienvenida (T-48). La fecha como TEXTO a propósito:
+                    -- un Date de pg se corre un día en CDMX (ver migración 014).
+                    to_char(t.fecha_inicio, 'YYYY-MM-DD') AS taller_fecha,
+                    t.horario AS taller_horario
              FROM lista_espera le
              LEFT JOIN talleres t ON t.id = le.taller_id
              WHERE le.id = $1
