@@ -1,12 +1,12 @@
 /**
  * Destello Admin — PageAdmin
  * Dashboard de administración con tabs:
- *   ✦ Accesos | Talleres | Profesores | Lista de espera | Reportes | Asistencia | Usuarios | Métricas
+ *   ✦ Accesos | Talleres | Profesores | Lista de espera | Reportes | Asistencia | Usuarios | Métricas | Detalle talleres
  * Protegida por AdminAuthOverlay hasta que el admin se autentique.
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate }                       from 'react-router-dom'
-import { ArrowClockwise, SignOut, Sparkle, BookOpen, ClockCounterClockwise, Tray, ChartLineUp, Certificate, UsersThree, ChalkboardTeacher } from '@phosphor-icons/react'
+import { ArrowClockwise, SignOut, Sparkle, BookOpen, ClockCounterClockwise, Tray, ChartLineUp, Certificate, UsersThree, ChalkboardTeacher, Table } from '@phosphor-icons/react'
 import { useAdminSession }                   from '@hooks/useAdminSession.js'
 import AdminAuthOverlay                      from '@components/admin/AdminAuthOverlay.jsx'
 import AccesosPanel                          from '@components/admin/AccesosPanel.jsx'
@@ -17,6 +17,7 @@ import MetricasPanel                         from '@components/admin/MetricasPan
 import AsistenciaPanel                       from '@components/admin/AsistenciaPanel.jsx'
 import UsuariosPanel                          from '@components/admin/UsuariosPanel.jsx'
 import ProfesoresPanel                        from '@components/admin/ProfesoresPanel.jsx'
+import DetalleTalleresPanel                   from '@components/admin/DetalleTalleresPanel.jsx'
 
 const TABS = [
     { id: 'accesos',      label: 'Accesos',         Icon: Sparkle },
@@ -27,6 +28,7 @@ const TABS = [
     { id: 'asistencia',   label: 'Asistencia',      Icon: Certificate },
     { id: 'usuarios',     label: 'Usuarios',        Icon: UsersThree },
     { id: 'metricas',     label: 'Métricas',        Icon: ChartLineUp },
+    { id: 'detalle',      label: 'Detalle talleres', Icon: Table },
 ]
 
 export default function PageAdmin() {
@@ -125,6 +127,7 @@ export default function PageAdmin() {
                     marginBottom:  'var(--space-6)',
                     borderBottom:  '1px solid var(--border-subtle)',
                     paddingBottom: 0,
+                    overflowX:     'auto',   // 9 pestañas: en pantallas chicas se deslizan
                 }}>
                     {TABS.map(({ id, label, Icon }) => (
                         <button
@@ -199,6 +202,11 @@ export default function PageAdmin() {
                 {/* Tab: Métricas — el embudo, el dinero y lo que necesita atención */}
                 {activeTab === 'metricas' && isAuthenticated && (
                     <MetricasPanel adminToken={adminToken} />
+                )}
+
+                {/* Tab: Detalle talleres — recorrido completo por taller, con PDF */}
+                {activeTab === 'detalle' && isAuthenticated && (
+                    <DetalleTalleresPanel adminToken={adminToken} />
                 )}
             </div>
         </>

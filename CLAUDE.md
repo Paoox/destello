@@ -416,9 +416,9 @@ Métodos de pago incluidos en templates:
 
 ## Panel Admin `/admin`
 
-8 tabs en `PageAdmin.jsx`: **Accesos** · **Talleres** · **Profesores** ·
+9 tabs en `PageAdmin.jsx`: **Accesos** · **Talleres** · **Profesores** ·
 **Lista de espera** · **Reportes** · **Asistencia** · **Usuarios** ·
-**Métricas**.
+**Métricas** · **Detalle talleres**.
 
 **Accesos (`AccesosPanel.jsx`)** — búsqueda por email, historial de chispas del usuario y tabla global de todas las chispas; genera Chispas nuevas para cuentas ya activas (uso principal: demos). Ya no maneja Resplandores — retirado el 18 sep 2026 (T-14a).
 
@@ -440,6 +440,8 @@ Métodos de pago incluidos en templates:
 
 **Métricas (`MetricasPanel.jsx`)** — sub-pestañas Resumen / Financiero / Ficha de alumno; gráficas en SVG/CSS a mano (sin Recharts ni pandas/numpy)
 
+**Detalle talleres (`DetalleTalleresPanel.jsx`, 19 nov 2026)** — un renglón por taller: registrados → pagaron → cortesías → pendientes → liberados → asistieron → certificados → ingresos. Filtros por taller, categoría y fecha en que se imparte; al elegir un taller sale la lista de personas. Botón "Descargar PDF" (jsPDF + autotable, cargados solo al dar clic). Datos: `GET /admin/metricas/talleres-detalle`. "Pagaron" usa la misma regla que el aviso a la profe (`services/conteoAlumnos.js`: `lista_espera.pagado_at`, una vez por persona, sin cortesías) — así lo que ve la profe y lo que ve admin siempre cuadra.
+
 ---
 
 ## Páginas del Frontend
@@ -455,7 +457,7 @@ Métodos de pago incluidos en templates:
 | `/aula/:id` | PageAula.jsx | ✅ — LA FRONTERA: única pieza que habla con la API de Destello. Arma la `sesion` del contrato y envuelve `src/aula/Aula.jsx` (el módulo del aula: sellos, contrato de actividades, Quiz, rejilla — no consulta la API a propósito, para poder rentarse a otras escuelas como producto aparte). Le suma los latidos de asistencia que el módulo del aula no puede tener |
 | `/aula-nueva/:id` | PageAulaNueva.jsx | ✅ — salón de ensayo del profesor con datos inventados (sin backend, sin video). Entra como `profe` por defecto; `?rol=alumno` para verla del otro lado; `?actividad=<id>` abre directo un material de `materialesDeEnsayo.js` |
 | `/perfil` | PagePerfil.jsx | ✅ — datos reales (18 nov 2026): foto (`usuarios.foto`), nombre editable, talleres tomados + certificados, sugeridos por categoría, y para profes "Talleres que impartes" con fechas/horarios y acceso al aula de ensayo y a la real |
-| `/admin` | PageAdmin.jsx | ✅ — protegido con JWT admin, 7 tabs (ver arriba) |
+| `/admin` | PageAdmin.jsx | ✅ — protegido con JWT admin, 9 tabs (ver arriba) |
 | `/` | PageLanding.jsx | 🔒 CONGELADO — NO modificar sin permiso explícito de Paola |
 
 ---

@@ -20,6 +20,7 @@
 
 import { Router }  from 'express'
 import { query }   from '../db/db.js'
+import { SQL_ES_CORTESIA } from '../services/conteoAlumnos.js'
 
 const router = Router()
 
@@ -466,6 +467,110 @@ router.get('/', async (req, res, next) => {
             ingresos:  ingresos.rows,
             abandonos,
         })
+    } catch (err) { next(err) }
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Detalle por taller (pestaña "Detalle talleres", 19 nov 2026)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /admin/metricas/talleres-detalle?tallerId=&categoria=&desde=&hasta=
+ *
+ * Un renglón por taller con todo el recorrido: registrados → pagaron →
+ * cortesías → pendientes → liberados → asistieron → certificados → ingresos.
+ * `desde`/`hasta` filtran por la FECHA EN QUE SE IMPARTE (fecha_inicio), no
+ * por cuándo se registró la gente — es lo que se quiere ver "por taller y
+ * fecha de impartido".
+ *
+ * Con `tallerId` además devuelve `personas`: cada quien que se registró o
+ * entró al aula, con su estado, si pagó, minutos en clase y certificado.
+ *
+ * Cortesía = renglón pagado cuyo pago se registró con metodo 'cortesia'
+ * (misma regla que el resto de Métricas: ocupan lugar, nunca cuentan como
+ * ingreso).
+ */
+router.get('/talleres-detalle', async (req, res, next) => {
+    try {
+        const tallerId  = req.query.tallerId  || null
+        const categoria = req.query.categoria || null
+        const desde     = fechaONull(req.query.desde)
+        const hasta     = fechaONull(req.query.hasta)
+
+        const { rows: talleres } = await query(
+            `WITH le AS (
+                -- Una persona = un renglón por taller (si se registró dos
+                -- veces, gana el renglón pagado; si no, el más reciente).
+                SELECT DISTINCT ON (le.taller_id, LOWER(le.email)) le.*,
+                       ${SQL_ES_CORTESIA('le.id')} AS es_cortesia
+                  FROM lista_espera le
+                 ORDER BY le.taller_id, LOWER(le.email), (le.pagado_at IS NOT NULL) DESC, le.created_at DESC
+             )
+             SELECT t.id, t.nombre, t.categoria, t.estado, t.horario, t.precio, t.cupo_maximo,
+                    to_char(t.fecha_inicio, 'YYYY-MM-DD') AS fecha,
+                    (SELECT string_agg(TRIM(CONCAT(u.nombre, ' ', u.apellido)), ', ')
+                       FROM taller_profesores tp JOIN usuarios u ON u.id = tp.usuario_id
+                      WHERE tp.taller_id = t.id)                                      AS profe,
+                    COUNT(le.id)::int                                                  AS registrados,
+                    COUNT(le.id) FILTER (WHERE le.pagado_at IS NOT NULL AND NOT le.es_cortesia)::int AS pagaron,
+                    COUNT(le.id) FILTER (WHERE le.pagado_at IS NOT NULL AND le.es_cortesia)::int     AS cortesias,
+                    COUNT(le.id) FILTER (WHERE le.pagado_at IS NULL
+                        AND le.estado IN ('pendiente', 'cupo_confirmado', 'confirmado'))::int        AS pendientes,
+                    COUNT(le.id) FILTER (WHERE le.estado = 'rechazado')::int          AS liberados,
+                    (SELECT COUNT(DISTINCT LOWER(a.usuario_email))::int
+                       FROM asistencias a WHERE a.taller_id = t.id)                    AS asistieron,
+                    (SELECT COUNT(*)::int FROM certificados c
+                      WHERE c.taller_id = t.id AND NOT c.anulado)                      AS certificados,
+                    COALESCE((SELECT SUM(p.monto) FROM pagos p
+                               WHERE p.taller_id = t.id AND p.estado = 'verificado'
+                                 AND COALESCE(p.metodo, '') <> 'cortesia'), 0)::float  AS ingresos
+               FROM talleres t
+               LEFT JOIN le ON le.taller_id = t.id
+              WHERE ($1::text IS NULL OR t.id = $1::text)
+                AND ($2::text IS NULL OR t.categoria = $2::text)
+                AND ($3::date IS NULL OR t.fecha_inicio >= $3::date)
+                AND ($4::date IS NULL OR t.fecha_inicio <= $4::date)
+              GROUP BY t.id
+              ORDER BY t.fecha_inicio DESC NULLS LAST, t.nombre`,
+            [tallerId, categoria, desde, hasta]
+        )
+
+        let personas = null
+        if (tallerId) {
+            const r = await query(
+                `WITH gente AS (
+                    SELECT LOWER(email) AS email FROM lista_espera WHERE taller_id = $1
+                    UNION
+                    SELECT LOWER(usuario_email) FROM asistencias WHERE taller_id = $1
+                 )
+                 SELECT g.email,
+                        COALESCE(NULLIF(TRIM(CONCAT(u.nombre, ' ', u.apellido)), ''), le.nombre) AS nombre,
+                        COALESCE(u.whatsapp, le.whatsapp)                         AS whatsapp,
+                        le.estado,
+                        CASE WHEN le.pagado_at IS NULL THEN 'no'
+                             WHEN ${SQL_ES_CORTESIA('le.id')} THEN 'cortesia'
+                             ELSE 'si' END                                         AS pago,
+                        to_char(le.created_at AT TIME ZONE 'America/Mexico_City', 'YYYY-MM-DD') AS registro,
+                        (a.id IS NOT NULL)                                         AS asistio,
+                        COALESCE(a.minutos, 0)                                     AS minutos,
+                        c.folio                                                    AS certificado
+                   FROM gente g
+                   LEFT JOIN LATERAL (
+                        SELECT * FROM lista_espera
+                         WHERE taller_id = $1 AND LOWER(email) = g.email
+                         ORDER BY (pagado_at IS NOT NULL) DESC, created_at DESC LIMIT 1
+                   ) le ON TRUE
+                   LEFT JOIN usuarios u     ON LOWER(u.email) = g.email
+                   LEFT JOIN asistencias a  ON a.taller_id = $1 AND LOWER(a.usuario_email) = g.email
+                   LEFT JOIN certificados c ON c.taller_id = $1 AND LOWER(c.usuario_email) = g.email
+                                           AND NOT c.anulado
+                  ORDER BY (le.pagado_at IS NOT NULL) DESC, nombre NULLS LAST`,
+                [tallerId]
+            )
+            personas = r.rows
+        }
+
+        res.json({ status: 'ok', talleres, personas })
     } catch (err) { next(err) }
 })
 

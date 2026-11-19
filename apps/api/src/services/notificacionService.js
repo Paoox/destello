@@ -25,6 +25,9 @@
 import { query } from '../db/db.js'
 import { sendWhatsapp } from './botService.js'
 import { sendNuevoTaller } from './mailService.js'
+// Lo único que se le dice a la profe: cuántos alumnos con PAGO CONFIRMADO
+// tiene — misma regla que la pestaña Detalle talleres del panel.
+import { SQL_REGISTRADOS } from './conteoAlumnos.js'
 import { armarNotificacion, mensajeWhatsapp, yaNoSirve, TIPOS_WA, TIPOS_CORREO } from './notificacionTextos.js'
 
 const PAUSA_WA_MS     = 2500
@@ -35,6 +38,7 @@ const MAX_INTENTOS    = 3
 const VENTANA_HECHOS  = "INTERVAL '3 days'"
 
 const pausa = (ms) => new Promise(r => setTimeout(r, ms))
+
 
 // ── Crear ─────────────────────────────────────────────────────────────────
 
@@ -79,14 +83,7 @@ async function talleresProximos() {
                 (t.inicio <= NOW() + INTERVAL '1 hour') AS en_una_hora,
                 (t.inicio AT TIME ZONE 'America/Mexico_City')::date
                   - (NOW() AT TIME ZONE 'America/Mexico_City')::date AS dias,
-                (SELECT COUNT(*)::int FROM chispas c
-                  WHERE c.taller_id = t.id AND NOT COALESCE(c.revoked, FALSE)) AS confirmadas,
-                (SELECT COUNT(*)::int FROM chispas c
-                  WHERE c.taller_id = t.id AND NOT COALESCE(c.revoked, FALSE)
-                    AND NOT COALESCE(c.is_demo, FALSE)) AS pagadas,
-                (SELECT COUNT(*)::int FROM lista_espera le
-                  WHERE le.taller_id = t.id
-                    AND le.estado IN ('pendiente', 'cupo_confirmado', 'confirmado')) AS sin_pagar
+                ${SQL_REGISTRADOS('t.id')} AS registrados
            FROM t
           WHERE t.inicio > NOW() AND t.inicio <= NOW() + INTERVAL '24 hours'`
     )
@@ -136,7 +133,7 @@ async function recordatoriosDeClase() {
         for (const u of await alumnasDe(t.id)) {
             if (await crear(u, unaHora ? 'taller_1h' : 'taller_24h', ref, base)) n++
         }
-        const conteo = { inscritas: t.confirmadas + t.sin_pagar, pagadas: t.pagadas }
+        const conteo = { registrados: t.registrados }
         for (const u of await profesDe(t.id)) {
             if (await crear(u, unaHora ? 'profe_1h' : 'profe_24h', ref, { ...base, ...conteo })) n++
         }
@@ -172,17 +169,16 @@ async function pagosConfirmados() {
     return n
 }
 
-/** Una chispa nueva = una alumna con lugar confirmado → aviso a la profe. */
+/**
+ * Una chispa nueva NO demo = alguien con pago confirmado → aviso a la profe.
+ * Las cortesías/demos no avisan (Paola: a la profe solo los de pago).
+ */
 async function alumnasNuevas() {
     const { rows } = await query(
         `SELECT ${COLS_U}, c.code, c.taller_id, t.nombre AS taller_nombre,
                 COALESCE(NULLIF(TRIM(CONCAT(a.nombre, ' ', LEFT(a.apellido, 1),
                          CASE WHEN a.apellido <> '' THEN '.' END)), ''), c.usuario_nombre) AS alumna,
-                (SELECT COUNT(*)::int FROM chispas c2
-                  WHERE c2.taller_id = c.taller_id AND NOT COALESCE(c2.revoked, FALSE)) AS confirmadas,
-                (SELECT COUNT(*)::int FROM chispas c2
-                  WHERE c2.taller_id = c.taller_id AND NOT COALESCE(c2.revoked, FALSE)
-                    AND NOT COALESCE(c2.is_demo, FALSE)) AS pagadas
+                ${SQL_REGISTRADOS('c.taller_id')} AS registrados
            FROM chispas c
            JOIN taller_profesores tp ON tp.taller_id = c.taller_id
            JOIN usuarios u ON u.id = tp.usuario_id
@@ -190,13 +186,15 @@ async function alumnasNuevas() {
            LEFT JOIN usuarios a ON a.id = c.usuario_id
                                 OR (c.usuario_id IS NULL AND LOWER(a.email) = LOWER(c.usuario_email))
           WHERE NOT COALESCE(c.revoked, FALSE)
+            AND NOT COALESCE(c.is_demo, FALSE)
+            AND c.usuario_email IS NOT NULL
             AND c.created_at > NOW() - ${VENTANA_HECHOS}
             AND (a.id IS NULL OR a.id <> u.id)`
     )
     let n = 0
     for (const r of rows) {
         const datos = { tallerId: r.taller_id, taller: r.taller_nombre, alumna: r.alumna,
-                        inscritas: r.confirmadas, pagadas: r.pagadas }
+                        registrados: r.registrados }
         if (await crear(r, 'nueva_alumna', r.code, datos)) n++
     }
     return n

@@ -1348,7 +1348,7 @@ se llama desde el manejador principal de mensajes.
     → app + WhatsApp; nuevo taller → app + correo (nunca WhatsApp: a todas
     las cuentas a la vez = riesgo de baneo de Faro); certificado listo y
     pago confirmado → app.
-  - Profes: mañana/hoy impartes (con inscritas y pagadas) y 1 h antes → app
+  - Profes: mañana/hoy impartes (solo "Tienes N alumnos registrados" = con pago confirmado; el detalle de pendientes/cortesías es solo para admin — Paola, 19 nov) y 1 h antes → app
     + WhatsApp; nueva alumna (chispa nueva en su taller) → app.
   - Cómo: tabla `notificaciones` (migración 021, única por
     `usuario_id + tipo + ref`) llenada por un revisor cada 5 min

@@ -30,9 +30,15 @@ const mayus = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
 /** 'hoy' | 'mañana' según cuántos días faltan (calculado en CDMX). */
 export const cuandoTexto = (dias) => (Number(dias) <= 0 ? 'hoy' : 'mañana')
 
-/** Cómo se dice la hora: el texto del panel si existe, si no la hora de inicio. */
-function horarioDe(d) {
-    return d.horario || fmtHora(d.horaInicio) || null
+/**
+ * Cómo se dice la hora: el texto del panel si existe, si no la hora de inicio.
+ * Le agrega "(hora CDMX)" solo si el texto del panel no lo trae ya — había
+ * talleres con "12:00 PM (CDMX)" que salían como "(CDMX) … (hora CDMX)".
+ */
+export function horarioDe(d) {
+    const h = d.horario || fmtHora(d.horaInicio)
+    if (!h) return null
+    return /cdmx/i.test(h) ? h : `${h} (hora CDMX)`
 }
 
 /**
@@ -49,7 +55,7 @@ export function armarNotificacion(tipo, d = {}) {
         case 'taller_24h':
             return {
                 titulo: `Tu taller es ${cuando} ✦`,
-                cuerpo: `${taller}${horario ? ` · ${horario} (hora CDMX)` : ''}. ` +
+                cuerpo: `${taller}${horario ? ` · ${horario}` : ''}. ` +
                         'La entrada al aula aparece en Inicio un poco antes de empezar.',
                 liga:   '/home',
             }
@@ -64,7 +70,7 @@ export function armarNotificacion(tipo, d = {}) {
             return {
                 titulo: `${mayus(cuando)} impartes ${taller}`,
                 cuerpo: [
-                    horario ? `${horario} (hora CDMX).` : null,
+                    horario ? `${horario}.` : null,
                     resumenAlumnas(d),
                 ].filter(Boolean).join(' '),
                 liga:   '/perfil',
@@ -100,8 +106,8 @@ export function armarNotificacion(tipo, d = {}) {
             }
         case 'nueva_alumna':
             return {
-                titulo: `Nueva alumna en ${taller}`,
-                cuerpo: `${d.alumna || 'Alguien'} se inscribió. ${resumenAlumnas(d)}`,
+                titulo: `Nuevo alumno registrado en ${taller}`,
+                cuerpo: `${d.alumna || 'Alguien'} confirmó su lugar. ${resumenAlumnas(d)}`,
                 liga:   '/perfil',
             }
         default:
@@ -116,12 +122,15 @@ export function yaNoSirve(n, ahora = Date.now()) {
     return Number.isFinite(inicio) && inicio <= ahora
 }
 
-/** "Van 12 inscritas, 9 con pago confirmado." */
-export function resumenAlumnas({ inscritas, pagadas } = {}) {
-    if (inscritas == null) return ''
-    const n = Number(inscritas)
-    const base = `Van ${n} ${n === 1 ? 'inscrita' : 'inscritas'}`
-    return pagadas == null ? `${base}.` : `${base}, ${Number(pagadas)} con pago confirmado.`
+/**
+ * "Tienes 9 alumnos registrados." — `registrados` = SOLO los de pago
+ * confirmado (chispa no demo). Decisión de Paola (19 nov 2026): a la profe no
+ * se le da el detalle de pendientes/pagados; eso lo ve solo admin en Métricas.
+ */
+export function resumenAlumnas({ registrados } = {}) {
+    if (registrados == null) return ''
+    const n = Number(registrados)
+    return `Tienes ${n} ${n === 1 ? 'alumno registrado' : 'alumnos registrados'}.`
 }
 
 /** El WhatsApp de los tipos que lo llevan (`null` si el tipo no lleva). */
@@ -138,7 +147,7 @@ export function mensajeWhatsapp(tipo, d = {}) {
         taller_24h: [
             hola, '',
             `Te recuerdo que *${cuando}* es tu taller *${taller}*.`,
-            horario ? `🕐 ${horario} (hora CDMX)` : null,
+            horario ? `🕐 ${horario}` : null,
             '',
             'Entra a la plataforma un poco antes; en Inicio te aparece "Entrar a clase":',
             `${SITIO}/home`,
@@ -155,7 +164,7 @@ export function mensajeWhatsapp(tipo, d = {}) {
         profe_24h: [
             hola, '',
             `*${mayus(cuando)}* impartes *${taller}*.`,
-            horario ? `🕐 ${horario} (hora CDMX)` : null,
+            horario ? `🕐 ${horario}` : null,
             resumenAlumnas(d) || null,
             '',
             `Tu aula de ensayo y tus talleres: ${SITIO}/perfil`,

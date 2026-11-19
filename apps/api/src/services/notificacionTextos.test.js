@@ -1,8 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { armarNotificacion, mensajeWhatsapp, fmtHora, resumenAlumnas, yaNoSirve, TIPOS_WA } from './notificacionTextos.js'
+import { armarNotificacion, mensajeWhatsapp, fmtHora, horarioDe, resumenAlumnas, yaNoSirve, TIPOS_WA } from './notificacionTextos.js'
 
 const base = { taller: 'Auriculoterapia', horario: '5:00 PM – 7:00 PM', horaInicio: '17:00:00', fecha: '2026-11-20' }
+
+test('horarioDe no repite "CDMX" si el panel ya lo puso', () => {
+    assert.equal(horarioDe({ horario: '5:00 PM – 7:00 PM' }), '5:00 PM – 7:00 PM (hora CDMX)')
+    assert.equal(horarioDe({ horario: '12:00 PM (CDMX)' }), '12:00 PM (CDMX)')
+    assert.equal(horarioDe({ horaInicio: '17:00:00' }), '5:00 PM (hora CDMX)')
+    assert.equal(horarioDe({}), null)
+})
 
 test('fmtHora pasa de 24 h a AM/PM', () => {
     assert.equal(fmtHora('17:00:00'), '5:00 PM')
@@ -24,12 +31,14 @@ test('taller_1h da la hora de inicio y la liga a Inicio', () => {
     assert.match(wa, /https:\/\/destello\.courses\/home/)
 })
 
-test('la profe ve cuántas inscritas y pagadas', () => {
-    assert.equal(resumenAlumnas({ inscritas: 12, pagadas: 9 }), 'Van 12 inscritas, 9 con pago confirmado.')
-    assert.equal(resumenAlumnas({ inscritas: 1, pagadas: 1 }), 'Van 1 inscrita, 1 con pago confirmado.')
-    const n = armarNotificacion('profe_24h', { ...base, dias: 1, inscritas: 12, pagadas: 9 })
+test('la profe solo ve cuántos alumnos registrados (con pago) tiene', () => {
+    assert.equal(resumenAlumnas({ registrados: 9 }), 'Tienes 9 alumnos registrados.')
+    assert.equal(resumenAlumnas({ registrados: 1 }), 'Tienes 1 alumno registrado.')
+    const n = armarNotificacion('profe_24h', { ...base, dias: 1, registrados: 9 })
     assert.equal(n.titulo, 'Mañana impartes Auriculoterapia')
-    assert.match(n.cuerpo, /12 inscritas/)
+    assert.match(n.cuerpo, /Tienes 9 alumnos registrados\./)
+    assert.doesNotMatch(n.cuerpo + mensajeWhatsapp('profe_24h', { ...base, dias: 1, registrados: 9 }),
+        /pago|pendiente|inscrit/i)
 })
 
 test('solo los recordatorios de clase llevan WhatsApp', () => {

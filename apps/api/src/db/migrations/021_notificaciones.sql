@@ -14,7 +14,7 @@
 --           · nuevo taller abierto                       → app + correo
 --           · tu certificado ya está listo               → app
 --           · tu pago quedó confirmado                   → app
---   profes  · mañana/hoy impartes X (inscritas/pagadas)  → app + WhatsApp
+--   profes  · mañana/hoy impartes X (alumnos con pago) → app + WhatsApp
 --           · tu clase empieza en 1 hora                 → app + WhatsApp
 --           · nueva alumna inscrita en tu taller         → app
 --
