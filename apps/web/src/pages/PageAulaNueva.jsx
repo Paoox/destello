@@ -19,7 +19,9 @@
  * monte el aula, escribe su propia versión de este archivo. Nada dentro de
  * `src/aula/` se entera.
  */
+import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import { useAuthStore } from '@store/useAuthStore.js'
 import Aula from '../aula/Aula.jsx'
 import { MARCA_DESTELLO } from '../aula/contrato.js'
 import { MATERIALES_DE_ENSAYO } from './materialesDeEnsayo.js'
@@ -81,8 +83,23 @@ export default function PageAulaNueva() {
     // ?rol=alumno queda para cuando quiera ver cómo se ve del otro lado.
     const rol = params.get('rol') === 'alumno' ? 'alumno' : 'profe'
 
+    // El taller y el nombre REALES de la profe, si entró con su cuenta desde
+    // su Perfil ("Aula de ensayo"). Sin sesión, o si ese id no es suyo, se
+    // queda con los de ejemplo — el ensayo funciona igual.
+    const token = useAuthStore(s => s.token)
+    const user  = useAuthStore(s => s.user)
+    const [taller, setTaller] = useState(null)
+    useEffect(() => {
+        if (!token || !id) return
+        fetch('/api/users/me/talleres', { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => (r.ok ? r.json() : null))
+            .then(res => setTaller((res?.talleres ?? []).find(t => t.tallerId === id) ?? null))
+            .catch(() => {})
+    }, [token, id])
+    const miNombre = [user?.nombre, user?.apellido?.split(' ')[0]].filter(Boolean).join(' ')
+
     const yo = rol === 'profe'
-        ? { id: 'profe', nombre: 'Prof. Minerva', avatarUrl: null, camara: true,
+        ? { id: 'profe', nombre: miNombre || 'Prof. Minerva', avatarUrl: user?.foto ?? null, camara: true,
             micro: true, silenciadoPorProfe: false, manoArriba: false,
             reaccion: null, interactuando: true, avance: 0, insignias: [] }
         : { id: 'yo', nombre: 'Paola Arreola', avatarUrl: null, camara: false,
@@ -93,8 +110,8 @@ export default function PageAulaNueva() {
     const sesion = {
         marca: MARCA_DESTELLO,
         taller: {
-            nombre:     'Taller Auriculoterapia Inicial',
-            instructor: 'Prof. Minerva Márquez',
+            nombre:     taller?.nombre ?? 'Taller Auriculoterapia Inicial',
+            instructor: taller?.instructor ?? (miNombre || 'Prof. Minerva Márquez'),
             tema:       'Horizonte Zen',
             terminaEn:  147,      // minutos — el contador de la barra
         },

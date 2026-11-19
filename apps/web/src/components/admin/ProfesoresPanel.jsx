@@ -16,7 +16,8 @@
  * (su correo) o con su número + código si se capturó el WhatsApp.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { MagnifyingGlass, ChalkboardTeacher, X, CheckCircle, WarningCircle } from '@phosphor-icons/react'
+import { MagnifyingGlass, ChalkboardTeacher, X, CheckCircle, WarningCircle, Bank, Eye, EyeSlash, Copy, CalendarBlank } from '@phosphor-icons/react'
+import { estimadoTalleres } from '@utils/estimadoTalleres.js'
 
 const API = (path, token, opts = {}) =>
     fetch(`/api/admin${path}`, {
@@ -100,9 +101,23 @@ export default function ProfesoresPanel({ adminToken }) {
     const [sumando, setSumando]           = useState(null)   // usuarioId en curso
     const [errorTarjeta, setErrorTarjeta] = useState({})     // { [usuarioId]: mensaje }
 
+    // Datos de pago (los captura cada profe en su Perfil): { [usuarioId]: datos }
+    const [datosPago, setDatosPago] = useState({})
+    const [verPago, setVerPago]     = useState({})   // { [usuarioId]: true } = números completos
+    const [copiado, setCopiado]     = useState(null)
+
     const cargarAsignaciones = useCallback(() => {
         API('/profesores', adminToken).then(d => setAsignaciones(d.asignaciones ?? [])).catch(() => {})
+        API('/profesores/datos-pago', adminToken)
+            .then(d => setDatosPago(Object.fromEntries((d.datosPago ?? []).map(x => [x.usuario_id, x]))))
+            .catch(() => {})
     }, [adminToken])
+
+    const copiar = (texto, clave) => {
+        navigator.clipboard?.writeText(texto).then(() => {
+            setCopiado(clave); setTimeout(() => setCopiado(c => (c === clave ? null : c)), 1500)
+        }).catch(() => {})
+    }
 
     useEffect(() => {
         fetch('/api/tallers')
@@ -215,10 +230,17 @@ export default function ProfesoresPanel({ adminToken }) {
 
     // Agrupado por profesor, para que se lea "quién da qué" de un vistazo
     // en vez de una tabla plana repitiendo el nombre en cada renglón.
+    // Un taller lo da UNA profesora (18 nov 2026): los que ya tienen a alguien
+    // no se ofrecen en ningún selector hasta que se le quite. La API también
+    // lo rechaza (409), esto es para que ni siquiera aparezca la opción.
+    const ocupados = new Set(asignaciones.map(a => a.taller_id))
+    const talleresLibres = talleres.filter(t => !ocupados.has(t.id))
+
     const porProfesor = asignaciones.reduce((acc, a) => {
         const key = a.usuario_id
         if (!acc[key]) acc[key] = { usuario_id: a.usuario_id, nombre: a.nombre, apellido: a.apellido, email: a.email, talleres: [] }
-        acc[key].talleres.push({ taller_id: a.taller_id, taller_nombre: a.taller_nombre })
+        acc[key].talleres.push({ taller_id: a.taller_id, taller_nombre: a.taller_nombre,
+                                 fecha_inicio: a.fecha_inicio, fecha_fin: a.fecha_fin, horario: a.horario })
         return acc
     }, {})
 
@@ -312,13 +334,14 @@ export default function ProfesoresPanel({ adminToken }) {
                             onChange={e => setTallerId(e.target.value)}
                             style={{ ...sInput, marginBottom: 12 }}
                         >
-                            <option value="">Elige un taller…</option>
-                            {talleres
-                                .filter(t => !usuario || !asignaciones.some(a => a.usuario_id === usuario.id && a.taller_id === t.id))
-                                .map(t => (
-                                    <option key={t.id} value={t.id}>{t.nombre}</option>
-                                ))}
+                            <option value="">{talleresLibres.length ? 'Elige un taller…' : 'Todos los talleres ya tienen profe'}</option>
+                            {talleresLibres.map(t => (
+                                <option key={t.id} value={t.id}>{t.nombre}</option>
+                            ))}
                         </select>
+                        <p style={{ margin: '-6px 0 12px', fontSize: 11, color: 'var(--text-muted)' }}>
+                            Solo aparecen los talleres sin profe. Para cambiar la de un taller, primero quítala abajo.
+                        </p>
 
                         {asignarError && <p style={{ color: 'var(--color-error)', fontSize: 12, margin: '0 0 10px' }}>⚠ {asignarError}</p>}
 
@@ -366,6 +389,20 @@ export default function ProfesoresPanel({ adminToken }) {
                                 {[p.nombre, p.apellido].filter(Boolean).join(' ') || p.email}
                             </p>
                             <p style={{ margin: '2px 0 8px', fontSize: 12, color: 'var(--text-muted)' }}>{p.email}</p>
+
+                            {/* Estimado de carga: talleres que da esta semana y este mes
+                                (según las fechas cargadas). Base para sus pagos. */}
+                            {(() => {
+                                const { semana, mes } = estimadoTalleres(p.talleres)
+                                return (
+                                    <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}
+                                       title="Estimado según las fechas de sus talleres">
+                                        <CalendarBlank size={13} />
+                                        Esta semana <strong>{semana}</strong> {semana === 1 ? 'taller' : 'talleres'}
+                                        {' · '}Este mes <strong>{mes}</strong> {mes === 1 ? 'taller' : 'talleres'}
+                                    </p>
+                                )
+                            })()}
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                 {p.talleres.map(t => {
                                     const clave = `${t.taller_id}:${p.usuario_id}`
@@ -394,9 +431,53 @@ export default function ProfesoresPanel({ adminToken }) {
                                 })}
                             </div>
 
+                            {/* Datos de pago — los captura ella en su Perfil */}
+                            {(() => {
+                                const d = datosPago[p.usuario_id]
+                                if (!d) {
+                                    return (
+                                        <p style={{ margin: '10px 0 0', fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                                            <Bank size={13} /> Sin datos de pago todavía — los agrega ella en su Perfil.
+                                        </p>
+                                    )
+                                }
+                                const ver = !!verPago[p.usuario_id]
+                                const grupos = (s) => s.replace(/(\d{4})(?=\d)/g, '$1 ')
+                                const fila = (etiqueta, valor, oculto) => valor && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                                        <span style={{ color: 'var(--text-muted)', minWidth: 52 }}>{etiqueta}</span>
+                                        <span style={{ fontFamily: 'var(--font-mono)' }}>{ver ? grupos(valor) : oculto}</span>
+                                        {ver && (
+                                            <button onClick={() => copiar(valor, `${p.usuario_id}:${etiqueta}`)} title={`Copiar ${etiqueta}`}
+                                                    style={{ display: 'flex', padding: 3, background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                                                {copiado === `${p.usuario_id}:${etiqueta}` ? <CheckCircle size={13} color="var(--color-success)" /> : <Copy size={13} />}
+                                            </button>
+                                        )}
+                                    </div>
+                                )
+                                return (
+                                    <div style={{
+                                        marginTop: 10, padding: '8px 10px', borderRadius: 'var(--radius-md)',
+                                        border: '1px dashed var(--border-default)', display: 'flex', flexDirection: 'column', gap: 4,
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}>
+                                            <Bank size={14} /> Datos de pago
+                                            <button onClick={() => setVerPago(v => ({ ...v, [p.usuario_id]: !ver }))}
+                                                    style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '2px 6px', background: 'transparent', border: 'none', color: 'var(--color-jade-400)', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-sans)' }}>
+                                                {ver ? <><EyeSlash size={13} /> Ocultar</> : <><Eye size={13} /> Mostrar</>}
+                                            </button>
+                                        </div>
+                                        <div style={{ fontSize: 12 }}><span style={{ color: 'var(--text-muted)', display: 'inline-block', minWidth: 52 }}>Titular</span> {d.titular}</div>
+                                        <div style={{ fontSize: 12 }}><span style={{ color: 'var(--text-muted)', display: 'inline-block', minWidth: 52 }}>Banco</span> {d.banco}</div>
+                                        {fila('CLABE', d.clabe, `•••• ${d.clabe?.slice(-4)}`)}
+                                        {fila('Tarjeta', d.tarjeta, `•••• ${d.tarjeta?.slice(-4)}`)}
+                                    </div>
+                                )
+                            })()}
+
                             {/* Sumarle otro taller sin volver a buscarla arriba */}
                             {(() => {
-                                const libres = talleres.filter(t => !p.talleres.some(x => x.taller_id === t.id))
+                                const libres = talleresLibres
                                 if (!libres.length) return null
                                 const elegido = extra[p.usuario_id] ?? ''
                                 const ocupado = sumando === p.usuario_id

@@ -43,6 +43,7 @@ import * as bloqueoService      from '../services/bloqueoService.js'
 import { sincronizarEstadoCupo } from '../services/cupoService.js'
 import { rateLimit }          from '../middleware/rateLimit.js'
 import * as profesorService  from '../services/profesorService.js'
+import * as datosPagoService from '../services/datosPagoService.js'
 
 const router = Router()
 
@@ -132,6 +133,13 @@ router.get('/profesores', async (_req, res, next) => {
     try {
         const asignaciones = await profesorService.listarAsignaciones()
         res.json({ status: 'ok', asignaciones })
+    } catch (err) { next(err) }
+})
+
+// Datos de pago de todas las profesoras (los capturan ellas en su Perfil).
+router.get('/profesores/datos-pago', async (_req, res, next) => {
+    try {
+        res.json({ status: 'ok', datosPago: await datosPagoService.listarTodos() })
     } catch (err) { next(err) }
 })
 

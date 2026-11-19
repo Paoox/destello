@@ -34,6 +34,11 @@ export async function listarAsignaciones() {
     const { rows } = await query(
         `SELECT u.id AS usuario_id, u.nombre, u.apellido, u.email,
                 t.id AS taller_id, t.nombre AS taller_nombre,
+                -- Fechas como texto (sin corrimiento de zona) para el estimado
+                -- de talleres por semana/mes en el panel.
+                to_char(t.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
+                to_char(t.fecha_fin,    'YYYY-MM-DD') AS fecha_fin,
+                t.horario,
                 tp.created_at AS asignado_at
            FROM taller_profesores tp
            JOIN profesores p ON p.usuario_id = tp.usuario_id
@@ -45,10 +50,34 @@ export async function listarAsignaciones() {
 }
 
 /**
+ * Un taller lo da UNA profesora (decisión de Paola, 18 nov 2026). Si ya
+ * tiene a alguien más, no se asigna: primero hay que quitarla en el panel.
+ * Asignar a la MISMA persona otra vez no es error (idempotente).
+ * Respaldo en la base: índice único `uq_taller_profesores_un_profe` (019).
+ */
+export async function asegurarTallerLibre(tallerId, usuarioId, q = query) {
+    const { rows } = await q(
+        `SELECT u.nombre, u.apellido, u.email
+           FROM taller_profesores tp JOIN usuarios u ON u.id = tp.usuario_id
+          WHERE tp.taller_id = $1 AND tp.usuario_id <> $2
+          LIMIT 1`,
+        [tallerId, usuarioId ?? 0]
+    )
+    if (rows.length) {
+        const quien = [rows[0].nombre, rows[0].apellido].filter(Boolean).join(' ') || rows[0].email
+        throw new AppError(
+            `Ese taller ya lo da ${quien}. Quítala de ese taller antes de asignar a alguien más.`,
+            409, 'TALLER_CON_PROFE'
+        )
+    }
+}
+
+/**
  * Hace profesora a una cuenta (si no lo era ya) y la asigna a un taller.
  * Idempotente: asignar dos veces lo mismo no truena ni duplica.
  */
 export async function asignarProfesor({ usuarioId, tallerId }) {
+    await asegurarTallerLibre(tallerId, usuarioId)
     await query(
         `INSERT INTO profesores (usuario_id) VALUES ($1)
          ON CONFLICT (usuario_id) DO NOTHING`,
@@ -119,6 +148,7 @@ export async function altaProfesor(datos) {
     if (!taller.length) throw new AppError('Ese taller no existe', 404, 'NOT_FOUND')
 
     const { rows: propia } = await query('SELECT id FROM usuarios WHERE email = $1', [email])
+    await asegurarTallerLibre(tallerId, propia[0]?.id ?? null)
     const wa = whatsapp ? await asegurarWhatsappLibre(whatsapp, propia[0]?.id ?? null) : null
 
     return withTransaction(async (q) => {

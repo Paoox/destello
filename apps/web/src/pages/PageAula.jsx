@@ -197,7 +197,7 @@ export default function PageAula() {
     yo: {
       id:       user?.id ? String(user.id) : 'yo',
       nombre:   [user?.nombre, user?.apellido].filter(Boolean).join(' ') || user?.email || 'Tú',
-      avatarUrl: null,
+      avatarUrl: user?.foto ?? null,   // la de su Perfil (o la de Google)
       camara: false,
       micro:  false,
       // Todos entran silenciados. Ver ENTRAN_SILENCIADOS en aula/contrato.js.

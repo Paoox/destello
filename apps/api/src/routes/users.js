@@ -15,6 +15,8 @@ import * as asistenciaService from '../services/asistenciaService.js'
 import * as certificadoService from '../services/certificadoService.js'
 import { crearTokenVideo } from '../services/videoService.js'
 import { esProfeDelTaller } from '../services/profesorService.js'
+import { validarFoto } from '../services/fotoPerfil.js'
+import * as datosPagoService from '../services/datosPagoService.js'
 
 const router = Router()
 
@@ -33,7 +35,7 @@ router.get('/me', async (req, res, next) => {
     await usuarioService.registrarActividad(req.user.userId)
 
     const { rows } = await query(
-      `SELECT id, email, nombre, apellido, whatsapp, estado,
+      `SELECT id, email, nombre, apellido, whatsapp, estado, foto,
               estrellas, racha, codigo_referido, referido_por
        FROM usuarios
        WHERE id = $1`,
@@ -97,6 +99,68 @@ router.put('/me', async (req, res, next) => {
   } catch (err) {
     next(err)
   }
+})
+
+// ── Foto de perfil ─────────────────────────────────────────────────────────
+//
+// PUT /users/me/foto  body { foto: dataURL | null }
+// El navegador la recorta a 256×256 ANTES de mandarla (ver PagePerfil.jsx),
+// así que aquí solo se acepta una imagen chica y en formato de imagen — nada
+// de URLs externas (las de Google entran solas en el login) ni archivos
+// grandes que inflen la base. `null` la quita.
+router.put('/me/foto', async (req, res, next) => {
+  try {
+    const { foto, error } = validarFoto(req.body?.foto)
+    if (error) return res.status(400).json({ status: 'error', message: error })
+    const { rows } = await query(
+      'UPDATE usuarios SET foto = $1, updated_at = NOW() WHERE id = $2 RETURNING foto',
+      [foto, req.user.userId]
+    )
+    if (!rows.length) return res.status(404).json({ status: 'error', message: 'Usuario no encontrado' })
+    res.json({ status: 'ok', foto: rows[0].foto })
+  } catch (err) { next(err) }
+})
+
+// ── Datos de pago (solo profesoras) ────────────────────────────────────────
+// A dónde depositarle. Ella los ve y edita aquí; Paola en Admin → Profesores.
+router.get('/me/datos-pago', async (req, res, next) => {
+  try {
+    res.json({ status: 'ok', datosPago: await datosPagoService.obtener(req.user.userId) })
+  } catch (err) { next(err) }
+})
+
+router.put('/me/datos-pago', async (req, res, next) => {
+  try {
+    res.json({ status: 'ok', datosPago: await datosPagoService.guardar(req.user.userId, req.body ?? {}) })
+  } catch (err) { next(err) }
+})
+
+// ── Talleres sugeridos ─────────────────────────────────────────────────────
+//
+// GET /users/me/sugerencias → hasta 4 talleres abiertos (activos o
+// próximamente) que la persona NO tiene ni da, primero los de la misma
+// categoría que los que ya tomó ("similares"), luego los más próximos.
+router.get('/me/sugerencias', async (req, res, next) => {
+  try {
+    const email = await emailDelUsuario(req.user.userId)
+    if (!email) return res.status(404).json({ status: 'error', message: 'Usuario no encontrado' })
+    const suyos = await chispaService.getTalleresDelUsuario(email, req.user.userId)
+    const ids   = suyos.map(t => t.tallerId)
+    const cats  = [...new Set(suyos.map(t => t.categoria).filter(Boolean))]
+    const { rows } = await query(
+      `SELECT id, nombre, descripcion, categoria, precio, horario, imagen_url,
+              to_char(fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio, estado,
+              (categoria = ANY($2::text[])) AS similar
+         FROM talleres
+        WHERE estado IN ('activo', 'proximamente')
+          AND NOT (id = ANY($1::text[]))
+          AND (fecha_inicio IS NULL OR fecha_inicio >= (NOW() AT TIME ZONE 'America/Mexico_City')::date)
+        ORDER BY (categoria = ANY($2::text[])) DESC, fecha_inicio ASC NULLS LAST, nombre
+        LIMIT 4`,
+      [ids, cats]
+    )
+    res.json({ status: 'ok', sugerencias: rows })
+  } catch (err) { next(err) }
 })
 
 router.get('/me/progress', (req, res) => {

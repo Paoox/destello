@@ -806,7 +806,20 @@ se llama desde el manejador principal de mensajes.
 
 ## 5. 🟡 Pendiente (acordado, sin empezar / a medias)
 
-### ▶ Siguientes (orden acordado con Paola, 13 nov 2026)
+### ▶ Siguientes (actualizado 18 nov 2026)
+> **Pedido por Paola (18 nov 2026), lo próximo a construir:**
+> - **T-49 — Hábitat básico:** por lo menos una primera versión del mundo
+>   (hoy `/habitat` es solo el catálogo de talleres). Ver T-24 para la
+>   visión completa (mundo tipo Minecraft con objetos desbloqueables); esto
+>   es el primer paso, no todo T-24. Alcance a definir con Paola.
+> - **T-44 — Pantalla de Notificaciones** (`/notifs`, hoy link muerto).
+> - **T-45 — Pantalla de Ajustes** (`/settings`, hoy link muerto).
+> - **Pagos a profes:** detalle de lo pendiente por pagarle a cada una
+>   (cuelga de `profesor_datos_pago` y del estimado de talleres).
+>
+> T-39 (perfil del profe con sus talleres, fechas y aula de ensayo) quedó
+> hecho en `/perfil` el 18 nov 2026 — ver "Perfil real + un profe por taller".
+
 1. **Probar el aula en vivo (T-41/T-42)** — Paola. Ya está en código y
    desplegado, falta la prueba real con OpenVidu local y dos cuentas en dos
    pestañas (una profe, una alumna). Revisar: elegir actividad y que le
@@ -1316,6 +1329,7 @@ se llama desde el manejador principal de mensajes.
   que da ESE taller (no un campo de texto vacío ni "Destello" genérico).
 
 ### T-44 — Página de Notificaciones (hoy: link muerto en el menú)
+- **▶ Priorizado por Paola (18 nov 2026):** va en lo siguiente a construir.
 - **Encontrado al revisar el pendiente de Paola (18 sep 2026):** el menú
   lateral (`Navbar.jsx`) ya tiene un renglón "Notificaciones" apuntando a
   `/notifs` — pero esa ruta **no existe** en `App.jsx` (cae al 404).
@@ -1331,6 +1345,7 @@ se llama desde el manejador principal de mensajes.
   ticket empieza como "aterrizar qué es esto", no como código.
 
 ### T-45 — Página de Ajustes (hoy: link muerto en el menú)
+- **▶ Priorizado por Paola (18 nov 2026):** va en lo siguiente a construir.
 - **Encontrado al revisar el pendiente de Paola (18 sep 2026):** mismo
   caso que T-44 — `Navbar.jsx` tiene "Ajustes" apuntando a `/settings`,
   ruta que tampoco existe en `App.jsx`.
@@ -1489,6 +1504,45 @@ se llama desde el manejador principal de mensajes.
     `@mediapipe/tasks-vision` va fijo en 0.10.17: la URL del wasm en
     `fondoVirtual.js` debe coincidir con esa versión.
   agrega igual que las demás cuando exista.
+
+### Perfil real + un profe por taller (18 nov 2026) — en código, falta probar
+
+- **`/perfil` con datos reales** (antes era maqueta): nombre, correo, foto,
+  racha/estrellas/sellos, editar nombre y apellido (`PUT /users/me`).
+- **Foto de perfil:** columna nueva `usuarios.foto` (migración 019, ya
+  corrida). Se llena sola con la foto de Google al entrar (solo si no
+  tenía) o se sube desde /perfil: el navegador la recorta a 256×256 webp
+  y `PUT /users/me/foto` solo acepta imagen chica (≤300 KB, sin SVG ni
+  URLs externas — `services/fotoPerfil.js`, con pruebas). Sale también
+  como avatar propio en el aula.
+- **Mis talleres** (tomados) con fase y botón a su certificado si ya lo
+  tiene; **Te pueden gustar**: `GET /users/me/sugerencias`, hasta 4
+  talleres abiertos que no tiene, primero de su misma categoría.
+- **Profes:** "Talleres que impartes" con fecha, horario y fase, botón al
+  aula de ensayo (`/aula-nueva/:id`, ahora con el nombre real del taller y
+  de la profe) y al aula real.
+- **Un profe por taller:** el panel ya no ofrece talleres que tienen profe;
+  la API responde 409 con el nombre de quien lo da (`asegurarTallerLibre`,
+  con pruebas) y la base lo respalda con el índice único
+  `uq_taller_profesores_un_profe` (019).
+- Pendiente: el ensayo no tiene cámara (no hay sala de video); para probar
+  cámara y fondo virtual, la profe entra al aula real.
+
+### Carga y datos de pago de las profes (18 nov 2026) — en código
+
+- **Estimado de talleres por semana (lun–dom) y por mes**, según las
+  fechas cargadas (`utils/estimadoTalleres.js`): en el Perfil de la profe
+  y en su tarjeta de Admin → Profesores.
+- **Datos de pago:** tabla `profesor_datos_pago` (migración 020): titular,
+  banco, CLABE y/o tarjeta, uno por profe. Ella los captura en su Perfil
+  ("Mis datos para pagos", `GET/PUT /users/me/datos-pago`); Paola los ve en
+  Admin → Profesores (`GET /admin/profesores/datos-pago`), ocultos por
+  default con "Mostrar" y botón de copiar. La API valida el dígito de
+  control de la CLABE y Luhn de la tarjeta (`datosPagoService.js`, con
+  pruebas). Sin cifrado en la base: son datos para depositarle (como la
+  CLABE de Destello en sus correos), no para cobrarle.
+- **Siguiente (acordado):** detalle de pagos pendientes por profe, colgando
+  de esta tabla y del estimado de talleres.
 ---
 
 ## 6. 🔮 Futuro (post-lanzamiento)

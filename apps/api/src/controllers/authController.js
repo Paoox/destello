@@ -52,7 +52,7 @@ export async function loginWithSocial(req, res, next) {
 
     // 2. Buscar usuario en la BD
     const { rows } = await query(
-        `SELECT id, email, nombre, apellido, whatsapp, estado, acceso_bloqueado
+        `SELECT id, email, nombre, apellido, whatsapp, estado, acceso_bloqueado, foto
            FROM usuarios WHERE email = $1`,
         [emailNorm]
     )
@@ -83,6 +83,16 @@ export async function loginWithSocial(req, res, next) {
     // y si falla, el login ya es válido de todos modos.
     registrarLogin(usuario.email, provider || 'google')
 
+    // Foto de perfil: si no tiene, se toma la de su cuenta de Google. Nunca
+    // pisa una que ella haya subido. Sin await, mismo criterio que la métrica.
+    const fotoGoogle = typeof firebaseUser.picture === 'string' && /^https:\/\//.test(firebaseUser.picture)
+      ? firebaseUser.picture : null
+    if (fotoGoogle && !usuario.foto) {
+      usuario.foto = fotoGoogle
+      query('UPDATE usuarios SET foto = $1 WHERE id = $2 AND foto IS NULL', [fotoGoogle, usuario.id])
+        .catch(e => console.error('[auth/social] no se guardó la foto:', e.message))
+    }
+
     return res.json({
       status: 'ok',
       token,
@@ -92,6 +102,7 @@ export async function loginWithSocial(req, res, next) {
         nombre:   usuario.nombre,
         apellido: usuario.apellido,
         whatsapp: usuario.whatsapp,   // el front decide si pedir onboarding
+        foto:     usuario.foto ?? null,
         role:     'alumno',
         provider,
       },

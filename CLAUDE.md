@@ -328,6 +328,9 @@ POST /users/me/aula/:tallerId/presencia → LATIDO de asistencia (cada 2 min des
 GET  /users/me/aula/:tallerId/video-token → token de LiveKit para el video del aula (T-01);
                                            `video: null` si no hay servidor configurado o sin acceso
 GET  /users/me/certificados             → certificados ya emitidos al usuario
+PUT  /users/me/foto                     → foto de perfil (data URL ≤300 KB) o null para quitarla
+GET/PUT /users/me/datos-pago           → datos de pago de la profe (titular, banco, CLABE, tarjeta)
+GET  /users/me/sugerencias              → hasta 4 talleres abiertos sugeridos (misma categoría primero)
 ```
 
 ### Admin (JWT admin separado)
@@ -343,6 +346,7 @@ GET  /admin/usuarios/buscar?email=    → busca un usuario por correo (AccesosPa
 POST /admin/send-wa                   → envía mensaje WA directo desde bot Faro
 GET  /admin/talleres                  → CRUD de talleres
 GET  /admin/profesores                → quién da qué taller (T-05)
+GET  /admin/profesores/datos-pago     → datos de pago de todas las profes
 POST /admin/profesores                → asigna, body {usuarioId, tallerId}
 DELETE /admin/profesores/:tallerId/:usuarioId → quita esa asignación
 GET  /admin/talleres/:id/asistencia   → asistencia registrada de un taller
@@ -426,7 +430,7 @@ Métodos de pago incluidos en templates:
 
 **Talleres (`TalleresPanel.jsx`)** ✅ completo — CRUD con columnas reales de BD, editor de cupo, fecha y horario (texto libre; `hora_inicio`/`hora_fin` se derivan del texto en el backend)
 
-**Profesores (`ProfesoresPanel.jsx`, T-05, 18 sep 2026)** — busca una cuenta ya existente por correo (mismo patrón que Accesos) y la asigna como profesora de un taller (`taller_profesores`). No hace falta que tenga chispa de ese taller — dar la clase ya es su acceso. Las cuentas admin (`ADMIN_EMAILS`) siguen entrando como profe a cualquier aula sin pasar por aquí; esto es solo para profesores reales, limitados a lo que se les asigne.
+**Profesores (`ProfesoresPanel.jsx`, T-05, 18 sep 2026)** — ⚠️ desde el 18 nov 2026 **un taller = una profe**: los talleres con profe no aparecen en los selectores y la API responde 409 (índice único, migración 019); para cambiarla hay que quitar a la actual primero. busca una cuenta ya existente por correo (mismo patrón que Accesos) y la asigna como profesora de un taller (`taller_profesores`). No hace falta que tenga chispa de ese taller — dar la clase ya es su acceso. Las cuentas admin (`ADMIN_EMAILS`) siguen entrando como profe a cualquier aula sin pasar por aquí; esto es solo para profesores reales, limitados a lo que se les asigne.
 
 **Reportes** — reportes de acceso (`reportes_acceso`), incluye los que manda una cuenta bloqueada (`POST /bot/reporte-acceso` sigue abierto a propósito)
 
@@ -450,7 +454,7 @@ Métodos de pago incluidos en templates:
 | `/habitat` | PageHabitat.jsx | ✅ — grid talleres reales desde BD, modal lista de espera |
 | `/aula/:id` | PageAula.jsx | ✅ — LA FRONTERA: única pieza que habla con la API de Destello. Arma la `sesion` del contrato y envuelve `src/aula/Aula.jsx` (el módulo del aula: sellos, contrato de actividades, Quiz, rejilla — no consulta la API a propósito, para poder rentarse a otras escuelas como producto aparte). Le suma los latidos de asistencia que el módulo del aula no puede tener |
 | `/aula-nueva/:id` | PageAulaNueva.jsx | ✅ — salón de ensayo del profesor con datos inventados (sin backend, sin video). Entra como `profe` por defecto; `?rol=alumno` para verla del otro lado; `?actividad=<id>` abre directo un material de `materialesDeEnsayo.js` |
-| `/perfil` | PagePerfil.jsx | ✅ |
+| `/perfil` | PagePerfil.jsx | ✅ — datos reales (18 nov 2026): foto (`usuarios.foto`), nombre editable, talleres tomados + certificados, sugeridos por categoría, y para profes "Talleres que impartes" con fechas/horarios y acceso al aula de ensayo y a la real |
 | `/admin` | PageAdmin.jsx | ✅ — protegido con JWT admin, 7 tabs (ver arriba) |
 | `/` | PageLanding.jsx | 🔒 CONGELADO — NO modificar sin permiso explícito de Paola |
 
@@ -559,6 +563,9 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
   "Lo que Está Terminado y Funciona" más abajo para el detalle completo.
 
 ### 🟡 Pendiente
+- **▶ Lo próximo (pedido por Paola, 18 nov 2026):** Hábitat básico
+  (T-49, primer paso de T-24), pantalla de Notificaciones (T-44) y de
+  Ajustes (T-45), y después el detalle de pagos pendientes a las profes.
 - **▶ Siguiente: Paola prueba el aula en vivo (T-41/T-42)** — sellos,
   chat, mano, reacciones, actividad/candado y avance, con OpenVidu local y
   dos cuentas. Después: confirmar que un profe dado de alta (T-40) entra
