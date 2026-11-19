@@ -563,9 +563,11 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
   "Lo que Está Terminado y Funciona" más abajo para el detalle completo.
 
 ### 🟡 Pendiente
-- **▶ Lo próximo (pedido por Paola, 18 nov 2026):** Hábitat básico
-  (T-49, primer paso de T-24), pantalla de Notificaciones (T-44) y de
-  Ajustes (T-45), y después el detalle de pagos pendientes a las profes.
+- **▶ Lo próximo (pedido por Paola, 18 nov 2026):** Ajustes (T-45, con
+  los interruptores de avisos por WhatsApp/correo de T-44), Hábitat básico
+  (T-49, primer paso de T-24), y después el detalle de pagos pendientes a
+  las profes. Notificaciones (T-44) ✅ en código el 19 nov — falta
+  desplegar en la Toshiba.
 - **▶ Siguiente: Paola prueba el aula en vivo (T-41/T-42)** — sellos,
   chat, mano, reacciones, actividad/candado y avance, con OpenVidu local y
   dos cuentas. Después: confirmar que un profe dado de alta (T-40) entra
@@ -600,9 +602,17 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
     "Imparte <nombre y primer apellido>" de la profesora asignada
     (`taller_profesores` → `usuarios`, en `chispaService`). ⚠️ Toca
     `apps/api`: reconstruir Docker en la Toshiba al desplegar.
-  - **T-44/T-45** — Notificaciones y Ajustes: links muertos en el menú
-    (`/notifs`, `/settings`, ninguna ruta existe) — falta primero definir
-    qué son, antes de construir nada.
+  - **T-44 — ✅ en código (19 nov 2026):** `/notifs` + campanita con
+    contador. Tabla `notificaciones` (migración 021) llenada por un revisor
+    cada 5 min (`notificacionService.js`, solo producción): recordatorio
+    24 h y 1 h antes (app + WhatsApp, alumnas y profe), nuevo taller (app +
+    correo), certificado listo, pago confirmado, nueva alumna (profe).
+    Detalle en `docs/backlog-tickets.md` (T-44). Migración 021 ✅ ya
+    corrida en Supabase (19 nov 2026); falta reconstruir la API en la
+    Toshiba para que el revisor empiece a correr.
+  - **T-45** — Ajustes: link muerto en el menú (`/settings`). Ya tiene con
+    qué empezar: los interruptores `usuarios.avisos_whatsapp` /
+    `avisos_correo` (T-44) que el revisor ya respeta.
   - **T-46** — catálogo de avatares para alumnos con cámara apagada (el
     campo `Persona.avatarUrl` ya existe, falta la mitad de "elegir y
     guardar").

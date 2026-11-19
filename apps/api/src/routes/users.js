@@ -17,6 +17,7 @@ import { crearTokenVideo } from '../services/videoService.js'
 import { esProfeDelTaller } from '../services/profesorService.js'
 import { validarFoto } from '../services/fotoPerfil.js'
 import * as datosPagoService from '../services/datosPagoService.js'
+import * as notificacionService from '../services/notificacionService.js'
 
 const router = Router()
 
@@ -420,6 +421,37 @@ router.get('/me/certificados', async (req, res, next) => {
       // manda aquí para no obligarlo a una segunda llamada.
       nombreCertificado: rows[0]?.nombre_certificado ?? null,
     })
+  } catch (err) { next(err) }
+})
+
+// ══════════════════════════════════════════════════════════════════════════
+// Notificaciones (T-44) — las crea el revisor automático
+// (notificacionService.revisarNotificaciones); aquí solo se leen y se marcan.
+// ══════════════════════════════════════════════════════════════════════════
+
+/** GET /users/me/notificaciones → las últimas 50 + cuántas sin leer. */
+router.get('/me/notificaciones', async (req, res, next) => {
+  try {
+    const [notificaciones, noLeidas] = await Promise.all([
+      notificacionService.listar(req.user.userId),
+      notificacionService.contarNoLeidas(req.user.userId),
+    ])
+    res.json({ status: 'ok', notificaciones, noLeidas })
+  } catch (err) { next(err) }
+})
+
+/** GET /users/me/notificaciones/no-leidas → solo el número, para la campanita. */
+router.get('/me/notificaciones/no-leidas', async (req, res, next) => {
+  try {
+    res.json({ status: 'ok', noLeidas: await notificacionService.contarNoLeidas(req.user.userId) })
+  } catch (err) { next(err) }
+})
+
+/** POST /users/me/notificaciones/leer → body { ids?: number[] }; sin ids, todas. */
+router.post('/me/notificaciones/leer', async (req, res, next) => {
+  try {
+    const marcadas = await notificacionService.marcarLeidas(req.user.userId, req.body?.ids ?? null)
+    res.json({ status: 'ok', marcadas })
   } catch (err) { next(err) }
 })
 

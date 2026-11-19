@@ -24,6 +24,7 @@ const Page404      = lazy(() => import('@pages/Page404.jsx'))
 const PageAdmin    = lazy(() => import('@pages/PageAdmin.jsx'))
 const PageCertificado = lazy(() => import('@pages/PageCertificado.jsx'))
 const PageAulaNueva   = lazy(() => import('@pages/PageAulaNueva.jsx'))
+const PageNotificaciones = lazy(() => import('@pages/PageNotificaciones.jsx'))
 
 
 // Loading fallback mientras carga la página
@@ -82,6 +83,7 @@ export default function App() {
                     <Route path="/habitat"       element={<PageHabitat />} />
                     <Route path="/aula/:id"      element={<PageAula />} />
                     <Route path="/perfil"        element={<PagePerfil />} />
+                    <Route path="/notifs"        element={<PageNotificaciones />} />
                     {/* Admin integrado en el shell — link visible solo para cuentas admin */}
                     <Route path="/admin"         element={<PageAdmin />} />
                 </Route>

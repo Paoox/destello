@@ -806,14 +806,21 @@ se llama desde el manejador principal de mensajes.
 
 ## 5. 🟡 Pendiente (acordado, sin empezar / a medias)
 
-### ▶ Siguientes (actualizado 18 nov 2026)
+### ▶ Siguientes (actualizado 19 nov 2026)
+> **0. Desplegar T-44 en la Toshiba** (`git pull` +
+> `docker compose up --build -d api`). La migración 021 ya está corrida.
+> Al arrancar, el revisor manda los recordatorios reales del día siguiente
+> (alumnas y profes) y el WhatsApp de prueba pendiente a Paola.
+>
 > **Pedido por Paola (18 nov 2026), lo próximo a construir:**
 > - **T-49 — Hábitat básico:** por lo menos una primera versión del mundo
 >   (hoy `/habitat` es solo el catálogo de talleres). Ver T-24 para la
 >   visión completa (mundo tipo Minecraft con objetos desbloqueables); esto
 >   es el primer paso, no todo T-24. Alcance a definir con Paola.
-> - **T-44 — Pantalla de Notificaciones** (`/notifs`, hoy link muerto).
-> - **T-45 — Pantalla de Ajustes** (`/settings`, hoy link muerto).
+> - ~~**T-44 — Pantalla de Notificaciones**~~ ✅ en código (19 nov 2026).
+> - **T-45 — Pantalla de Ajustes** (`/settings`, hoy link muerto) — lo
+>   siguiente; arranca con los interruptores `avisos_whatsapp` /
+>   `avisos_correo` que T-44 ya respeta.
 > - **Pagos a profes:** detalle de lo pendiente por pagarle a cada una
 >   (cuelga de `profesor_datos_pago` y del estimado de talleres).
 >
@@ -1329,6 +1336,36 @@ se llama desde el manejador principal de mensajes.
   que da ESE taller (no un campo de texto vacío ni "Destello" genérico).
 
 ### T-44 — Página de Notificaciones (hoy: link muerto en el menú)
+- **✅ En código (19 nov 2026). Migración 021 ya corrida en Supabase (19 nov).
+  Falta solo desplegar la API en la Toshiba.** Probado en local contra la
+  base real, acotado a la cuenta de Paola: el revisor encontró el taller de
+  mañana, la encontró como alumna y creó "Tu taller es mañana ✦" con
+  WhatsApp pendiente — ese WhatsApp sale solo al desplegar (el bot vive en
+  la Toshiba). Para la prueba se extendió la chispa demo `DEST-81B6-DD6D`
+  hasta el 27 nov 2026.
+  Alcance decidido con Paola:
+  - Alumnas: taller mañana/hoy (24 h antes) y "empieza en menos de 1 h"
+    → app + WhatsApp; nuevo taller → app + correo (nunca WhatsApp: a todas
+    las cuentas a la vez = riesgo de baneo de Faro); certificado listo y
+    pago confirmado → app.
+  - Profes: mañana/hoy impartes (con inscritas y pagadas) y 1 h antes → app
+    + WhatsApp; nueva alumna (chispa nueva en su taller) → app.
+  - Cómo: tabla `notificaciones` (migración 021, única por
+    `usuario_id + tipo + ref`) llenada por un revisor cada 5 min
+    (`notificacionService.revisarNotificaciones`, solo `NODE_ENV=production`)
+    que lee el estado de la base — ninguna ruta tiene que acordarse de
+    "avisar". Segunda fase manda WhatsApp (pausa de 2.5 s entre mensajes) y
+    correo (`sendNuevoTaller`), con hasta 3 reintentos; un recordatorio de
+    una clase que ya empezó no se manda tarde. `talleres.anunciado_at`
+    evita anunciar talleres viejos al desplegar; un taller se anuncia 20 min
+    después de su última edición (para no anunciarlo a medio llenar).
+  - Preferencias `usuarios.avisos_whatsapp` / `avisos_correo` (default
+    true) — el revisor ya las respeta; falta la UI en Ajustes (T-45).
+  - Front: `/notifs` (`PageNotificaciones.jsx`) y contador en la campanita
+    del menú (y un punto en la hamburguesa en móvil).
+  - Textos en `notificacionTextos.js` (puro) con 8 pruebas.
+  - ⚠️ Solo se recuerda la **fecha de inicio** de cada taller; talleres de
+    varios días no reciben aviso por cada sesión.
 - **▶ Priorizado por Paola (18 nov 2026):** va en lo siguiente a construir.
 - **Encontrado al revisar el pendiente de Paola (18 sep 2026):** el menú
   lateral (`Navbar.jsx`) ya tiene un renglón "Notificaciones" apuntando a

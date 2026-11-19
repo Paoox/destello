@@ -26,3 +26,6 @@ export function isAdminEmail(email) {
   if (!email) return false
   return ADMIN_EMAILS.includes(email.toLowerCase().trim())
 }
+
+/** /notifs lo dispara al marcar todo como leído → la campanita del menú se apaga. */
+export const EVENTO_NOTIFS_LEIDAS = 'destello:notificaciones-leidas'

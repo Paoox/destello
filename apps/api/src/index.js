@@ -21,6 +21,7 @@ import { errorHandler }  from './middleware/errorHandler.js'
 import { requestLogger } from './middleware/requestLogger.js'
 import { authenticate }  from './middleware/authenticate.js'
 import { enviarRecordatoriosAutomaticos } from './services/recordatorioAutoService.js'
+import { revisarNotificaciones } from './services/notificacionService.js'
 
 const app  = express()
 const PORT = process.env.PORT || 3001
@@ -32,6 +33,7 @@ const PORT = process.env.PORT || 3001
 // setInterval de toda la vida del proceso es suficiente — no hace falta cron
 // del sistema operativo.
 const INTERVALO_RECORDATORIOS_MS = 30 * 60 * 1000
+const INTERVALO_NOTIFICACIONES_MS = 5 * 60 * 1000
 
 app.use(helmet())
 app.use(cors({
@@ -94,6 +96,16 @@ async function start() {
     }
     correr()
     setInterval(correr, INTERVALO_RECORDATORIOS_MS)
+
+    // Notificaciones (T-44): recordatorios de clase, certificados, pagos,
+    // talleres nuevos. Cada 5 min para que el aviso de "1 hora antes" no
+    // llegue tarde.
+    const notificar = () => {
+      revisarNotificaciones().catch(err =>
+        console.error('[notificaciones] error en la corrida:', err.message))
+    }
+    notificar()
+    setInterval(notificar, INTERVALO_NOTIFICACIONES_MS)
   }, 2 * 60 * 1000)
 }
 

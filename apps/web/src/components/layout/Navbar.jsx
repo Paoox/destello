@@ -3,8 +3,8 @@
  * Navegación lateral con iconos de Phosphor Icons.
  * Exportado como módulo independiente → reutilizable y fácil de modificar.
  */
-import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   House,
   GlobeHemisphereWest,
@@ -17,7 +17,7 @@ import {
   X,
 } from '@phosphor-icons/react'
 import { useAuthStore } from '@store/useAuthStore.js'
-import { isAdminEmail } from '@/constants.js'
+import { isAdminEmail, EVENTO_NOTIFS_LEIDAS } from '@/constants.js'
 import logoDestello from '../../Images/destello-logo-512.png'
 
 // Definición de rutas — modificar aquí afecta toda la nav
@@ -142,6 +142,21 @@ const NAV_CSS = `
   border-left: 3px solid var(--color-jade-500);
 }
 .ds-nav__link.active .ds-nav__ico { color: var(--color-jade-400); }
+/* Contador de notificaciones sin leer, sobre la campanita */
+.ds-nav__ico { position: relative; }
+.ds-nav__badge {
+  position: absolute; top: -6px; right: -8px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 9px; background: var(--color-amber-600); color: #fff;
+  font-size: 10px; font-weight: 700; line-height: 17px; text-align: center;
+  box-shadow: 0 0 0 2px var(--bg-card);
+}
+/* En el botón hamburguesa (móvil), un punto para que se note con el menú cerrado */
+.ds-nav__hamburger-dot {
+  position: absolute; top: 7px; right: 7px; width: 9px; height: 9px;
+  border-radius: 50%; background: var(--color-amber-600);
+  box-shadow: 0 0 0 2px var(--bg-card);
+}
 /* "Salir" siempre en ámbar para que resalte y se lea en modo claro y oscuro */
 .ds-nav__link--danger { color: var(--color-amber-600); font-weight: 600; }
 .ds-nav__link--danger .ds-nav__ico { color: var(--color-amber-600); }
@@ -283,6 +298,27 @@ export default function Navbar({ compacta = false }) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false) // drawer en móvil
 
+  // Notificaciones sin leer (T-44): se pregunta al cambiar de página y cada
+  // 2 min. /notifs avisa con EVENTO_NOTIFS_LEIDAS al marcarlas como leídas.
+  const token = useAuthStore((s) => s.token)
+  const { pathname } = useLocation()
+  const [noLeidas, setNoLeidas] = useState(0)
+  useEffect(() => {
+    if (!token) return
+    let vivo = true
+    const consultar = () => {
+      fetch('/api/users/me/notificaciones/no-leidas', { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => { if (vivo && d) setNoLeidas(d.noLeidas ?? 0) })
+        .catch(() => {})
+    }
+    consultar()
+    const reloj = setInterval(consultar, 2 * 60 * 1000)
+    const leidas = () => setNoLeidas(0)
+    window.addEventListener(EVENTO_NOTIFS_LEIDAS, leidas)
+    return () => { vivo = false; clearInterval(reloj); window.removeEventListener(EVENTO_NOTIFS_LEIDAS, leidas) }
+  }, [token, pathname])
+
   const handleSignOut = () => {
     logout()
     navigate('/login')
@@ -307,6 +343,7 @@ export default function Navbar({ compacta = false }) {
         aria-expanded={mobileOpen}
       >
         {mobileOpen ? <X size={22} weight="bold" /> : <List size={22} weight="bold" />}
+        {!mobileOpen && noLeidas > 0 && <span className="ds-nav__hamburger-dot" aria-label="Tienes notificaciones nuevas" />}
       </button>
 
       {/* Scrim — oscurece el fondo cuando el drawer está abierto (móvil) */}
@@ -346,7 +383,14 @@ export default function Navbar({ compacta = false }) {
         <div className="ds-nav__bottom">
           {NAV_BOTTOM.map(({ label, path, Icon }) => (
             <NavLink key={path} to={path} className={linkClass} onClick={closeMobile} title={compacta ? label : undefined}>
-              <span className="ds-nav__ico"><Icon size={20} weight="regular" /></span>
+              <span className="ds-nav__ico">
+                <Icon size={20} weight="regular" />
+                {path === '/notifs' && noLeidas > 0 && (
+                  <span className="ds-nav__badge" aria-label={`${noLeidas} sin leer`}>
+                    {noLeidas > 9 ? '9+' : noLeidas}
+                  </span>
+                )}
+              </span>
               <span className="ds-nav__txt">{label}</span>
             </NavLink>
           ))}
