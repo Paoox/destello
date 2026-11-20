@@ -466,7 +466,9 @@ WhatsApp + correo al mismo taller cuando reabre (`prospectoService.js`).
 | `/acceso` | PageAcceso.jsx | ✅ funcional, pero sin link desde la UI (ver "Sistema de Accesos" arriba) |
 | `/certificado/:folio` | PageCertificado.jsx | ✅ — verificación pública del QR del diploma, sin layout |
 | `/home` | PageHome.jsx | ✅ |
-| `/habitat` | PageHabitat.jsx | ✅ — grid talleres reales desde BD, modal lista de espera |
+| `/novedades` | PageNovedades.jsx | ✅ — 3 próximos talleres, "Explora por marca" (submarcas = `talleres.categoria`, `utils/submarcas.js`) y "Conoce a tus profes" (ficha que llena Paola en panel → Profesores, migración 026) |
+| `/novedades/talleres` | PageTalleresMarca.jsx | ✅ — catálogo por marca (`?marca=`) o todos, con modal lista de espera |
+| `/habitat` | PageHabitat.jsx | ✅ — "Mi hábitat" (T-49): islita 2D, un objeto por taller completado (`src/habitat/`). `?vista=talleres` redirige a `/novedades` |
 | `/aula/:id` | PageAula.jsx | ✅ — LA FRONTERA: única pieza que habla con la API de Destello. Arma la `sesion` del contrato y envuelve `src/aula/Aula.jsx` (el módulo del aula: sellos, contrato de actividades, Quiz, rejilla — no consulta la API a propósito, para poder rentarse a otras escuelas como producto aparte). Le suma los latidos de asistencia que el módulo del aula no puede tener |
 | `/aula-nueva/:id` | PageAulaNueva.jsx | ✅ — salón de ensayo del profesor con datos inventados (sin backend, sin video). Entra como `profe` por defecto; `?rol=alumno` para verla del otro lado; `?actividad=<id>` abre directo un material de `materialesDeEnsayo.js` |
 | `/notifs` | PageNotificaciones.jsx | ✅ — avisos de la persona (T-44); campanita con contador en el menú |
@@ -580,10 +582,10 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
   "Lo que Está Terminado y Funciona" más abajo para el detalle completo.
 
 ### 🟡 Pendiente
-- **▶ Lo próximo (pedido por Paola, 18 nov 2026):** Hábitat básico
-  (T-49, primer paso de T-24), y después el detalle de pagos pendientes a
-  las profes. Notificaciones (T-44) y Ajustes (T-45) ✅ desplegados el
-  19 nov.
+- **▶ Lo próximo (19 nov 2026):** Hábitat estilo "pecera" (rehacer T-49
+  con la referencia de Paola: cuarto dentro de un cubo de vidrio, solo
+  objetos por taller completado), y después el detalle de pagos pendientes a
+  las profes. Hábitat básico (T-49) y Novedades ✅ desplegados el 19 nov.
 - **▶ Siguiente: Paola prueba el aula en vivo (T-41/T-42)** — sellos,
   chat, mano, reacciones, actividad/candado y avance, con OpenVidu local y
   dos cuentas. Después: confirmar que un profe dado de alta (T-40) entra

@@ -46,6 +46,12 @@ export async function apiValidarChispa(code) {
 /**
  * Lista los talleres activos (públicos, sin auth).
  */
+/** "Conoce a tus profes" (Novedades): fichas públicas, sin correo ni WhatsApp. */
+export async function apiListProfes() {
+    const res = await fetch(`${BASE}/tallers/profes`)
+    return handleResponse(res)
+}
+
 export async function apiListTalleres() {
     const res = await fetch(`${BASE}/tallers`)
     return handleResponse(res)

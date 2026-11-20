@@ -18,6 +18,8 @@ const PageLanding  = lazy(() => import('@pages/PageLanding.jsx'))
 const PageLogin    = lazy(() => import('@pages/PageLogin.jsx'))
 const PageHome     = lazy(() => import('@pages/PageHome.jsx'))
 const PageHabitat  = lazy(() => import('@pages/PageHabitat.jsx'))
+const PageNovedades = lazy(() => import('@pages/PageNovedades.jsx'))
+const PageTalleresMarca = lazy(() => import('@pages/PageTalleresMarca.jsx'))
 const PageAula     = lazy(() => import('@pages/PageAula.jsx'))
 const PagePerfil   = lazy(() => import('@pages/PagePerfil.jsx'))
 const Page404      = lazy(() => import('@pages/Page404.jsx'))
@@ -81,6 +83,8 @@ export default function App() {
                 {/* ── Rutas privadas (con sidebar/navbar) ───────── */}
                 <Route element={<MainLayout />}>
                     <Route path="/home"          element={<PageHome />} />
+                    <Route path="/novedades"     element={<PageNovedades />} />
+                    <Route path="/novedades/talleres" element={<PageTalleresMarca />} />
                     <Route path="/habitat"       element={<PageHabitat />} />
                     <Route path="/aula/:id"      element={<PageAula />} />
                     <Route path="/perfil"        element={<PagePerfil />} />

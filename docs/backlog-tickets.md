@@ -813,10 +813,29 @@ se llama desde el manejador principal de mensajes.
 > (alumnas y profes) y el WhatsApp de prueba pendiente a Paola.
 >
 > **Pedido por Paola (18 nov 2026), lo próximo a construir:**
-> - **T-49 — Hábitat básico:** por lo menos una primera versión del mundo
->   (hoy `/habitat` es solo el catálogo de talleres). Ver T-24 para la
->   visión completa (mundo tipo Minecraft con objetos desbloqueables); esto
->   es el primer paso, no todo T-24. Alcance a definir con Paola.
+> - **T-49 — Hábitat básico — ✅ (19 nov 2026).** Decisiones de Paola: 2D
+>   ilustrado, objetos que se desbloquean al COMPLETAR un taller (certificado
+>   emitido), catálogo aparte. `/habitat` es solo "Mi hábitat" (el catálogo se
+>   mudó a Novedades; `/habitat?vista=talleres` redirige a `/novedades`).
+>   Código en `apps/web/src/habitat/`: `Escena.jsx` (diorama SVG por capas,
+>   día/noche según tema, 12 lugares), `objetos.jsx` (13 dibujos provisionales
+>   + `objetoDeTaller()` por palabras del nombre → categoría → cristal ✦),
+>   `MiHabitat.jsx` (talleres en curso = silueta "?"; al tocar un objeto liga
+>   al certificado). Sin backend propio.
+>   **Siguiente (pedido de Paola):** rehacerlo estilo "pecera" — un cuarto
+>   dentro de un cubo de vidrio con plantas y peces (referencia que trajo
+>   Paola); solo los objetos de cada taller, sin cuadros de certificados.
+> - **Novedades — ✅ (19 nov 2026).** Nueva pestaña del menú (`/novedades`,
+>   `PageNovedades.jsx`): los 3 próximos talleres ("Nuevo" si el taller se
+>   creó hace <30 días), "Explora por marca" (una tarjeta por submarca =
+>   `talleres.categoria`, presentación en `utils/submarcas.js`, + "Todos los
+>   talleres") que abre `/novedades/talleres?marca=…` (`PageTalleresMarca.jsx`,
+>   con chips para cambiar de marca), y "Conoce a tus profes": tarjeta con
+>   foto cuadrada grande y ficha (especialidad, años, semblanza, formación,
+>   talleres). La ficha la llena Paola en el panel → Profesores → "Ficha
+>   pública" (migración 026, columnas en `profesores`; sin foto propia usa la
+>   del Perfil). Público: `GET /tallers/profes` (nunca correo/WhatsApp).
+>   Tarjeta y modal del catálogo viven en `components/talleres/Catalogo.jsx`.
 > - ~~**T-44 — Pantalla de Notificaciones**~~ ✅ desplegado (19 nov 2026).
 > - ~~**T-45 — Pantalla de Ajustes**~~ ✅ desplegado (19 nov 2026), con
 >   soporte con folio y seguimiento.

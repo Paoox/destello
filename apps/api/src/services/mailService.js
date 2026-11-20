@@ -126,7 +126,7 @@ function templateInvitacionTaller({ nombre, origen, taller = {} }) {
 
 function templateNuevoTaller({ nombre, taller = {} }) {
     const nombreCorto = escaparHtml(nombre?.trim().split(' ')[0] || '')
-    const url    = 'https://destello.courses/habitat'
+    const url    = 'https://destello.courses/novedades'
     const cuando = fechaLarga(taller.fecha)
     const filas  = [
         cuando         && `📅 ${cuando.charAt(0).toUpperCase() + cuando.slice(1)}`,
@@ -151,7 +151,7 @@ function templateNuevoTaller({ nombre, taller = {} }) {
       ${filas.length
           ? `<div class="info-box"><p class="info-value" style="line-height:1.9;">${filas.join('<br>')}</p></div>`
           : ''}
-      <p class="text">Los lugares son limitados. Si te interesa, apártalo desde el Hábitat.</p>
+      <p class="text">Los lugares son limitados. Si te interesa, apártalo desde Novedades.</p>
       <div class="btn-wrap">
         <a href="${url}" class="btn">Ver el taller →</a>
       </div>

@@ -87,9 +87,9 @@ export function armarNotificacion(tipo, d = {}) {
                 titulo: `Nuevo taller: ${taller}`,
                 cuerpo: [
                     f ? `${mayus(f)}${horario ? ` · ${horario}` : ''}.` : null,
-                    'Aparta tu lugar desde el Hábitat.',
+                    'Aparta tu lugar desde Novedades.',
                 ].filter(Boolean).join(' '),
-                liga:   '/habitat',
+                liga:   '/novedades',
             }
         }
         case 'certificado':

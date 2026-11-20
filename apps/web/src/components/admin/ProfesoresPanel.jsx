@@ -75,6 +75,99 @@ const sBtnPrimary = (color, disabled) => ({
     opacity: disabled ? 0.5 : 1, transition: 'opacity 0.15s',
 })
 
+/** Foto de la ficha: recorte cuadrado al centro, 400 px, JPEG (~50-120 KB). */
+async function fotoCuadrada(archivo, lado = 400) {
+    if (!archivo?.type?.startsWith('image/')) throw new Error('Elige una imagen')
+    const url = URL.createObjectURL(archivo)
+    try {
+        const img = await new Promise((ok, mal) => {
+            const i = new Image(); i.onload = () => ok(i); i.onerror = () => mal(new Error('No se pudo leer esa imagen')); i.src = url
+        })
+        const m = Math.min(img.naturalWidth, img.naturalHeight)
+        const c = document.createElement('canvas'); c.width = c.height = lado
+        c.getContext('2d').drawImage(img, (img.naturalWidth - m) / 2, (img.naturalHeight - m) / 2, m, m, 0, 0, lado, lado)
+        return c.toDataURL('image/jpeg', 0.85)
+    } finally { URL.revokeObjectURL(url) }
+}
+
+/**
+ * Ficha pública de una profe ("Conoce a tus profes" en Novedades).
+ * La llena Paola (decisión 19 nov 2026). Si no sube foto, se usa la de su
+ * Perfil.
+ */
+function FichaEditor({ usuarioId, ficha, adminToken, onGuardada }) {
+    const [f, setF] = useState(() => ({
+        especialidad: ficha?.especialidad ?? '', semblanza: ficha?.semblanza ?? '',
+        aniosExperiencia: ficha?.anios_experiencia ?? '', formacion: ficha?.formacion ?? '',
+        publicada: ficha?.ficha_publicada ?? true,
+    }))
+    const [foto, setFoto]         = useState(undefined)   // undefined = sin cambio · null = quitar
+    const [guardando, setGuardando] = useState(false)
+    const [msg, setMsg]           = useState(null)
+    const input = useRef(null)
+    const fotoVista = foto === undefined ? (ficha?.foto ?? ficha?.foto_perfil) : (foto ?? ficha?.foto_perfil)
+    const esDePerfil = foto === undefined ? !ficha?.foto && !!ficha?.foto_perfil : foto === null && !!ficha?.foto_perfil
+
+    const guardar = async () => {
+        setGuardando(true); setMsg(null)
+        try {
+            await API(`/profesores/${usuarioId}/ficha`, adminToken, {
+                method: 'PUT', body: JSON.stringify({ ...f, ...(foto !== undefined && { foto }) }),
+            })
+            setMsg({ ok: true, txt: 'Ficha guardada ✓' }); setFoto(undefined); onGuardada?.()
+        } catch (e) { setMsg({ ok: false, txt: e.message }) }
+        finally { setGuardando(false) }
+    }
+    const campo = (k) => ({ value: f[k], onChange: e => setF(x => ({ ...x, [k]: e.target.value })) })
+
+    return (
+        <div style={{ marginTop: 10, padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px dashed var(--border-default)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                {fotoVista
+                    ? <img src={fotoVista} alt="" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover' }} />
+                    : <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--bg-base)', border: '1px solid var(--border-default)', display: 'grid', placeItems: 'center', fontSize: 11, color: 'var(--text-muted)' }}>Sin foto</div>}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={async e => {
+                        const a = e.target.files?.[0]; e.target.value = ''
+                        if (a) try { setFoto(await fotoCuadrada(a)) } catch (err) { setMsg({ ok: false, txt: err.message }) }
+                    }} />
+                    <button type="button" onClick={() => input.current?.click()} style={{ ...sBtnPrimary('var(--color-jade-500)', false), width: 'auto', padding: '5px 12px', fontSize: 12 }}>
+                        {fotoVista && !esDePerfil ? 'Cambiar foto' : 'Subir foto'}
+                    </button>
+                    {(ficha?.foto || foto) && (
+                        <button type="button" onClick={() => setFoto(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer', padding: 0, textAlign: 'left' }}>Quitar foto</button>
+                    )}
+                    {esDePerfil && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Se usa la foto de su Perfil</span>}
+                </div>
+            </div>
+            <label style={sEtq}>Especialidad
+                <input {...campo('especialidad')} maxLength={120} placeholder="Ej. Terapeuta en Medicina Tradicional China" style={sInput} />
+            </label>
+            <label style={sEtq}>Años de experiencia
+                <input {...campo('aniosExperiencia')} type="number" min={0} max={80} style={{ ...sInput, width: 110 }} />
+            </label>
+            <label style={sEtq}>Semblanza ({String(f.semblanza).length}/600)
+                <textarea {...campo('semblanza')} maxLength={600} rows={4} placeholder="Un párrafo sobre ella" style={{ ...sInput, resize: 'vertical' }} />
+            </label>
+            <label style={sEtq}>Formación / certificaciones (una por línea)
+                <textarea {...campo('formacion')} rows={3} placeholder={'Lic. en Fisioterapia\nDiplomado en Auriculoterapia'} style={{ ...sInput, resize: 'vertical' }} />
+            </label>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                <input type="checkbox" checked={f.publicada} onChange={e => setF(x => ({ ...x, publicada: e.target.checked }))} />
+                Mostrarla en "Conoce a tus profes"
+            </label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button type="button" onClick={guardar} disabled={guardando} style={{ ...sBtnPrimary('var(--color-jade-500)', guardando), width: 'auto', padding: '6px 16px', fontSize: 12 }}>
+                    {guardando ? 'Guardando…' : 'Guardar ficha'}
+                </button>
+                {msg && <span style={{ fontSize: 12, color: msg.ok ? 'var(--color-jade-500)' : 'var(--color-error)' }}>{msg.txt}</span>}
+            </div>
+        </div>
+    )
+}
+
+const sEtq = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--text-muted)' }
+
 export default function ProfesoresPanel({ adminToken }) {
     // ── Búsqueda de usuario ──────────────────────────────────────────────
     const [emailInput,    setEmailInput]    = useState('')
@@ -106,8 +199,13 @@ export default function ProfesoresPanel({ adminToken }) {
     const [verPago, setVerPago]     = useState({})   // { [usuarioId]: true } = números completos
     const [copiado, setCopiado]     = useState(null)
 
+    // Ficha pública de cada profe (Novedades): { [usuarioId]: ficha }
+    const [fichas, setFichas]       = useState({})
+    const [verFicha, setVerFicha]   = useState({})   // { [usuarioId]: true } = editor abierto
+
     const cargarAsignaciones = useCallback(() => {
         API('/profesores', adminToken).then(d => setAsignaciones(d.asignaciones ?? [])).catch(() => {})
+        API('/profesores/fichas', adminToken).then(d => setFichas(d.fichas ?? {})).catch(() => {})
         API('/profesores/datos-pago', adminToken)
             .then(d => setDatosPago(Object.fromEntries((d.datosPago ?? []).map(x => [x.usuario_id, x]))))
             .catch(() => {})
@@ -506,6 +604,25 @@ export default function ProfesoresPanel({ adminToken }) {
                             })()}
                             {errorTarjeta[p.usuario_id] && (
                                 <p style={{ color: 'var(--color-error)', fontSize: 12, margin: '6px 0 0' }}>⚠ {errorTarjeta[p.usuario_id]}</p>
+                            )}
+
+                            {/* Ficha pública para "Conoce a tus profes" (Novedades) */}
+                            <button type="button"
+                                onClick={() => setVerFicha(v => ({ ...v, [p.usuario_id]: !v[p.usuario_id] }))}
+                                style={{ marginTop: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                         color: 'var(--color-jade-500)', fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)' }}>
+                                {verFicha[p.usuario_id] ? '▾' : '▸'} Ficha pública
+                                {fichas[p.usuario_id] && !fichas[p.usuario_id].especialidad && !fichas[p.usuario_id].semblanza
+                                    ? <span style={{ color: 'var(--color-amber-500)', fontWeight: 600 }}> · sin llenar</span> : null}
+                            </button>
+                            {verFicha[p.usuario_id] && (
+                                <FichaEditor
+                                    key={fichas[p.usuario_id]?.ficha_updated_at ?? 'nueva'}
+                                    usuarioId={p.usuario_id}
+                                    ficha={fichas[p.usuario_id]}
+                                    adminToken={adminToken}
+                                    onGuardada={cargarAsignaciones}
+                                />
                             )}
                         </div>
                     ))}

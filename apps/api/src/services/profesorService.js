@@ -181,3 +181,103 @@ export async function altaProfesor(datos) {
         return { usuario, creada, asignacion: asig[0] ?? null }
     })
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Ficha pública — "Conoce a tus profes" (Novedades, 19 nov 2026, migración 026)
+// ══════════════════════════════════════════════════════════════════════════
+
+export const LIMITES_FICHA = { especialidad: 120, semblanza: 600, lineaFormacion: 150, lineasFormacion: 8, fotoBytes: 450_000 }
+
+/**
+ * Limpia y valida lo que manda el panel (pura, con pruebas).
+ * `foto`: undefined = no tocarla · null = quitarla · data URL = reemplazarla.
+ * @returns {{ ok: true, ficha: object } | { ok: false, message: string }}
+ */
+export function validarFicha(d = {}) {
+    const L = LIMITES_FICHA
+    const texto = (v) => (v == null ? null : String(v).trim() || null)
+    const especialidad = texto(d.especialidad)
+    const semblanza    = texto(d.semblanza)
+    if (especialidad && especialidad.length > L.especialidad) return { ok: false, message: `La especialidad es muy larga (máx. ${L.especialidad} letras)` }
+    if (semblanza && semblanza.length > L.semblanza) return { ok: false, message: `La semblanza es muy larga (máx. ${L.semblanza} letras)` }
+
+    const lineas = String(d.formacion ?? '').split('\n').map(l => l.trim()).filter(Boolean)
+    if (lineas.length > L.lineasFormacion) return { ok: false, message: `Máximo ${L.lineasFormacion} líneas de formación` }
+    if (lineas.some(l => l.length > L.lineaFormacion)) return { ok: false, message: `Cada línea de formación: máx. ${L.lineaFormacion} letras` }
+
+    let anios = null
+    if (d.aniosExperiencia !== undefined && d.aniosExperiencia !== null && d.aniosExperiencia !== '') {
+        anios = Number(d.aniosExperiencia)
+        if (!Number.isInteger(anios) || anios < 0 || anios > 80) return { ok: false, message: 'Los años de experiencia deben ser un número entre 0 y 80' }
+    }
+
+    let foto
+    if (d.foto === null) foto = null
+    else if (d.foto !== undefined) {
+        if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(String(d.foto))) return { ok: false, message: 'La foto debe ser JPG, PNG o WEBP' }
+        if (String(d.foto).length > L.fotoBytes) return { ok: false, message: 'La foto pesa demasiado' }
+        foto = d.foto
+    }
+
+    return { ok: true, ficha: {
+        especialidad, semblanza, formacion: lineas.join('\n') || null,
+        aniosExperiencia: anios, publicada: d.publicada !== false, foto,
+    } }
+}
+
+/** Para el panel: la ficha de cada profe, por usuario_id. */
+export async function fichasParaPanel() {
+    const { rows } = await query(
+        `SELECT p.usuario_id, p.foto, u.foto AS foto_perfil, p.especialidad, p.semblanza,
+                p.anios_experiencia, p.formacion, p.ficha_publicada, p.ficha_updated_at
+           FROM profesores p JOIN usuarios u ON u.id = p.usuario_id`)
+    return Object.fromEntries(rows.map(r => [r.usuario_id, r]))
+}
+
+export async function guardarFicha(usuarioId, datos) {
+    const v = validarFicha(datos)
+    if (!v.ok) throw new AppError(v.message, 400, 'BAD_REQUEST')
+    const f = v.ficha
+    const { rows } = await query(
+        `UPDATE profesores
+            SET especialidad = $2, semblanza = $3, formacion = $4, anios_experiencia = $5,
+                ficha_publicada = $6,
+                foto = CASE WHEN $7::boolean THEN $8 ELSE foto END,
+                ficha_updated_at = NOW()
+          WHERE usuario_id = $1
+      RETURNING usuario_id`,
+        [usuarioId, f.especialidad, f.semblanza, f.formacion, f.aniosExperiencia, f.publicada,
+         f.foto !== undefined, f.foto ?? null])
+    if (!rows.length) throw new AppError('Esa cuenta no es profesora', 404, 'NOT_FOUND')
+    return { ok: true }
+}
+
+/**
+ * Público: profes con al menos un taller asignado y ficha publicada.
+ * Nunca correo ni WhatsApp. Nombre = nombre + primer apellido.
+ */
+export async function fichasPublicas() {
+    const { rows } = await query(
+        `SELECT p.usuario_id AS id, u.nombre, u.apellido,
+                COALESCE(p.foto, u.foto) AS foto,
+                p.especialidad, p.semblanza, p.anios_experiencia, p.formacion,
+                json_agg(json_build_object(
+                    'id', t.id, 'nombre', t.nombre, 'categoria', t.categoria, 'estado', t.estado,
+                    'fecha_inicio', to_char(t.fecha_inicio, 'YYYY-MM-DD'))
+                  ORDER BY t.fecha_inicio NULLS LAST) AS talleres
+           FROM profesores p
+           JOIN usuarios u ON u.id = p.usuario_id
+           JOIN taller_profesores tp ON tp.usuario_id = p.usuario_id
+           JOIN talleres t ON t.id = tp.taller_id AND t.estado IN ('activo', 'proximamente', 'lleno')
+          WHERE p.ficha_publicada
+          GROUP BY p.usuario_id, u.nombre, u.apellido, u.foto
+          ORDER BY u.nombre`)
+    return rows.map(r => ({
+        id: r.id,
+        nombre: [r.nombre, String(r.apellido ?? '').trim().split(/\s+/)[0]].filter(Boolean).join(' '),
+        foto: r.foto, especialidad: r.especialidad, semblanza: r.semblanza,
+        aniosExperiencia: r.anios_experiencia,
+        formacion: r.formacion ? r.formacion.split('\n') : [],
+        talleres: r.talleres,
+    }))
+}

@@ -145,6 +145,18 @@ router.get('/profesores/datos-pago', async (_req, res, next) => {
     } catch (err) { next(err) }
 })
 
+/** GET /admin/profesores/fichas → ficha de cada profe, por usuario_id */
+router.get('/profesores/fichas', async (req, res, next) => {
+    try { res.json({ status: 'ok', fichas: await profesorService.fichasParaPanel() }) }
+    catch (err) { next(err) }
+})
+
+/** PUT /admin/profesores/:usuarioId/ficha → body { foto?, especialidad, semblanza, aniosExperiencia, formacion, publicada } */
+router.put('/profesores/:usuarioId/ficha', async (req, res, next) => {
+    try { res.json({ status: 'ok', ...(await profesorService.guardarFicha(Number(req.params.usuarioId), req.body ?? {})) }) }
+    catch (err) { next(err) }
+})
+
 router.post('/profesores', async (req, res, next) => {
     try {
         const { usuarioId, tallerId } = req.body ?? {}

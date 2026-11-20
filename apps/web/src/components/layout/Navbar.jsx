@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   House,
-  GlobeHemisphereWest,
+  GlobeHemisphereWest, Megaphone,
   User,
   Bell,
   Gear,
@@ -23,7 +23,8 @@ import logoDestello from '../../Images/destello-logo-512.png'
 // Definición de rutas — modificar aquí afecta toda la nav
 const NAV_ITEMS = [
   { label: 'Inicio',    path: '/home',    Icon: House },
-  { label: 'Habitat',   path: '/habitat', Icon: GlobeHemisphereWest },
+  { label: 'Novedades', path: '/novedades', Icon: Megaphone },
+  { label: 'Hábitat',   path: '/habitat', Icon: GlobeHemisphereWest },
   //
   // ⚠️ NO devolver "Mi Aula" aquí. Decisión de Paola, 25 ago 2026.
   //

@@ -64,10 +64,10 @@ test('el certificado liga a su folio', () => {
         '/certificado/DST-2026-ABC123')
 })
 
-test('nuevo_taller lleva la fecha larga y liga al Hábitat', () => {
+test('nuevo_taller lleva la fecha larga y liga a Novedades', () => {
     const n = armarNotificacion('nuevo_taller', base)
     assert.match(n.cuerpo, /Viernes 20 de noviembre/)
-    assert.equal(n.liga, '/habitat')
+    assert.equal(n.liga, '/novedades')
 })
 
 test('un recordatorio de una clase que ya empezó no se manda', () => {

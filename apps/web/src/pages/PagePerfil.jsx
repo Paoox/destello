@@ -613,7 +613,7 @@ export default function PagePerfil() {
             gap: 'var(--space-4)', padding: 'var(--space-5)',
           }}>
             {sugerencias.map(t => (
-              <TarjetaSugerencia key={t.id} taller={t} onVer={() => navigate('/habitat')} />
+              <TarjetaSugerencia key={t.id} taller={t} onVer={() => navigate('/novedades')} />
             ))}
           </div>
         </div>

@@ -815,7 +815,7 @@ function ModalConfirmarAsistencia({ pendiente, token, onResuelto }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
           <p className="dh-section-title" style={{ margin: 0 }}>Mis talleres</p>
           <button
-            onClick={() => navigate('/habitat')}
+            onClick={() => navigate('/novedades')}
             className="dh-btn"
             style={{ background: 'none', border: 'none', color: 'var(--color-jade-400)', fontSize: 'var(--text-sm)', padding: 0 }}
           >
