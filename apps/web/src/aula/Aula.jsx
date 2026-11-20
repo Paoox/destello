@@ -1276,16 +1276,24 @@ export default function Aula({ sesion }) {
         setYo(actual => (personaId == null ? !esProfe : actual.id === personaId) ? agregar(actual) : actual)
     }
 
+    /** El material abierto ahora: el sello se lo lleva (contrato: `alSellar`). */
+    const actividadDelSello = () => {
+        const m = (sesion.pizarron.materiales ?? []).find(x => x.id === actividadId)
+        return m ? { id: m.id, tipo: m.tipo, acceso: m.acceso ?? 'siempre' } : null
+    }
+
     /** Le pone un sello a una persona — y le llega a todas. */
     const sellar = (personaId, selloId) => {
         aplicarSello(personaId, selloId)
         video.enviar({ tipo: 'sello', persona: personaId, sello: selloId })
+        sesion.alSellar?.([personaId], selloId, actividadDelSello())
     }
 
     /** El mismo sello para todo el grupo. */
     const sellarATodos = (selloId) => {
         aplicarSello(null, selloId)
         video.enviar({ tipo: 'sello', persona: null, sello: selloId })
+        sesion.alSellar?.(personas.filter(p => p.rol !== 'profe').map(p => p.id), selloId, actividadDelSello())
     }
 
     /**

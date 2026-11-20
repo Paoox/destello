@@ -223,6 +223,17 @@ export default function PageAula() {
       liberado:    false,
     },
     video,
+    // Los sellos de la profe se guardan en la cuenta de cada alumno (para su
+    // Hábitat, migración 028). Sin esperar respuesta: si falla, la clase sigue.
+    alSellar: esProfe ? (personaIds, selloId, actividad = null) => {
+      const alumnos = personaIds.map(Number).filter(Number.isInteger)
+      if (!alumnos.length) return
+      fetch(`/api/users/me/aula/${id}/sellos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ alumnos, sello: selloId, actividad }),
+      }).catch(() => {})
+    } : null,
   }
 
   return (

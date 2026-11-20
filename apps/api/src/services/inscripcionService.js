@@ -30,6 +30,8 @@ import crypto              from 'node:crypto'
 import { withTransaction } from '../db/db.js'
 import { AppError }        from '../middleware/errorHandler.js'
 import { normalizarWhatsapp } from './usuarioService.js'
+import { acreditarTaller } from './habitatService.js'
+import { registrarReferido, recompensarReferido, cuponVigente } from './referralService.js'
 
 const DIAS_VIGENCIA_DEFAULT = 30
 
@@ -236,9 +238,17 @@ export async function activarAlumno(listaEsperaId, opts = {}) {
         // Antes el dinero no existía como dato: el monto vivía como texto libre
         // dentro de reportes_acceso.detalle y no se podía ni sumar.
         const metodo = pago.metodo ?? 'transferencia'
+        // Cupón de referidos (migración 028): se aplica solo en su siguiente
+        // compra. Si Paola escribió el monto a mano, ese manda, pero el cupón
+        // se gasta igual (ya se le cobró con descuento).
+        const cupon = metodo !== 'cortesia' ? await cuponVigente(usuario.id, q) : null
+        const precioBase = reg.taller_precio ?? 0
         const monto  = pago.monto != null
             ? Number(pago.monto)
-            : (metodo === 'cortesia' ? 0 : (reg.taller_precio ?? 0))
+            : (metodo === 'cortesia' ? 0 : precioConCupon(precioBase, cupon))
+        if (cupon) {
+            await q('UPDATE cupones SET usado_at = NOW(), lista_espera_id = $2 WHERE id = $1', [cupon.id, listaEsperaId])
+        }
 
         const { rows: pagoRows } = await q(
             `INSERT INTO pagos
@@ -251,6 +261,17 @@ export async function activarAlumno(listaEsperaId, opts = {}) {
              actor, pago.nota ?? null]
         )
 
+        // ── 6. Supernovas por comprar el taller (no las cortesías) ──────────
+        // Idempotente: confirmar dos veces el mismo renglón no acredita doble.
+        let recompensaReferido = null
+        if (metodo !== 'cortesia' && monto > 0) {
+            await acreditarTaller(usuario.id, listaEsperaId, reg.taller_nombre, q)
+            // Código de referido capturado al inscribirse en la web.
+            if (reg.codigo_referido) await registrarReferido(reg.codigo_referido, usuario.email, q)
+            // Quien la invitó gana sus Supernovas (y cupón cada 5).
+            recompensaReferido = await recompensarReferido(usuario.email, q)
+        }
+
         return {
             usuario,
             registro:   { ...reg, estado: 'pagado' },
@@ -258,7 +279,17 @@ export async function activarAlumno(listaEsperaId, opts = {}) {
             chispaNueva,
             avisoWa,
             pagoId:     pagoRows[0].id,
+            // Avisar a quien invitó DESPUÉS del commit: `avisarRecompensa(r.recompensaReferido)`.
+            recompensaReferido,
+            cuponAplicado: cupon ? { codigo: cupon.codigo, porcentaje: cupon.porcentaje, precioBase, monto } : null,
             waDestino:  wa,
         }
     })
+}
+
+/** Precio con el cupón aplicado, redondeado al peso (pura, con pruebas). */
+export function precioConCupon(precio, cupon) {
+    const p = Number(precio) || 0
+    if (!cupon?.porcentaje) return p
+    return Math.round(p * (100 - cupon.porcentaje) / 100)
 }

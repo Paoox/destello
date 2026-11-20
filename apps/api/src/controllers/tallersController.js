@@ -5,6 +5,7 @@ import * as tallerService      from '../services/tallerService.js'
 import * as listaEsperaService from '../services/listaEsperaService.js'
 import { AppError }            from '../middleware/errorHandler.js'
 import { MENSAJE_COMPRAS }     from '../services/bloqueoService.js'
+import { query } from '../db/db.js'
 
 /** GET /tallers — landing page: activo + próximamente + lleno */
 export async function listTallers(_req, res, next) {
@@ -35,13 +36,25 @@ export async function joinTaller(req, res, next) {
     const { email, nombre, whatsapp } = req.body
     if (!email) throw new AppError('email es requerido', 400, 'BAD_REQUEST')
 
+    // Código de referido (opcional, migración 028). Se valida aquí para
+    // decirle a la persona si lo escribió mal; se liga al confirmar su pago.
+    const codigoReferido = String(req.body.codigoReferido ?? '').trim().toUpperCase() || null
+    if (codigoReferido) {
+      const { rows } = await query('SELECT email FROM usuarios WHERE UPPER(codigo_referido) = $1', [codigoReferido])
+      if (!rows.length) throw new AppError('No encontramos ese código de referido. Revísalo o déjalo vacío.', 400, 'CODIGO_REFERIDO')
+      if (rows[0].email.toLowerCase() === String(email).toLowerCase().trim()) {
+        throw new AppError('Ese es tu propio código 😊 Déjalo vacío.', 400, 'CODIGO_REFERIDO')
+      }
+    }
+
     const resultado = await listaEsperaService.registrarEnLista({
       email,
       tallerId: req.params.id,
       nombre,
       whatsapp,
-      // Este es el modal del Habitat en la web, no el bot de WhatsApp.
+      // Este es el modal de Novedades en la web, no el bot de WhatsApp.
       origen: 'web',
+      codigoReferido,
     })
 
     // Compras bloqueadas: no se le dice "no hay lugar" ni se finge que sí

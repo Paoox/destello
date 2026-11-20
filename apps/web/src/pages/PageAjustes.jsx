@@ -321,8 +321,11 @@ export default function PageAjustes() {
   const [versionReportes, setVersionReportes] = useState(0)
   const [params] = useSearchParams()
   const reporteFoco = Number(params.get('reporte')) || null   // viene de la notificación
+  // "Necesito ayuda" es la palabra que el bot Faro reconoce para abrir el
+  // flujo de soporte (pregunta qué pasó y levanta el reporte con folio).
+  // El correo va para que no tenga que preguntárselo.
   const waSoporte = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(
-    `Hola ✦ Necesito ayuda con mi cuenta de Destello (${datos?.email ?? ''}).`)}`
+    `Necesito ayuda ✦${datos?.email ? ` (${datos.email})` : ''}`)}`
 
   // ── Baja ──
   const [baja, setBaja] = useState({ abierta: false, previa: null, palabra: '', motivo: '', enviando: false, error: null })

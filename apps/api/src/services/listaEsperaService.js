@@ -27,7 +27,7 @@ export async function listPorTaller(tallerId) {
  * gente ni cuál convierte mejor, que es lo primero que se quiere saber en
  * cuanto se empieza a pagar publicidad.
  */
-export async function registrarEnLista({ email, tallerId, nombre, whatsapp, origen = null }) {
+export async function registrarEnLista({ email, tallerId, nombre, whatsapp, origen = null, codigoReferido = null }) {
     const emailNorm = email.toLowerCase().trim()
 
     // ── ¿Tiene las compras bloqueadas? ──────────────────────────────────────
@@ -139,9 +139,9 @@ export async function registrarEnLista({ email, tallerId, nombre, whatsapp, orig
     const usuarioExistente = await findByEmail(emailNorm)
 
     const { rows } = await query(
-        `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado, origen, usuario_id)
-         VALUES ($1, $2, $3, $4, 'pendiente', $5, $6) RETURNING *`,
-        [emailNorm, tallerId, nombre || null, whatsapp || null, origen, usuarioExistente?.id ?? null]
+        `INSERT INTO lista_espera (email, taller_id, nombre, whatsapp, estado, origen, usuario_id, codigo_referido)
+         VALUES ($1, $2, $3, $4, 'pendiente', $5, $6, $7) RETURNING *`,
+        [emailNorm, tallerId, nombre || null, whatsapp || null, origen, usuarioExistente?.id ?? null, codigoReferido]
     )
     // Si esta inscripción fue la que llenó el taller, el estado pasa a 'lleno'
     // solo. Así el Habitat y el bot no tienen que calcular nada: leen el taller

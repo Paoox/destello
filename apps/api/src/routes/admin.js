@@ -38,6 +38,7 @@ import { listReportes, resolverReporte, responderReporte } from '../services/rep
 import { liberarLugar } from '../services/recordatorioAutoService.js'
 import * as prospectoService from '../services/prospectoService.js'
 import { activarAlumno }    from '../services/inscripcionService.js'
+import { avisarRecompensa } from '../services/referralService.js'
 import metricasRouter     from './metricas.js'
 import * as asistenciaService  from '../services/asistenciaService.js'
 import * as certificadoService from '../services/certificadoService.js'
@@ -206,7 +207,12 @@ router.get('/lista-espera', async (_req, res, next) => {
                     -- 🎁 demo y le muestra el reloj de VIGENCIA en vez del de pago
                     -- (no hay nada que cobrar, pero sí cuándo se le acaba).
                     COALESCE(ch.is_demo, FALSE) AS is_demo,
-                    ch.expires_at AS chispa_expira_at
+                    ch.expires_at AS chispa_expira_at,
+                    -- Cupón de referidos vigente (migración 028): se aplica solo
+                    -- al confirmar su siguiente pago. El panel avisa cuánto cobrar.
+                    cup.porcentaje AS cupon_porcentaje,
+                    cup.codigo     AS cupon_codigo,
+                    le.codigo_referido
              FROM lista_espera le
                       LEFT JOIN talleres t ON t.id = le.taller_id
                       LEFT JOIN LATERAL (
@@ -219,6 +225,14 @@ router.get('/lista-espera', async (_req, res, next) => {
                           ORDER BY c.created_at DESC
                           LIMIT 1
                       ) ch ON TRUE
+                      LEFT JOIN LATERAL (
+                          SELECT cu.porcentaje, cu.codigo
+                            FROM cupones cu JOIN usuarios u ON u.id = cu.usuario_id
+                           WHERE (u.id = le.usuario_id OR LOWER(u.email) = LOWER(le.email))
+                             AND cu.usado_at IS NULL AND cu.vence_at > NOW()
+                             AND le.pagado_at IS NULL
+                           ORDER BY cu.vence_at LIMIT 1
+                      ) cup ON TRUE
              ORDER BY le.created_at DESC`
         )
         res.json({ status: 'ok', lista: rows })
@@ -256,6 +270,7 @@ router.patch('/lista-espera/:id', async (req, res, next) => {
                 actor: 'admin:selector',
                 pago:  { nota: 'Marcado como pagado desde el selector del panel' },
             })
+            await avisarRecompensa(r.recompensaReferido)
             return res.json({
                 status:          'ok',
                 registro:        r.registro,
@@ -352,6 +367,7 @@ router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
         })
 
         const { usuario, registro, chispaCode, avisoWa, waDestino } = r
+        await avisarRecompensa(r.recompensaReferido)
 
         // Los avisos van FUERA de la transacción a propósito: que el correo o el
         // bot estén caídos no debe deshacer una activación que ya quedó bien.
@@ -391,6 +407,7 @@ router.post('/lista-espera/:id/confirmar-pago', async (req, res, next) => {
             waEnviado,
             notificado:  mailEnviado || waEnviado,
             ...(avisoWa && { avisoWa }),
+            ...(r.cuponAplicado && { cuponAplicado: r.cuponAplicado }),
         })
     } catch (err) { next(err) }
 })

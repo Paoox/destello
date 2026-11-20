@@ -34,6 +34,7 @@ export function ModalChispa({ taller, onClose }) {
   const [nombre,    setNombre]    = useState('')
   const [email,     setEmail]     = useState('')
   const [whatsapp,  setWhatsapp]  = useState('')
+  const [codigo,    setCodigo]    = useState('')   // código de referido (opcional)
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState(null)
   const [exito,     setExito]     = useState(false)
@@ -50,6 +51,7 @@ export function ModalChispa({ taller, onClose }) {
         email:    email.trim().toLowerCase(),
         nombre:   nombre.trim() || undefined,
         whatsapp: whatsapp.trim() || undefined,
+        codigoReferido: codigo.trim() || undefined,
       })
       if (data.nuevo) {
         setExito(true)
@@ -214,6 +216,18 @@ export function ModalChispa({ taller, onClose }) {
                           style={{ ...inputStyle, flex: 1 }}
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>¿Alguien te habló de Destello? (opcional)</label>
+                    <input
+                        type="text" placeholder="Código de quien te invitó, ej. PAOLA-9F2A"
+                        value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase().replace(/\s/g, ''))}
+                        maxLength={20} autoCapitalize="characters" style={inputStyle}
+                    />
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      Cuando pagues tu taller, esa persona gana Supernovas ✦
+                    </span>
                   </div>
 
                   {error && (

@@ -7,12 +7,13 @@
  *   · Canjear Chispa (desbloquea taller nuevo)
  *   · Tienda de Destellos (moneda general)
  *   · Promos exclusivas alumnos + Próximos cursos
- *   · Constelación de amigos (referidos): Estrellas → Supernovas
+ *   · Constelación de amigos (referidos): cada amigo da Supernovas
  *
  * ── Sistema de puntos (definición de negocio) ──────────────────────────
  *   Destellos    → moneda general de la plataforma (se gasta en la Tienda).
- *   Estrellas    → puntos que SOLO se ganan por referidos (código de amigo).
- *   Supernovas   → catálogo de premios grandes que se canjean con Estrellas.
+ *   Supernovas   → la moneda de Destello desde el 19 nov 2026 (migración 027):
+ *                  se ganan al comprar talleres y por referidos, y se gastan
+ *                  en el Hábitat. Las "Estrellas" viejas se convirtieron 1:1.
  *   Polvo estelar→ concepto/nombre del acto de compartir tu código de amigo.
  *
  * ⚠️ Los datos son mock por ahora. Cuando exista el backend de referidos y
@@ -32,7 +33,6 @@ import {
   VideoCamera,
   Gift,
   Star,
-  ShootingStar,
   CalendarBlank,
   Tag,
   ArrowRight,
@@ -440,11 +440,10 @@ export default function PageHome() {
   const token = useAuthStore((s) => s.token)
   const [nombre, setNombre]               = useState(null) // nombre real (BD)
   const [apellido, setApellido]           = useState(null)
-  const [estrellas, setEstrellas]         = useState(null) // null = cargando
+  const [saldoSn, setSaldoSn]             = useState(null) // Supernovas; null = cargando
   const [racha, setRacha]                 = useState(null)
   const [logros, setLogros]               = useState(null)
   const [codigoReferido, setCodigoReferido] = useState(null)
-  const [supernovas, setSupernovas]       = useState([])
   const [proximos, setProximos]           = useState([])
 
   useEffect(() => {
@@ -455,7 +454,7 @@ export default function PageHome() {
         if (res?.user) {
           if (res.user.nombre) setNombre(res.user.nombre)
           if (res.user.apellido) setApellido(res.user.apellido)
-          if (typeof res.user.estrellas === 'number') setEstrellas(res.user.estrellas)
+          if (typeof res.user.supernovas === 'number') setSaldoSn(res.user.supernovas)
           if (typeof res.user.racha === 'number')     setRacha(res.user.racha)
           if (typeof res.user.logros === 'number')    setLogros(res.user.logros)
           if (res.user.codigo_referido) setCodigoReferido(res.user.codigo_referido)
@@ -463,14 +462,6 @@ export default function PageHome() {
       })
       .catch(() => { /* si falla, dejamos el valor por defecto */ })
   }, [token])
-
-  // Catálogo de Supernovas (público)
-  useEffect(() => {
-    fetch('/api/supernovas')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((res) => setSupernovas(res?.supernovas || []))
-      .catch(() => {})
-  }, [])
 
   // Talleres próximos (público) para "Próximos cursos"
   useEffect(() => {
@@ -480,13 +471,11 @@ export default function PageHome() {
       .catch(() => {})
   }, [])
 
-  const estrellasVal = estrellas ?? 0 // valores reales de la BD (0 mientras cargan)
+  const saldoVal     = saldoSn ?? 0 // valores reales de la BD (0 mientras cargan)
   const rachaVal     = racha ?? 0
   const logrosVal    = logros ?? 0
   const nombreVal    = nombre ?? data.nombre // nombre real de la BD (o mock mientras carga)
   const codigoAmigo  = codigoReferido ?? data.codigoAmigo
-  const costoMin     = supernovas.length ? Math.min(...supernovas.map((s) => s.costo_estrellas)) : null
-  const puedeCanjear = costoMin != null && estrellasVal >= costoMin
 
   // Ruta de progreso = racha de constancia (Día 1 → 30).
   const HITOS_RACHA = [1, 7, 15, 30]
@@ -775,12 +764,13 @@ function ModalConfirmarAsistencia({ pendiente, token, onResuelto }) {
             <p className="dh-sub">Tu viaje creativo continúa</p>
           </div>
           <div className="dh-energy">
-            <div className="dh-pill">
+            <button type="button" className="dh-pill" onClick={() => navigate('/habitat')}
+              title="Úsalas en tu Hábitat" style={{ cursor: 'pointer', font: 'inherit', color: 'inherit' }}>
               <div className="dh-pill-val" style={{ color: 'var(--color-amber-500)' }}>
-                <Star size={16} weight="fill" />{estrellasVal}
+                <Sparkle size={16} weight="fill" />{saldoVal}
               </div>
-              <div className="dh-pill-lbl">Estrellas</div>
-            </div>
+              <div className="dh-pill-lbl">Supernovas</div>
+            </button>
             <div className="dh-pill">
               <div className="dh-pill-val"><Trophy size={16} weight="fill" color="var(--color-amber-600)" />{logrosVal}</div>
               <div className="dh-pill-lbl">Logros</div>
@@ -836,41 +826,20 @@ function ModalConfirmarAsistencia({ pendiente, token, onResuelto }) {
           )}
         </div>
 
-        {/* ── Tienda de Supernovas (próximamente) ──
-           La tienda aún no existe; por ahora se muestra como teaser temático
-           para que el Home se vea completo. Cuando exista el catálogo real,
-           reactivar el canje (ver canjearSupernova + POST /users/me/supernovas/:id/canjear). */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--space-3)' }}>
-          <p className="dh-section-title" style={{ margin: 0 }}>Tienda de Supernovas</p>
-          <span style={{
-            fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-amber-500)',
-            background: 'rgba(217,119,6,0.14)', border: '1px dashed var(--color-amber-600)',
-            padding: '2px 10px', borderRadius: 'var(--radius-full)',
-          }}>
-            Muy pronto
-          </span>
+        {/* ── Hábitat (19 nov 2026): las Supernovas se gastan ahí ── */}
+        <div className="dh-card dh-block" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-4)',
+             justifyContent: 'space-between', borderColor: 'rgba(217,119,6,0.35)', marginBottom: 'var(--space-6)' }}>
+          <div style={{ minWidth: 220, flex: 1 }}>
+            <div className="dh-block-tag" style={{ color: 'var(--color-amber-500)' }}>
+              <Sparkle size={14} weight="fill" /> Tu Hábitat
+            </div>
+            <div style={{ fontSize: 'var(--text-lg)', fontWeight: 700 }}>Tienes {saldoVal} Supernovas</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4 }}>
+              Decora tu casa con muebles, plantas, mascotas y colores. Ganas Supernovas con cada taller que compras y cuando invitas amigos.
+            </div>
+          </div>
+          <button className="dh-btn" onClick={() => navigate('/habitat')}>Ir a mi hábitat</button>
         </div>
-        <div className="dh-grid-tienda">
-          {(supernovas.length
-            ? supernovas
-            : data.tienda.map((t, i) => ({ id: `m${i}`, nombre: t.titulo, costo_estrellas: t.costo }))
-          ).slice(0, 3).map((s, i) => {
-            const Icon = [CalendarBlank, Star, Gift][i % 3]
-            return (
-              <div className="dh-card dh-tienda-item" key={s.id ?? s.nombre} style={{ opacity: 0.9 }}>
-                <Icon size={24} weight="fill" color="var(--color-jade-400)" />
-                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{s.nombre}</div>
-                <span className="dh-cost"><Star size={12} weight="fill" /> {s.costo_estrellas} Estrellas</span>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <ShootingStar size={13} weight="fill" color="var(--color-amber-500)" /> Muy pronto
-                </span>
-              </div>
-            )
-          })}
-        </div>
-        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
-          Junta Estrellas invitando amigos ✦ Pronto podrás canjearlas por Supernovas.
-        </p>
 
         {/* ── Promos + próximos ── */}
         <div className="dh-grid-promos">
@@ -913,41 +882,14 @@ function ModalConfirmarAsistencia({ pendiente, token, onResuelto }) {
             </div>
             <span className="dh-code">{codigoAmigo}</span>
           </div>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: '0 0 var(--space-3)' }}>
-            Comparte tu polvo estelar. Cada amigo que se une con tu código te suma
-            Estrellas; júntalas para canjear Supernovas como meses gratis o un taller.
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0 }}>
+            Comparte tu polvo estelar. Cada amigo que pague su taller con tu código
+            te da 50 Supernovas, y cada 5, un cupón de 30% para tu siguiente taller ✦
+            <button type="button" onClick={() => navigate('/perfil')} style={{ marginLeft: 6, background: 'none', border: 'none', padding: 0,
+              color: 'var(--color-jade-500)', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)', fontSize: 'inherit' }}>
+              Ver mi avance →
+            </button>
           </p>
-
-          {puedeCanjear ? (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              background: 'rgba(217,119,6,0.14)', border: '1px solid var(--color-amber-600)',
-              borderRadius: 'var(--radius-lg)', padding: 'var(--space-3) var(--space-4)',
-              color: 'var(--color-amber-500)', fontSize: 'var(--text-sm)', fontWeight: 600,
-            }}>
-              <ShootingStar size={18} weight="fill" />
-              ¡Ya puedes canjear tu Supernova! Tienes {estrellasVal} Estrellas ✦
-            </div>
-          ) : costoMin != null ? (
-            <>
-              <div style={{ height: 8, background: 'var(--bg-surface)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  width: `${Math.min(100, Math.round((estrellasVal / costoMin) * 100))}%`,
-                  background: 'linear-gradient(90deg, var(--color-jade-500), var(--color-amber-600))',
-                  borderRadius: 'var(--radius-full)',
-                }} />
-              </div>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 6 }}>
-                <Star size={13} weight="fill" color="var(--color-amber-500)" />
-                {estrellasVal} de {costoMin} Estrellas · te faltan {costoMin - estrellasVal} para tu primera Supernova
-              </span>
-            </>
-          ) : (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-sm)', fontWeight: 600 }}>
-              <Star size={16} weight="fill" color="var(--color-amber-500)" /> {estrellasVal} Estrellas
-            </span>
-          )}
         </div>
 
         {/* ── Certificados ──

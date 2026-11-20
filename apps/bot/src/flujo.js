@@ -71,6 +71,10 @@ const PASO = {
     REG_NOMBRE:   'REG_NOMBRE',
     REG_WHATSAPP: 'REG_WHATSAPP', // pedir número cuando no se pudo extraer del JID
     REG_TALLER:   'REG_TALLER',
+    REG_REFERIDO: 'REG_REFERIDO', // "¿Alguien te habló de Destello?" antes de inscribir (migración 028)
+    // Soporte: llega con "Necesito ayuda" desde el botón de Ajustes
+    SOP_TEMA:     'SOP_TEMA',
+    SOP_DETALLE:  'SOP_DETALLE',
     // Sin acceso (opción 3)
     SIN_CODIGO:   'SIN_CODIGO',   // pedir correo
     SIN_ACCESO:   'SIN_ACCESO',   // escalamiento cuando lo resuelto no le sirvió
@@ -342,7 +346,62 @@ async function reportarAcceso({ email, nombre, whatsapp, motivo, detalle }) {
     } catch { return { status: 'error' } }
 }
 
+/** ¿Todavía se le puede preguntar quién la invitó? (ante falla: no preguntar) */
+async function puedeUsarReferido(email) {
+    try {
+        const res = await apiFetch(`/bot/referido/${encodeURIComponent(email)}`)
+        return (await res.json()).puedeUsar === true
+    } catch { return false }
+}
+
+async function guardarReferido(email, codigo) {
+    try {
+        const res = await apiFetch(`/bot/referido`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, codigo }),
+        })
+        return await res.json()
+    } catch { return { ok: false, message: null } }
+}
+
+async function levantarSoporte({ email, whatsapp, categoria, detalle }) {
+    try {
+        const res = await apiFetch(`/bot/soporte`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, whatsapp, categoria, detalle }),
+        })
+        return await res.json()
+    } catch { return { status: 'error' } }
+}
+
 // ── Textos reutilizables ──────────────────────────────────────
+
+// Mismas categorías que Ajustes → Soporte (`CATEGORIAS_SOPORTE` en la API).
+const TEMAS_SOPORTE = [
+    ['acceso_taller',   'No puedo entrar a mi taller'],
+    ['pago',            'Problema con mi pago'],
+    ['clase_en_vivo',   'Video o audio en la clase'],
+    ['certificado',     'Mi certificado'],
+    ['material_30dias', 'Los 30 días de material del taller'],
+    ['notificaciones',  'No me llegan las notificaciones'],
+    ['correo_perdido',  'Perdí el acceso a mi correo'],
+    ['otro',            'Otra cosa'],
+]
+const SOPORTE_TEMA_TEXTO = (nombre) =>
+    `🛟 ${nombre ? `Hola *${nombre}*, c` : 'C'}laro que te ayudamos.\n\n` +
+    '*¿Con qué tienes problema?* Responde con el número:\n\n' +
+    TEMAS_SOPORTE.map(([, t], i) => `${numeroLista(i)} ${t}`).join('\n') +
+    '\n\n_Escribe *menu* para volver al inicio._'
+const SOPORTE_DETALLE_TEXTO = (tema) =>
+    `📝 *${tema}*\n\n` +
+    'Cuéntanos qué pasó con el mayor detalle que puedas: qué estabas haciendo, ' +
+    'en qué taller, y si te salió algún mensaje. Todo en *un solo mensaje*, por favor.'
+
+const REFERIDO_PREGUNTA =
+    '🤝 Una pregunta rápida antes de apartar tu lugar:\n\n' +
+    '*¿Alguien te habló de Destello?* Si te pasaron un *código de referido*, escríbelo aquí ' +
+    '(se ve así: _PAOLA-9F2A_).\n\nSi no, escribe *no*.'
+const RESPUESTAS_NO = ['no', 'nop', 'nel', 'no tengo', 'nadie', 'ninguno', 'no gracias', 'n']
 
 const MENU_TEXTO = (nombre = '') =>
     `${nombre ? `Hola de nuevo, *${nombre.split(' ')[0]}*! 👋\n\n` : ''}` +
@@ -543,7 +602,21 @@ function resolverTaller(input, talleres) {
  * Inscribe en lista de espera y deja la conversación en POST_ACCION.
  * Único punto donde se llama a /bot/lista-espera.
  */
+/**
+ * Antes de inscribir, si la persona todavía no tiene a nadie como "quien me
+ * invitó", se le pregunta una vez (19 nov 2026). Su respuesta la atiende el
+ * paso REG_REFERIDO, que luego llama a `inscribirEnTallerYa` con el mismo
+ * taller. Sigue siendo el ÚNICO camino hacia POST /bot/lista-espera.
+ */
 async function inscribirEnTaller(jid, conv, taller) {
+    if (!conv.referidoPreguntado && conv.correo && await puedeUsarReferido(conv.correo)) {
+        conversaciones.set(jid, { ...datosUsuario(conv), ...conv, paso: PASO.REG_REFERIDO, tallerReferido: taller, intentosReferido: 0 })
+        return REFERIDO_PREGUNTA
+    }
+    return inscribirEnTallerYa(jid, conv, taller)
+}
+
+async function inscribirEnTallerYa(jid, conv, taller) {
     const { correo, tienePerfil } = conv
     // lista_espera tiene una sola columna de nombre → aquí sí va completo
     const nombre = nombreCompleto(conv) || conv.nombre
@@ -1080,6 +1153,80 @@ export async function procesarMensaje(jid, texto, senderPn = null) {
     if (conv.correo) {
         const bloqueo = await estadoBloqueo(conv.correo)
         if (bloqueo.acceso) return await manejarBloqueada(jid, conv, msg, waDelJid)
+    }
+
+    // ── SOPORTE: "Necesito ayuda" (botón de Ajustes → WhatsApp) ─
+    // Se reconoce en cualquier punto de la charla, salvo cuando ya está
+    // contándonos el problema (ahí "necesito ayuda" es parte del detalle).
+    const sinAcentos = msg.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    // Pasos donde la persona escribe texto libre: ahí "necesito ayuda" es
+    // parte de lo que nos cuenta, no un cambio de tema.
+    const TEXTO_LIBRE = [PASO.SOP_TEMA, PASO.SOP_DETALLE, PASO.SIN_ACCESO, PASO.PAGO_BANCO,
+                         PASO.PAGO_TITULAR, PASO.PAGO_FOLIO, PASO.BLOQ_ESCUCHA]
+    if (/necesito ayuda|ayuda con mi cuenta|soporte/.test(sinAcentos) && !TEXTO_LIBRE.includes(conv.paso)) {
+        let correo = msg.match(/[^\s@()]+@[^\s@()]+\.[^\s@()]+/)?.[0]?.toLowerCase() ?? conv.correo ?? null
+        let nombre = conv.nombre ?? null
+        if (!correo && waDelJid) {
+            const r = await buscarUsuarioPorWhatsapp(waDelJid)
+            if (r?.existe) { correo = r.usuario?.email ?? null; nombre = nombre ?? r.usuario?.nombre ?? null }
+        }
+        conversaciones.set(jid, { ...datosUsuario(conv), correo, nombre, whatsapp: conv.whatsapp ?? waDelJid, paso: PASO.SOP_TEMA, esNuevo: false })
+        registrarEvento('bot_soporte_inicio', { email: correo, whatsapp: waDelJid })
+        return SOPORTE_TEMA_TEXTO(nombre?.split(' ')[0])
+    }
+
+    if (conv.paso === PASO.SOP_TEMA) {
+        const i = Number(msg) - 1
+        if (!Number.isInteger(i) || !TEMAS_SOPORTE[i]) {
+            return '⚠️ Responde solo con el número de la opción.\n\n' + SOPORTE_TEMA_TEXTO()
+        }
+        conversaciones.set(jid, { ...conv, paso: PASO.SOP_DETALLE, temaSoporte: TEMAS_SOPORTE[i][0] })
+        return SOPORTE_DETALLE_TEXTO(TEMAS_SOPORTE[i][1])
+    }
+
+    if (conv.paso === PASO.SOP_DETALLE) {
+        if (msg.length < 5) return 'Cuéntanos un poquito más, por favor 🙏 (en un solo mensaje).'
+        const r = await levantarSoporte({
+            email: conv.correo ?? null, whatsapp: conv.whatsapp ?? waDelJid,
+            categoria: conv.temaSoporte ?? 'otro', detalle: msg.slice(0, 2000),
+        })
+        conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.POST_ACCION, temaSoporte: undefined })
+        if (r.status !== 'ok' || !r.folio) {
+            return '😕 No pudimos guardar tu reporte. Escríbelo de nuevo en un momento o desde la app en *Ajustes → Soporte*.\n\n' + POST_ACCION_TEXTO
+        }
+        return (
+            `✅ Listo, levantamos tu reporte *${r.folio}*.\n\n` +
+            'Te respondemos lo antes posible por aquí y en la campanita 🔔 de la app. ' +
+            'Si tienes una *captura de pantalla*, súbela en la app: *Ajustes → Soporte → Mis reportes* (con el clip 📎).\n\n' +
+            POST_ACCION_TEXTO
+        )
+    }
+
+    // ── REFERIDO: "¿Alguien te habló de Destello?" ─────────────
+    if (conv.paso === PASO.REG_REFERIDO) {
+        const taller = conv.tallerReferido
+        const sigue = { ...conv, referidoPreguntado: true, tallerReferido: undefined, intentosReferido: undefined }
+        if (!taller) {
+            conversaciones.set(jid, { ...datosUsuario(conv), paso: PASO.MENU, esNuevo: false })
+            return MENU_TEXTO()
+        }
+        if (RESPUESTAS_NO.includes(sinAcentos.replace(/[.!¡]/g, '').trim())) {
+            return 'Va 😊\n\n' + await inscribirEnTallerYa(jid, sigue, taller)
+        }
+        const codigo = msg.replace(/\s/g, '').toUpperCase()
+        const r = await guardarReferido(conv.correo, codigo)
+        if (r.ok) {
+            registrarEvento('bot_referido', { email: conv.correo })
+            return `🌟 ¡Gracias! Quedó registrado que te invitó *${r.invito ?? 'alguien especial'}*.\n\n` +
+                   await inscribirEnTallerYa(jid, sigue, taller)
+        }
+        const intentos = (conv.intentosReferido ?? 0) + 1
+        if (intentos >= 2 || r.reason === 'ALREADY_REFERRED' || r.reason === 'SELF') {
+            return `${r.message ? `⚠️ ${r.message}. ` : ''}Seguimos sin código, no pasa nada 😊\n\n` +
+                   await inscribirEnTallerYa(jid, sigue, taller)
+        }
+        conversaciones.set(jid, { ...conv, intentosReferido: intentos })
+        return `⚠️ ${r.message ?? 'No reconocí ese código'}.\n\nEscríbelo de nuevo tal cual te lo pasaron, o escribe *no* para seguir sin código.`
     }
 
     // ── MENÚ PRINCIPAL ────────────────────────────────────────

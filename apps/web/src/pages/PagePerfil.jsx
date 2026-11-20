@@ -17,9 +17,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  PencilSimple, Trophy, Star, Fire, CheckCircle, Clock, Certificate, Camera,
+  PencilSimple, Trophy, Fire, CheckCircle, Clock, Certificate, Camera,
   ChalkboardTeacher, Sparkle, CalendarBlank, ArrowRight, Trash, X, Check,
-  CircleNotch, Broadcast, Student, Bank,
+  CircleNotch, Broadcast, Student, Bank, UsersThree, Ticket, Copy,
 } from '@phosphor-icons/react'
 import { useAuthStore } from '@store/useAuthStore.js'
 import { fmtFechaCompleta, fmtFechaCorta } from '@utils/fecha.js'
@@ -255,6 +255,123 @@ const BANCOS = ['BBVA', 'Santander', 'Banorte', 'Banamex', 'HSBC', 'Scotiabank',
                 'Banco Azteca', 'BanCoppel', 'Banregio', 'Nu', 'Mercado Pago', 'Spin by OXXO', 'Hey Banco']
 
 const agrupar = (v, cada) => String(v ?? '').replace(/\D/g, '').replace(new RegExp(`(\\d{${cada}})(?=\\d)`, 'g'), '$1 ')
+
+/**
+ * Referidos: "¿Alguien te habló de Destello?" + tu código para invitar.
+ * Reglas (Paola, 19 nov 2026): quien invita gana Supernovas cuando la persona
+ * invitada PAGA su taller; cada 5, un cupón de 30% para su siguiente taller
+ * (6 meses, personal). Todo lo calcula la API (GET /users/me/referidos).
+ */
+function Referidos({ auth }) {
+  const [d, setD]           = useState(null)
+  const [codigo, setCodigo] = useState('')
+  const [estado, setEstado] = useState('listo')
+  const [msg, setMsg]       = useState(null)
+  const [copiado, setCopiado] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/users/me/referidos', { headers: auth }).then(r => (r.ok ? r.json() : null)).then(setD).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const enviar = async (e) => {
+    e.preventDefault()
+    setEstado('enviando'); setMsg(null)
+    try {
+      const res = await fetch('/api/users/me/referido', {
+        method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ codigo }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg({ ok: false, txt: data.message || 'No se pudo registrar' }); return }
+      setD(data); setCodigo('')
+      setMsg({ ok: true, txt: '¡Listo! Gracias por decirnos quién te invitó ✦' })
+    } catch { setMsg({ ok: false, txt: 'Error de conexión' }) }
+    finally { setEstado('listo') }
+  }
+
+  if (!d) return null
+  const r = d.reglas
+  const avance = r.cada - d.faltanParaCupon
+  const fecha = (v) => { const [a, m, dd] = String(v).split('-').map(Number); return new Date(a, m - 1, dd).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }) }
+  const vigentes = d.cupones.filter(c => !c.usado && !c.vencido)
+
+  return (
+    <div style={sTarjeta}>
+      <Encabezado icon={UsersThree} titulo="Invita y gana" color="var(--color-amber-500)" />
+      <div style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+
+        {vigentes.map(c => (
+          <div key={c.codigo} style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', border: '2px dashed var(--color-amber-500)',
+                                       background: 'rgba(217,119,6,0.08)', display: 'flex', gap: 12, alignItems: 'center' }}>
+            <Ticket size={30} weight="fill" color="var(--color-amber-500)" />
+            <div>
+              <strong style={{ fontSize: 'var(--text-lg)' }}>Cupón de {c.porcentaje}% en tu siguiente taller</strong>
+              <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                Se aplica solo cuando confirmemos tu próximo pago · vence el {fecha(c.vence)} · es personal
+              </p>
+            </div>
+          </div>
+        ))}
+
+        <div>
+          <p style={{ fontSize: 'var(--text-sm)', margin: '0 0 8px', color: 'var(--text-secondary)' }}>
+            Comparte tu código. Cuando alguien lo use y <strong>pague su taller</strong>, ganas <strong>✦ {r.supernovas} Supernovas</strong>;
+            cada {r.cada} personas, un <strong>cupón de {r.porcentaje}%</strong> para tu siguiente taller (vigencia {r.meses} meses).
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <code style={{ padding: '8px 14px', borderRadius: 'var(--radius-md)', background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
+                           fontSize: 'var(--text-base)', fontWeight: 700, letterSpacing: '.05em' }}>{d.codigo}</code>
+            <button type="button" style={sBoton('var(--color-jade-500)')} onClick={() => {
+              navigator.clipboard?.writeText(d.codigo).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 1500) }).catch(() => {})
+            }}><Copy size={15} /> {copiado ? '¡Copiado!' : 'Copiar'}</button>
+          </div>
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', gap: 6 }} aria-label={`${avance} de ${r.cada} para tu próximo cupón`}>
+              {Array.from({ length: r.cada }, (_, i) => (
+                <span key={i} style={{ flex: 1, height: 8, borderRadius: 999,
+                  background: i < avance ? 'linear-gradient(90deg, var(--color-jade-500), var(--color-amber-500))' : 'var(--bg-surface)',
+                  border: '1px solid var(--border-subtle)' }} />
+              ))}
+            </div>
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '6px 0 0' }}>
+              {d.pagaron} {d.pagaron === 1 ? 'persona invitada ya pagó' : 'personas invitadas ya pagaron'}
+              {d.sinPagar > 0 ? ` · ${d.sinPagar} con tu código todavía sin pagar` : ''}
+              {` · te ${d.faltanParaCupon === 1 ? 'falta 1' : `faltan ${d.faltanParaCupon}`} para tu próximo cupón`}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 'var(--space-4)' }}>
+          {d.invitadoPor ? (
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+              <CheckCircle size={16} weight="fill" color="var(--color-jade-500)" style={{ verticalAlign: 'text-bottom' }} />
+              {' '}Te invitó <strong>{d.invitadoPor}</strong>. ¡Gracias por venir de su parte!
+            </p>
+          ) : (
+            <form onSubmit={enviar}>
+              <label style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 6 }}>
+                ¿Alguien te habló de Destello?
+              </label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase().replace(/\s/g, ''))}
+                  placeholder="Escribe su código, ej. PAOLA-9F2A" maxLength={20}
+                  style={{ flex: '1 1 200px', padding: '9px 12px', background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
+                           borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)' }} />
+                <button type="submit" disabled={!codigo.trim() || estado === 'enviando'} style={sBoton('var(--color-jade-500)', true)}>
+                  {estado === 'enviando' ? 'Guardando…' : 'Guardar'}
+                </button>
+              </div>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: '6px 0 0' }}>
+                Solo se puede poner una vez. Esa persona gana Supernovas cuando pagues tu taller.
+              </p>
+            </form>
+          )}
+          {msg && <p role="status" style={{ margin: '8px 0 0', fontSize: 'var(--text-sm)', color: msg.ok ? 'var(--color-success)' : 'var(--color-error)' }}>{msg.txt}</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function DatosPago({ auth }) {
   const vacio = { titular: '', banco: '', clabe: '', tarjeta: '' }
@@ -560,7 +677,7 @@ export default function PagePerfil() {
       {/* ── Stats reales ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-6)' }}>
         <StatCard icon={Fire}   valor={perfil.racha}     label="Racha de días"  color="#F59E0B" />
-        <StatCard icon={Star}   valor={perfil.estrellas} label="Estrellas"      color="var(--color-jade-500)" />
+        <StatCard icon={Sparkle} valor={perfil.supernovas} label="Supernovas"   color="var(--color-amber-500)" />
         <StatCard icon={Trophy} valor={perfil.logros}    label="Sellos ganados" color="#D97706" />
       </div>
 
@@ -603,6 +720,9 @@ export default function PagePerfil() {
                             onCertificado={() => navigate(`/certificado/${certDe.get(t.tallerId).folio}`)} />
             ))}
       </div>
+
+      {/* ── Invita y gana (referidos, 19 nov 2026) ── */}
+      <Referidos auth={auth} />
 
       {/* ── Sugerencias ── */}
       {sugerencias.length > 0 && (

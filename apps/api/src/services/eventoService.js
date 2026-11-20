@@ -34,6 +34,8 @@ export const EVENTO = {
     BOT_MENU_OPCION:         'bot_menu_opcion',
     BOT_REGISTRO_COMPLETO:   'bot_registro_completo',
     BOT_CONVERSACION_FIN:    'bot_conversacion_fin',
+    BOT_SOPORTE_INICIO:      'bot_soporte_inicio',   // llegó con "Necesito ayuda" (19 nov 2026)
+    BOT_REFERIDO:            'bot_referido',         // dio un código de referido válido
     // Acceso
     LOGIN:                   'login',
     LOGIN_FALLIDO:           'login_fallido',

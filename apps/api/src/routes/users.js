@@ -5,7 +5,7 @@
  * GET  /users/me/progress → progreso en talleres
  */
 import { Router } from 'express'
-import { query } from '../db/db.js'
+import { query, withTransaction } from '../db/db.js'
 import * as chispaService from '../services/chispaService.js'
 import * as referralService from '../services/referralService.js'
 import * as usuarioService from '../services/usuarioService.js'
@@ -19,6 +19,7 @@ import { validarFoto } from '../services/fotoPerfil.js'
 import * as datosPagoService from '../services/datosPagoService.js'
 import * as notificacionService from '../services/notificacionService.js'
 import * as ajustesService from '../services/ajustesService.js'
+import * as habitatService from '../services/habitatService.js'
 
 const router = Router()
 
@@ -38,7 +39,10 @@ router.get('/me', async (req, res, next) => {
 
     const { rows } = await query(
       `SELECT id, email, nombre, apellido, whatsapp, estado, foto,
-              estrellas, racha, codigo_referido, referido_por
+              estrellas, racha, codigo_referido, referido_por,
+              -- Saldo de Supernovas (migración 027): suma del libro mayor.
+              (SELECT COALESCE(SUM(cantidad), 0)::int FROM supernovas_movimientos m
+                WHERE m.usuario_id = usuarios.id) AS supernovas
        FROM usuarios
        WHERE id = $1`,
       [req.user.userId]
@@ -222,25 +226,28 @@ router.post('/me/canjear', async (req, res, next) => {
   }
 })
 
-// ── Canjear una Supernova con Estrellas ──
-// Body param en la URL: :id de la supernova. Descuenta Estrellas del saldo.
-router.post('/me/supernovas/:id/canjear', async (req, res, next) => {
+// ── Referidos (19 nov 2026, migración 028) ──
+// El canje viejo de Supernovas con Estrellas (POST /me/supernovas/:id/canjear)
+// se retiró: las Supernovas son la moneda y se gastan en el Hábitat.
+router.get('/me/referidos', async (req, res, next) => {
+  try { res.json({ status: 'ok', ...(await referralService.resumenReferidos(req.user.userId)) }) }
+  catch (err) { next(err) }
+})
+
+/** "¿Alguien te habló de Destello?" — captura el código de quien la invitó. */
+router.post('/me/referido', async (req, res, next) => {
   try {
     const email = await emailDelUsuario(req.user.userId)
     if (!email) return res.status(404).json({ status: 'error', message: 'Usuario no encontrado' })
-
-    const result = await referralService.canjearSupernova(Number(req.params.id), email)
-    if (!result.ok) {
-      const msg = {
-        NOT_FOUND:    'Esa Supernova no existe',
-        INSUFFICIENT: 'No tienes suficientes Estrellas todavía',
-      }[result.reason] ?? 'No se pudo canjear'
-      return res.status(409).json({ status: 'error', reason: result.reason, message: msg, restante: result.restante })
+    const r = await referralService.registrarReferido(req.body?.codigo, email)
+    if (!r.ok) {
+      return res.status(409).json({ status: 'error', reason: r.reason,
+        message: referralService.MOTIVO_REFERIDO[r.reason] ?? 'No se pudo registrar el código' })
     }
-    res.json({ status: 'ok', restante: result.restante, supernova: result.supernova })
-  } catch (err) {
-    next(err)
-  }
+    // Si ya había pagado algún taller, quien la invitó gana desde ahora.
+    await referralService.avisarRecompensa(await withTransaction(q => referralService.recompensarReferido(email, q)))
+    res.json({ status: 'ok', ...(await referralService.resumenReferidos(req.user.userId)) })
+  } catch (err) { next(err) }
 })
 
 // ── Confirmación de asistencia ────────────────────────────────────────────
@@ -333,6 +340,59 @@ router.post('/me/confirmar-asistencia', async (req, res, next) => {
 // ══════════════════════════════════════════════════════════════════════════
 //
 // De aquí sale el certificado, así que el acceso se comprueba en el servidor
+// ── Sellos (19 nov 2026, migración 028) ──
+// La profe pone un sello en clase → el aula avisa a PageAula (contrato:
+// `sesion.alSellar`) → se guarda aquí. Solo la profe del taller o una cuenta
+// admin; solo a personas con acceso a ese taller. Un sello por taller una vez.
+const SELLO_ID = /^[a-z][a-z0-9_-]{1,30}$/
+router.post('/me/aula/:tallerId/sellos', async (req, res, next) => {
+  try {
+    const tallerId = req.params.tallerId
+    const email = await emailDelUsuario(req.user.userId)
+    const esAdmin = (process.env.ADMIN_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
+      .includes(String(email ?? '').toLowerCase())
+    if (!esAdmin && !(await esProfeDelTaller(req.user.userId, tallerId))) {
+      return res.status(403).json({ status: 'error', message: 'Solo la profe del taller puede poner sellos' })
+    }
+    const sello = String(req.body?.sello ?? '')
+    const ids = [...new Set((Array.isArray(req.body?.alumnos) ? req.body.alumnos : []).map(Number).filter(Number.isInteger))].slice(0, 200)
+    if (!SELLO_ID.test(sello) || !ids.length) return res.status(400).json({ status: 'error', message: 'Datos inválidos' })
+
+    // La actividad que estaba abierta en el pizarrón viaja con el sello (029).
+    const act = req.body?.actividad ?? null
+    const actividadId   = act && SELLO_ID.test(String(act.id ?? '')) ? String(act.id) : null
+    const actividadTipo = actividadId && /^[a-z0-9]{2,20}$/.test(String(act.tipo ?? '')) ? String(act.tipo) : null
+    const acceso        = ['siempre', '30dias', 'premium'].includes(act?.acceso) ? act.acceso : 'siempre'
+
+    const { rows: alumnos } = await query('SELECT id, email FROM usuarios WHERE id = ANY($1::int[])', [ids])
+    let guardados = 0
+    for (const a of alumnos) {
+      if (a.id === req.user.userId) continue
+      if (!(await asistenciaService.tieneAcceso(a.email, tallerId, a.id))) continue
+      const { rowCount } = await query(
+        `INSERT INTO insignias (usuario_email, nombre, taller_id, otorgada_por, actividad_id, actividad_tipo, acceso)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+        [a.email, sello, tallerId, email, actividadId, actividadTipo, acceso])
+      guardados += rowCount
+    }
+    res.json({ status: 'ok', guardados })
+  } catch (err) { next(err) }
+})
+
+/** Mis sellos (Hábitat): cuáles, de qué taller, qué actividad abren y su reto. */
+router.get('/me/sellos', async (req, res, next) => {
+  try { res.json({ status: 'ok', sellos: await habitatService.sellos(req.user.userId) }) }
+  catch (err) { next(err) }
+})
+router.post('/me/sellos/:id/jugar', async (req, res, next) => {
+  try { res.json({ status: 'ok', ...(await habitatService.iniciarJuego(req.user.userId, req.params.id)) }) }
+  catch (err) { next(err) }
+})
+router.post('/me/habitat/juegos/:id/terminar', async (req, res, next) => {
+  try { res.json({ status: 'ok', ...(await habitatService.terminarJuego(req.user.userId, Number(req.params.id))) }) }
+  catch (err) { next(err) }
+})
+
 // en CADA llamada. El front ya lo comprueba, pero el front se puede saltar.
 
 /**
@@ -409,6 +469,20 @@ router.get('/me/aula/:tallerId/video-token', async (req, res, next) => {
 
 // ══════════════════════════════════════════════════════════════════════════
 //  Certificados del alumno
+// ── Hábitat + Supernovas (19 nov 2026, migración 027) ──
+router.get('/me/habitat', async (req, res, next) => {
+  try { res.json({ status: 'ok', ...(await habitatService.estado(req.user.userId)) }) }
+  catch (err) { next(err) }
+})
+router.post('/me/habitat/comprar', async (req, res, next) => {
+  try { res.json({ status: 'ok', ...(await habitatService.comprar(req.user.userId, String(req.body?.objetoId ?? ''))) }) }
+  catch (err) { next(err) }
+})
+router.put('/me/habitat', async (req, res, next) => {
+  try { res.json({ status: 'ok', ...(await habitatService.acomodar(req.user.userId, req.body?.puestos)) }) }
+  catch (err) { next(err) }
+})
+
 // ══════════════════════════════════════════════════════════════════════════
 
 /** GET /users/me/certificados → los suyos, del más reciente al más viejo. */

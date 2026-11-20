@@ -75,6 +75,14 @@
  *   ("Sin video todavía") sin caerse. Quien monta el aula es quien pide este
  *   token (nunca el aula: sería una llamada directa a la API de Destello,
  *   la regla que no se rompe — ver el encabezado de este archivo).
+ * @property {((personaIds: string[], selloId: string, actividad: {id: string, tipo: string, acceso: string}|null) => void)?} alSellar
+ *   Opcional. El aula avisa aquí cada vez que la profe pone un sello (a una
+ *   persona o a todo el grupo), para que quien la monta lo guarde donde
+ *   quiera (Destello: en la cuenta de cada alumno, para su Hábitat). El aula
+ *   no espera respuesta ni sabe a dónde va; si no viene, no pasa nada.
+ *   `actividad` es el material abierto en el pizarrón al sellar (o null): en
+ *   Destello el sello "se lleva" esa actividad para volver a jugarla en el
+ *   Hábitat. `acceso` sale del material ('siempre' si no dice nada).
  */
 
 /**

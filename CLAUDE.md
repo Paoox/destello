@@ -468,7 +468,7 @@ WhatsApp + correo al mismo taller cuando reabre (`prospectoService.js`).
 | `/home` | PageHome.jsx | ✅ |
 | `/novedades` | PageNovedades.jsx | ✅ — 3 próximos talleres, "Explora por marca" (submarcas = `talleres.categoria`, `utils/submarcas.js`) y "Conoce a tus profes" (ficha que llena Paola en panel → Profesores, migración 026) |
 | `/novedades/talleres` | PageTalleresMarca.jsx | ✅ — catálogo por marca (`?marca=`) o todos, con modal lista de espera |
-| `/habitat` | PageHabitat.jsx | ✅ — "Mi hábitat" (T-49): islita 2D, un objeto por taller completado (`src/habitat/`). `?vista=talleres` redirige a `/novedades` |
+| `/habitat` | PageHabitat.jsx | ✅ — "Mi hábitat" (20 nov 2026): casa isométrica en SVG (`habitat/Casa.jsx`, `iso.jsx`, `muebles.jsx`), pestañas Mi casa / Tienda, sellos en repisas que abren su actividad (`JuegoHabitat.jsx`). `?vista=talleres` redirige a `/novedades` |
 | `/aula/:id` | PageAula.jsx | ✅ — LA FRONTERA: única pieza que habla con la API de Destello. Arma la `sesion` del contrato y envuelve `src/aula/Aula.jsx` (el módulo del aula: sellos, contrato de actividades, Quiz, rejilla — no consulta la API a propósito, para poder rentarse a otras escuelas como producto aparte). Le suma los latidos de asistencia que el módulo del aula no puede tener |
 | `/aula-nueva/:id` | PageAulaNueva.jsx | ✅ — salón de ensayo del profesor con datos inventados (sin backend, sin video). Entra como `profe` por defecto; `?rol=alumno` para verla del otro lado; `?actividad=<id>` abre directo un material de `materialesDeEnsayo.js` |
 | `/notifs` | PageNotificaciones.jsx | ✅ — avisos de la persona (T-44); campanita con contador en el menú |
@@ -582,10 +582,14 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
   "Lo que Está Terminado y Funciona" más abajo para el detalle completo.
 
 ### 🟡 Pendiente
-- **▶ Lo próximo (19 nov 2026):** Hábitat estilo "pecera" (rehacer T-49
-  con la referencia de Paola: cuarto dentro de un cubo de vidrio, solo
-  objetos por taller completado), y después el detalle de pagos pendientes a
-  las profes. Hábitat básico (T-49) y Novedades ✅ desplegados el 19 nov.
+- **▶ Lo próximo (20 nov 2026):** material didáctico real por taller (Paola
+  con cada profe; reemplaza `materialesDeEnsayo.js` y marca cada material
+  `acceso: 'siempre' | '30dias' | 'premium'`), actividades/lecturas
+  especiales que abre la decoración del Hábitat, arte del Hábitat (ficha en
+  `docs/habitat-arte/README.md`, PNG en `apps/web/src/habitat/piezas/`),
+  mascota/avatar animados, membresía mensual/anual (contenido premium).
+  Pendientes chicos: el bot y los correos cotizan precio completo aunque haya
+  cupón; borrar los sellos de prueba de Paola (`otorgada_por='prueba-habitat'`).
 - **▶ Siguiente: Paola prueba el aula en vivo (T-41/T-42)** — sellos,
   chat, mano, reacciones, actividad/candado y avance, con OpenVidu local y
   dos cuentas. Después: confirmar que un profe dado de alta (T-40) entra
@@ -674,6 +678,33 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
 ---
 
 ## Lo que Está Terminado y Funciona
+
+- ✅ **Hábitat casa + Supernovas + referidos + sellos con actividad**
+  (19-20 nov 2026, migraciones 027-029, todas corridas).
+  - **Supernovas = única moneda.** Libro `supernovas_movimientos` (append-only,
+    `UNIQUE(usuario_id, motivo, ref)` → acreditar es idempotente; saldo = SUM).
+    +100 por taller pagado sin cortesía (`activarAlumno`, retroactivo en 027),
+    +50 por referido que PAGA, +20 por reto superado (una vez por actividad).
+    Precios y catálogo de la tienda: `services/habitatCatalogo.js` (la API
+    manda, el front solo pinta).
+  - **Referidos (028):** el código se captura en la inscripción web, en Perfil
+    ("¿Alguien te habló de Destello?") y en el bot (pregunta antes de apartar
+    lugar, una vez). Cada 5 referidos que pagaron → cupón 30 %, 6 meses,
+    intransferible, se aplica solo en `activarAlumno` (`precioConCupon`) y se
+    ve en Lista de espera. ⚠️ El bot/correos todavía cotizan precio completo.
+  - **Sellos (028-029):** la profe sella en el aula → `sesion.alSellar(ids,
+    sello, actividad)` → `POST /users/me/aula/:id/sellos`. El sello se lleva
+    la actividad abierta en el pizarrón; en el Hábitat se vuelve a jugar con
+    el mismo componente del aula. Reto cronometrado por el servidor
+    (`habitat_juegos`, arranca al empezar de verdad — `yaEmpezo()`).
+    `insignias.acceso`: siempre / 30dias (tras `fecha_fin`) / premium (bloqueado
+    hasta que exista la membresía).
+  - **Bot soporte:** Ajustes → WhatsApp manda "Necesito ayuda ✦ (correo)"; el
+    bot pregunta tema + detalle y levanta el mismo reporte con folio que
+    Ajustes (`POST /bot/soporte`).
+  - **Arte:** cada pieza dibujada por código se reemplaza sola por
+    `habitat/piezas/<id>.png` (lienzo 1380×1320). Ficha y plantillas en
+    `docs/habitat-arte/`.
 
 - ✅ **Actividades del aula genéricas — T-02 y T-04** (11-12 nov 2026,
   commits `52a8baa` y siguientes). A partir de los prototipos de Paola

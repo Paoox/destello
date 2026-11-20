@@ -112,6 +112,9 @@ const VIGENCIA_CFG = {
     expirada:    { color: 'var(--color-error)',     etiqueta: d => `⚠️ expiró hace ${d} d` },
 }
 
+/** Lo que hay que cobrar con su cupón (misma regla que `precioConCupon` en la API). */
+const conCupon = (r) => Math.round(Number(r.taller_precio ?? 0) * (100 - Number(r.cupon_porcentaje ?? 0)) / 100)
+
 /** Etiqueta 🎁 demo — igual que en AccesosPanel, para que se lea como lo mismo. */
 function DemoTag() {
     return (
@@ -319,7 +322,10 @@ export default function ListaEsperaAdmin({ adminToken }) {
               `La cuenta y el taller que ya existen se conservan.`
             : `¿Confirmar el pago de ${r.nombre || r.email}?\n\n` +
               `Se creará/activará su cuenta, se le asignará el taller y se le enviará ` +
-              `la bienvenida al taller por WhatsApp y correo (sin datos de pago).`
+              `la bienvenida al taller por WhatsApp y correo (sin datos de pago).` +
+              (r.cupon_porcentaje
+                  ? `\n\n🎟 Tiene cupón de ${r.cupon_porcentaje}%: se registrará un pago de $${conCupon(r)} (en vez de $${Number(r.taller_precio ?? 0)}) y el cupón quedará usado.`
+                  : '')
         if (!confirm(r.estado === 'rechazado'
             ? `⚠️ Su lugar se había liberado. Revisa que todavía haya cupo en ${r.taller_nombre || 'el taller'}.\n\n${msg}`
             : msg)) return
@@ -334,7 +340,7 @@ export default function ListaEsperaAdmin({ adminToken }) {
                 // cuenta se activa igual, pero el número NO se copia. Hay que
                 // enseñarlo, si no el número "desaparece" sin explicación.
                 if (data.avisoWa) showToast(`⚠️ ${data.avisoWa}`, false)
-                else showToast(`${esReenvio ? 'Confirmación reenviada' : 'Pago confirmado'}${canales ? ` · ${canales}` : ''} ✓`)
+                else showToast(`${esReenvio ? 'Confirmación reenviada' : 'Pago confirmado'}${canales ? ` · ${canales}` : ''}${data.cuponAplicado ? ` · cupón ${data.cuponAplicado.porcentaje}% aplicado ($${data.cuponAplicado.monto})` : ''} ✓`)
                 setLista(prev => prev.map(x => x.id === r.id ? { ...x, estado: 'pagado' } : x))
             } else {
                 showToast(data.message || 'Error al procesar', false)
@@ -463,6 +469,15 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                 <td style={{ padding: 'var(--space-3) var(--space-4)', fontWeight: 500 }}>
                                     {r.nombre || <span style={{ color: 'var(--text-disabled)', fontStyle: 'italic' }}>—</span>}
                                     {r.is_demo && <DemoTag />}
+                                    {r.cupon_porcentaje && (
+                                        <div title="Cupón de referidos: se aplica solo al confirmar su pago"
+                                             style={{ marginTop: 4, fontSize: 11, fontWeight: 700, color: '#D97706' }}>
+                                            🎟 Cupón {r.cupon_porcentaje}% · cobrar ${conCupon(r)}
+                                        </div>
+                                    )}
+                                    {r.codigo_referido && (
+                                        <div style={{ marginTop: 2, fontSize: 11, color: 'var(--text-muted)' }}>Invitado con {r.codigo_referido}</div>
+                                    )}
                                 </td>
                                 <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
                                     {r.email}

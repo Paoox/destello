@@ -121,6 +121,18 @@ export function armarNotificacion(tipo, d = {}) {
                 // Lleva a la conversación en Ajustes → Soporte, donde puede contestar.
                 liga:   d.reporteId ? `/settings?reporte=${d.reporteId}` : null,
             }
+        case 'referido_pago':
+            return {
+                titulo: `¡Ganaste ${d.supernovas ?? 50} Supernovas! ✦`,
+                cuerpo: `${d.invitado || 'Alguien que invitaste'} ya pagó su taller con tu código. Úsalas en tu Hábitat.`,
+                liga:   '/habitat',
+            }
+        case 'cupon':
+            return {
+                titulo: `Tienes un cupón de ${d.porcentaje ?? 30}% 🎟️`,
+                cuerpo: `Por tus ${d.referidos ?? 5} invitados que ya pagaron. Se aplica solo en tu siguiente taller, vence el ${fechaLarga(d.vence) ?? d.vence}. Es personal.`,
+                liga:   '/perfil',
+            }
         default:
             return { titulo: 'Aviso de Destello', cuerpo: '', liga: '/home' }
     }
