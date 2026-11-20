@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anatomía de la oreja — Infografía interactiva · Destello</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* Paleta Destello (CLAUDE.md) */
+    --jade: #0D7377; --jade-2: #0F766E; --ambar: #D97706;
+    --noche: #061A18; --crema: #FAF7F2; --papel: #FFFCF7;
+    --marco: var(--jade); --tinta: var(--noche); --tinta-2: var(--jade-2);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--noche); }
+  body { display: flex; align-items: center; justify-content: center; overflow: hidden; font-family: 'Space Grotesk', system-ui, sans-serif; color: var(--tinta); }
+  button { font-family: inherit; cursor: pointer; }
+  button:focus-visible { outline: 3px solid var(--ambar); outline-offset: 3px; }
+
+  /* Lienzo fijo de 1200×800 que se escala para caber en la ventana */
+  #lienzo { width: 1200px; height: 800px; position: relative; background: var(--marco); transform-origin: center; flex: none; }
+  .tarjeta { position: absolute; left: 40px; top: 40px; width: 1120px; height: 720px; background: var(--crema); border: 2px solid var(--ambar); border-radius: 18px; }
+
+  .cabecera { position: absolute; left: 72px; top: 40px; right: 120px; }
+  .cabecera h1 { margin: 0; font-size: 52px; line-height: 1.1; font-weight: 700; letter-spacing: -1px; }
+  .cabecera h1 .chispa { color: var(--ambar); }
+  .cabecera p { margin: 10px 0 0; font-size: 20px; color: var(--tinta-2); }
+  .cab-detalle { top: 36px; display: flex; flex-direction: column; gap: 14px; }
+  .cab-fila { display: flex; align-items: center; gap: 14px; }
+  .insignia { width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; flex: none; }
+  .cab-detalle h2 { margin: 0; padding: 8px 22px; background: var(--papel); border: 2px solid; border-radius: 26px; font-size: 22px; font-weight: 600; }
+  .cab-detalle p { margin: 0; max-width: 900px; font-size: 17px; line-height: 1.5; color: var(--tinta-2); }
+
+  .escena { position: absolute; left: 0; top: 144px; width: 1116px; height: 572px; }
+  .escena img { position: absolute; left: 394px; top: 16px; width: 327px; height: 540px; display: block; }
+  .escena svg { position: absolute; left: 0; top: 0; pointer-events: none; transition: opacity .2s; }
+
+  .marcador { position: absolute; width: 40px; height: 40px; border-radius: 20px; border: 2px solid var(--crema); background: var(--jade); color: var(--crema); font-size: 18px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0; box-shadow: 0 2px 8px rgba(6,26,24,.3); transition: transform .15s; }
+  .marcador:hover { transform: scale(1.12); background: var(--ambar); }
+  .etiqueta { position: absolute; width: 230px; height: 44px; border-radius: 22px; border: 2px solid; background: var(--papel); color: var(--tinta); font-size: 17px; font-weight: 600; padding: 0 16px; transition: transform .15s; }
+  .etiqueta:hover { transform: translateY(-2px); }
+
+  .ficha { position: absolute; top: 70px; width: 260px; display: flex; flex-direction: column; gap: 12px; }
+  .ficha .tit { display: flex; align-items: center; gap: 10px; }
+  .ficha .i { width: 28px; height: 28px; border-radius: 14px; background: var(--jade); color: var(--crema); font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; }
+  .ficha h3 { margin: 0; flex: 1; padding: 6px 14px; background: var(--papel); border: 2px solid; border-radius: 20px; font-size: 16px; font-weight: 600; text-align: center; }
+  .ficha p { margin: 0; padding: 18px; border-radius: 12px; font-size: 15px; line-height: 1.5; }
+
+  .redondo { position: absolute; width: 56px; height: 56px; border-radius: 28px; border: 2px solid var(--crema); background: var(--ambar); color: var(--noche); display: flex; align-items: center; justify-content: center; padding: 0; }
+  .cerrar { position: absolute; right: 24px; top: 24px; width: 44px; height: 44px; border-radius: 22px; border: 2px solid var(--jade); background: var(--papel); color: var(--jade); display: flex; align-items: center; justify-content: center; padding: 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main id="lienzo">
+  <div class="tarjeta">
+    <div class="cabecera" id="cab-principal">
+      <h1>Anatomía de la oreja <span class="chispa" aria-hidden="true">✦</span></h1>
+      <p>Toca cada número para conocer la parte de la oreja y su lugar en el mapa de auriculoterapia</p>
+    </div>
+
+    <div class="cabecera cab-detalle" id="cab-detalle" hidden>
+      <div class="cab-fila">
+        <span class="insignia" id="d-num"></span>
+        <h2 id="d-titulo"></h2>
+      </div>
+      <p id="d-texto"></p>
+    </div>
+    <button class="cerrar" id="btn-cerrar" aria-label="Cerrar y volver a la oreja completa" hidden>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+
+    <div class="escena">
+      <img id="oreja" src="imagenes/oreja-partes.png" alt="Oreja dividida en nueve partes de colores">
+      <svg id="lineas" width="1116" height="572" viewBox="0 0 1116 572" aria-hidden="true"></svg>
+      <div id="marcadores"></div>
+      <div id="etiquetas"></div>
+
+      <div class="ficha" id="ficha-izq" style="left: 40px" hidden>
+        <div class="tit"><span class="i">i</span><h3>Dónde está</h3></div>
+        <p id="d-donde"></p>
+      </div>
+      <div class="ficha" id="ficha-der" style="left: 816px" hidden>
+        <div class="tit"><span class="i">i</span><h3>En auriculoterapia</h3></div>
+        <p id="d-mapa"></p>
+      </div>
+    </div>
+  </div>
+
+  <button class="redondo" id="btn-ant" aria-label="Parte anterior" style="left: 12px; top: 372px" hidden>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+  </button>
+  <button class="redondo" id="btn-sig" aria-label="Recorrer las partes una por una" style="right: 12px; top: 372px">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+  </button>
+</main>
+
+<script>
+// Cada parte: número, zona (nombre del PNG), color, posición del marcador (mx,my)
+// y de la etiqueta (lx,ly) en coordenadas de la escena (1116×572).
+// ⚠️ Los textos de "En auriculoterapia" son un borrador: revisarlos con la profe.
+const PARTES = [
+  { n: 1, zona: 'helix', nombre: 'Hélix', color: '#94D4C1', tinte: '#E3F4EE', mx: 674, my: 300, lx: 846, ly: 280,
+    titulo: 'Hélix: el borde que enmarca la oreja',
+    texto: 'Es el pliegue exterior que rodea la oreja como un marco. Nace dentro de la concha (raíz del hélix), sube por el frente, se curva arriba y baja por detrás hasta llegar al lóbulo.',
+    donde: 'El borde curvo más externo. Puedes recorrerlo con el dedo desde arriba del conducto auditivo hasta el lóbulo.',
+    mapa: 'Su raíz se asocia con el diafragma. En la parte más alta del borde se ubica el punto Ápice de la oreja.' },
+  { n: 2, zona: 'scapha', nombre: 'Escafa', color: '#E4C5E7', tinte: '#F7EDF8', mx: 652, my: 223, lx: 846, ly: 190,
+    titulo: 'Escafa: el canal junto al borde',
+    texto: 'Es el surco largo y angosto que corre entre el hélix y el antihélix, siguiendo la curva de la oreja de arriba hacia abajo.',
+    donde: 'Justo por dentro del hélix. Es la "canaleta" que separa el borde exterior del antihélix.',
+    mapa: 'Se asocia con los brazos: de arriba hacia abajo, dedos, muñeca, codo y hombro.' },
+  { n: 3, zona: 'antihelix', nombre: 'Antihélix', color: '#95A5D9', tinte: '#E6EAF7', mx: 592, my: 188, lx: 846, ly: 100,
+    titulo: 'Antihélix: el pliegue en forma de Y',
+    texto: 'Es el relieve que corre paralelo al hélix, por dentro. Arriba se abre en dos ramas, la superior y la inferior, que dejan entre ellas la fosa triangular.',
+    donde: 'Entre la escafa y la concha. Es la "colina" interior que sientes al presionar hacia el centro de la oreja.',
+    mapa: 'Su cuerpo se asocia con la columna vertebral y el tronco; sus ramas, con las piernas y los glúteos.' },
+  { n: 4, zona: 'fossa', nombre: 'Fosa triangular', color: '#439CA2', tinte: '#DCEFF0', mx: 506, my: 132, lx: 40, ly: 90,
+    titulo: 'Fosa triangular: el hueco entre las ramas',
+    texto: 'Es la pequeña depresión con forma de triángulo que queda entre las dos ramas del antihélix, en la parte alta de la oreja.',
+    donde: 'En la parte alta, encerrada entre las dos ramas del antihélix y bajo el hélix.',
+    mapa: 'Aquí está Shenmen, uno de los puntos más usados para la calma y el insomnio, y la zona de la pelvis.' },
+  { n: 5, zona: 'cymba', nombre: 'Cimba de la concha', color: '#F5AF6A', tinte: '#FDEEDD', mx: 536, my: 235, lx: 40, ly: 200,
+    titulo: 'Cimba: la parte alta de la concha',
+    texto: 'La concha es el cuenco central de la oreja. La raíz del hélix la divide en dos; la cimba es la mitad de arriba, más pequeña y menos profunda.',
+    donde: 'Arriba de la raíz del hélix, bajo la rama inferior del antihélix.',
+    mapa: 'Se asocia con los órganos del abdomen, como el riñón, la vejiga, el hígado y el intestino.' },
+  { n: 6, zona: 'cavum', nombre: 'Cavum de la concha', color: '#E9765E', tinte: '#FBE3DD', mx: 545, my: 313, lx: 846, ly: 370,
+    titulo: 'Cavum: el fondo de la concha',
+    texto: 'Es la mitad inferior de la concha, la parte más honda de la oreja. En ella se abre la entrada del conducto auditivo.',
+    donde: 'Debajo de la raíz del hélix, entre el trago, el antitrago y el antihélix.',
+    mapa: 'Se asocia con el pecho: el corazón, los pulmones y la tráquea.' },
+  { n: 7, zona: 'tragus', nombre: 'Trago', color: '#77AAD7', tinte: '#E2EEF8', mx: 437, my: 352, lx: 40, ly: 320,
+    titulo: 'Trago: la pestaña frente al oído',
+    texto: 'Es la pequeña saliente de cartílago que cubre parcialmente la entrada del conducto auditivo, del lado de la cara.',
+    donde: 'Justo delante del conducto auditivo. Es la parte que presionas para "tapar" el oído.',
+    mapa: 'Se asocia con las glándulas suprarrenales, la nariz y la garganta.' },
+  { n: 8, zona: 'antitragus', nombre: 'Antitrago', color: '#7AD0D1', tinte: '#E1F4F4', mx: 536, my: 438, lx: 846, ly: 460,
+    titulo: 'Antitrago: el relieve frente al trago',
+    texto: 'Es la saliente que queda enfrente del trago, separada de él por una muesca (la escotadura intertrágica), justo arriba del lóbulo.',
+    donde: 'En la parte baja de la concha, del lado opuesto al trago y encima del lóbulo.',
+    mapa: 'Se asocia con la cabeza: la frente, las sienes y la parte posterior del cráneo.' },
+  { n: 9, zona: 'lobule', nombre: 'Lóbulo', color: '#EC867E', tinte: '#FBE4E2', mx: 523, my: 507, lx: 40, ly: 470,
+    titulo: 'Lóbulo: la parte blanda',
+    texto: 'Es la parte inferior de la oreja. A diferencia del resto, no tiene cartílago: está formado por piel y tejido graso, por eso es suave.',
+    donde: 'La parte más baja de la oreja, debajo del antitrago. Es donde suelen ir los aretes.',
+    mapa: 'Se asocia con la cara: los ojos, los dientes, la mandíbula y la lengua.' }
+];
+
+const $ = (id) => document.getElementById(id);
+let sel = 0; // 0 = vista principal
+
+// Precarga de imágenes para que el cambio de zona sea instantáneo
+PARTES.forEach((p) => { new Image().src = `imagenes/oreja-${p.zona}.png`; });
+
+// Líneas, marcadores y etiquetas (se crean una vez)
+const NS = 'http://www.w3.org/2000/svg';
+PARTES.forEach((p) => {
+  const ln = document.createElementNS(NS, 'line');
+  const x1 = p.lx < 500 ? p.lx + 230 : p.lx;
+  ln.setAttribute('x1', x1); ln.setAttribute('y1', p.ly + 22);
+  ln.setAttribute('x2', p.mx); ln.setAttribute('y2', p.my);
+  ln.setAttribute('stroke', '#0D7377'); ln.setAttribute('stroke-width', '1.5');
+  $('lineas').appendChild(ln);
+
+  const m = document.createElement('button');
+  m.className = 'marcador'; m.textContent = p.n; m.dataset.n = p.n;
+  m.style.left = (p.mx - 20) + 'px'; m.style.top = (p.my - 20) + 'px';
+  m.setAttribute('aria-label', `${p.n} — ${p.nombre}`);
+  m.onclick = () => abrir(p.n);
+  $('marcadores').appendChild(m);
+
+  const e = document.createElement('button');
+  e.className = 'etiqueta'; e.textContent = p.nombre;
+  e.style.left = p.lx + 'px'; e.style.top = p.ly + 'px'; e.style.borderColor = p.color;
+  e.onclick = () => abrir(p.n);
+  $('etiquetas').appendChild(e);
+});
+
+function abrir(n) { sel = n; pintar(); }
+
+function pintar() {
+  const det = sel > 0;
+  const p = PARTES[(sel || 1) - 1];
+  $('cab-principal').hidden = det;
+  $('cab-detalle').hidden = !det;
+  $('btn-cerrar').hidden = !det;
+  $('btn-ant').hidden = !det;
+  $('ficha-izq').hidden = !det;
+  $('ficha-der').hidden = !det;
+  $('etiquetas').hidden = det;
+  $('lineas').style.opacity = det ? 0 : 1;
+  $('btn-sig').setAttribute('aria-label', det ? 'Parte siguiente' : 'Recorrer las partes una por una');
+  document.querySelectorAll('.marcador').forEach((m) => { m.hidden = det && +m.dataset.n !== sel; });
+  $('oreja').src = det ? `imagenes/oreja-${p.zona}.png` : 'imagenes/oreja-partes.png';
+  $('oreja').alt = det ? `Oreja con la zona ${p.nombre} resaltada en color` : 'Oreja dividida en nueve partes de colores';
+  if (!det) return;
+  $('d-num').textContent = p.n; $('d-num').style.background = p.color;
+  $('d-titulo').textContent = p.titulo; $('d-titulo').style.borderColor = p.color;
+  $('d-texto').textContent = p.texto;
+  $('d-donde').textContent = p.donde; $('d-mapa').textContent = p.mapa;
+  document.querySelectorAll('.ficha h3').forEach((h) => { h.style.borderColor = p.color; });
+  document.querySelectorAll('.ficha p').forEach((q) => { q.style.background = p.tinte; });
+}
+
+$('btn-cerrar').onclick = () => abrir(0);
+$('btn-sig').onclick = () => abrir(sel ? (sel % 9) + 1 : 1);
+$('btn-ant').onclick = () => abrir(((sel + 7) % 9) + 1);
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && sel) abrir(0);
+  if (ev.key === 'ArrowRight') $('btn-sig').click();
+  if (ev.key === 'ArrowLeft' && sel) $('btn-ant').click();
+});
+
+// Escala el lienzo para caber en cualquier pantalla
+function ajustar() {
+  const k = Math.min(innerWidth / 1200, innerHeight / 800, 1.5);
+  $('lienzo').style.transform = `scale(${k})`;
+}
+addEventListener('resize', ajustar); ajustar();
+</script>
+</body>
+</html>
