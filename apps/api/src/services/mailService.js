@@ -7,6 +7,7 @@
  *   MAIL_FROM      → (opcional) "Destello ✦ <hola@destello.courses>"
  */
 
+import { ligaInscripcion, fraseOrigen } from './prospectoTextos.js'
 import { Resend } from 'resend'
 import { fechaLarga } from './mensajeBienvenidaPago.js'
 
@@ -75,6 +76,52 @@ export async function sendNuevoTaller({ to, nombre, taller = {} }) {
     const subject = `Nuevo taller en Destello: "${taller.nombre}" ✦`
     const html    = templateNuevoTaller({ nombre, taller })
     return sendMail({ to, subject, html })
+}
+
+/** Invitación a un prospecto (Panel → Prospectos). */
+export async function sendInvitacionTaller({ to, nombre, origen, taller = {} }) {
+    const subject = `Abrimos nueva fecha: "${taller.nombre}" ✦`
+    const html    = templateInvitacionTaller({ nombre, origen, taller })
+    return sendMail({ to, subject, html })
+}
+
+function templateInvitacionTaller({ nombre, origen, taller = {} }) {
+    const nombreCorto = escaparHtml(nombre?.trim().split(' ')[0] || '')
+    const url    = ligaInscripcion(taller.nombre)
+    const cuando = fechaLarga(taller.fecha)
+    const filas  = [
+        cuando         && `📅 ${cuando.charAt(0).toUpperCase() + cuando.slice(1)}`,
+        taller.horario && `🕐 ${escaparHtml(taller.horario)} (hora CDMX)`,
+        taller.precio != null && Number(taller.precio) > 0
+            && `💳 $${Number(taller.precio).toLocaleString('es-MX')} MXN`,
+    ].filter(Boolean)
+
+    return templateBase(`
+    <div class="header">
+      <div class="logo-mark">✦</div>
+      <div class="logo-name">Destello</div>
+      <div class="logo-sub">Plataforma de aprendizaje inmersivo 3D</div>
+    </div>
+    <div class="body">
+      <div class="greeting">¡Hola${nombreCorto ? `, ${nombreCorto}` : ''}! ✨</div>
+      <p class="text">
+        Abrimos una nueva fecha de
+        <strong style="color:#FAF7F2;">${escaparHtml(taller.nombre)}</strong>.
+        ${escaparHtml(fraseOrigen(origen))}
+      </p>
+      ${filas.length
+          ? `<div class="info-box"><p class="info-value" style="line-height:1.9;">${filas.join('<br>')}</p></div>`
+          : ''}
+      <p class="text">Los lugares son limitados. Para apartar el tuyo, escríbenos por WhatsApp:</p>
+      <div class="btn-wrap">
+        <a href="${url}" class="btn">Quiero inscribirme →</a>
+      </div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">
+        Te llegó este correo porque te interesaste en este taller en Destello.
+      </p>
+    </div>`)
 }
 
 function templateNuevoTaller({ nombre, taller = {} }) {

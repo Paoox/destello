@@ -1,6 +1,7 @@
 /**
  * Destello API — Lista de Espera Service
  */
+import { registrarSinCupo } from './prospectoService.js'
 import { query } from '../db/db.js'
 import { hayCupo, sincronizarEstadoCupo } from './cupoService.js'
 import { estadoDe as bloqueoDe } from './bloqueoService.js'
@@ -124,6 +125,9 @@ export async function registrarEnLista({ email, tallerId, nombre, whatsapp, orig
     // formando gente para un salón sin sillas — mejor decírselo de una vez.
     const { hayCupo: hayLugar, cupo, motivo } = await hayCupo(tallerId)
     if (!hayLugar) {
+        // Se guarda como prospecto para invitarla cuando ese taller reabra
+        // (Panel → Prospectos). Antes no quedaba registrada en ningún lado.
+        await registrarSinCupo({ email: emailNorm, nombre, whatsapp, tallerId })
         return { nuevo: false, sinCupo: true, cupo, motivo, registro: null }
     }
 

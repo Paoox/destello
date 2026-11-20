@@ -20,7 +20,7 @@ import certificadosRouter from './routes/certificados.js'
 import { errorHandler }  from './middleware/errorHandler.js'
 import { requestLogger } from './middleware/requestLogger.js'
 import { authenticate }  from './middleware/authenticate.js'
-import { enviarRecordatoriosAutomaticos } from './services/recordatorioAutoService.js'
+import { enviarRecordatoriosAutomaticos, liberarVencidos } from './services/recordatorioAutoService.js'
 import { revisarNotificaciones } from './services/notificacionService.js'
 
 const app  = express()
@@ -93,6 +93,9 @@ async function start() {
     const correr = () => {
       enviarRecordatoriosAutomaticos().catch(err =>
         console.error('[recordatorio-auto] error en la corrida:', err.message))
+      // Al vencer la gracia de 24 h tras el recordatorio, el lugar se libera solo.
+      liberarVencidos().catch(err =>
+        console.error('[liberar-auto] error en la corrida:', err.message))
     }
     correr()
     setInterval(correr, INTERVALO_RECORDATORIOS_MS)

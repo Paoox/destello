@@ -7,6 +7,20 @@ import { useState, useEffect, useCallback } from 'react'
 
 const SESSION_KEY = 'destello_admin_token'
 
+/**
+ * Cuándo vence el token (ms), leyendo el `exp` del JWT. La sesión de admin
+ * dura 2 h (ADMIN_TOKEN_EXPIRES); antes el panel seguía usando un token
+ * vencido y cada pestaña mostraba "Token de admin inválido o expirado".
+ */
+function venceEn(token) {
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+        return payload.exp ? payload.exp * 1000 : null
+    } catch { return null }
+}
+
+const MSG_VENCIDA = 'Tu sesión de admin venció (dura 2 horas). Vuelve a entrar.'
+
 export function useAdminSession() {
     const [adminToken,       setAdminToken]       = useState(null)
     const [isAuthenticated,  setIsAuthenticated]  = useState(false)
@@ -17,10 +31,31 @@ export function useAdminSession() {
     useEffect(() => {
         const stored = sessionStorage.getItem(SESSION_KEY)
         if (stored) {
+            const vence = venceEn(stored)
+            if (vence && vence <= Date.now()) {
+                sessionStorage.removeItem(SESSION_KEY)
+                setError(MSG_VENCIDA)
+                return
+            }
             setAdminToken(stored)
             setIsAuthenticated(true)
         }
     }, [])
+
+    // Al llegar la hora de vencimiento, se cierra la sesión sola y se pide
+    // la contraseña otra vez (en vez de que todo empiece a fallar).
+    useEffect(() => {
+        if (!adminToken) return
+        const vence = venceEn(adminToken)
+        if (!vence) return
+        const t = setTimeout(() => {
+            sessionStorage.removeItem(SESSION_KEY)
+            setAdminToken(null)
+            setIsAuthenticated(false)
+            setError(MSG_VENCIDA)
+        }, Math.max(0, vence - Date.now()))
+        return () => clearTimeout(t)
+    }, [adminToken])
 
     /**
      * Envía la contraseña al backend y, si es válida, guarda el adminToken.

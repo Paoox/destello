@@ -1380,6 +1380,37 @@ se llama desde el manejador principal de mensajes.
 - **Criterio de terminado:** por definir junto con el alcance — este
   ticket empieza como "aterrizar qué es esto", no como código.
 
+### Lista de espera — liberación automática y panel simplificado (19 nov 2026)
+- **Liberación automática:** `liberarVencidos()` (`recordatorioAutoService.js`)
+  corre cada 30 min junto al recordatorio, solo en producción. Libera a quien ya
+  tuvo recordatorio + 24 h de gracia sin pagar (misma etapa `gracia_vencida` de
+  `v_alertas`), revoca su chispa del taller, anota la razón en `notas` y le
+  manda un WhatsApp ("tu lugar se liberó… si ya pagaste, mándanos tu
+  comprobante"). **Candado:** no libera a quien tiene un reporte de pago
+  ABIERTO (dijo que pagó y falta cotejarlo). `POST /admin/lista-espera/:id/liberar`
+  sigue para liberar a mano.
+- **Panel → Lista de espera:** solo quedan "Confirmar pago" (cualquier fila sin
+  pagar — antes no salía en `pendiente`, que es como el bot aparta desde T-36),
+  "Reenviar confirmación" (ya pagada: bienvenida por WhatsApp + correo) y
+  "Recordar pago" (siempre que falte pagar; el texto cambia si aún está en
+  plazo). Se quitaron el botón de datos de pago por WhatsApp, el correo de
+  "confirmar lugar" y "Liberar" (el bot ya manda los datos de pago, y liberar es
+  automático). El selector de estado sigue para casos raros.
+- **Prospectos** (migración 025, pestaña 10 del panel, `ProspectosPanel.jsx`,
+  `prospectoService.js`): quien se interesó y no tomó el taller —
+  *se inscribió y no pagó* (`lista_espera` 'rechazado' sin pago) o *no
+  alcanzó lugar* (nuevo: `listaEsperaService` lo guarda en
+  `prospectos_sin_cupo` cuando el taller está lleno; antes no quedaba en
+  ningún lado). Filtros por motivo y taller; se eligen con casillas y se les
+  manda invitación al taller que elijas (por default, el mismo que querían)
+  por WhatsApp (Faro, 2.5 s entre mensajes, máx. 60 por envío) y correo
+  (`sendInvitacionTaller`, botón a Faro con "Quiero inscribirme a X").
+  Bitácora en `prospecto_invitaciones` (columna "Invitada"). No aparece
+  quien después pagó o está apartando ese taller otra vez; no se contacta a
+  cuentas bloqueadas/de baja y se respetan sus interruptores de avisos.
+  Decisión de Paola: la invitación es manual desde el panel, solo al mismo
+  taller.
+
 ### T-45 — Página de Ajustes (hoy: link muerto en el menú)
 - **✅ Desplegado en la Toshiba (19 nov 2026); migraciones 022, 023 y 024 corridas en Supabase.**
   `/settings` (`PageAjustes.jsx`, lógica en `ajustesService.js`):

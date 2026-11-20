@@ -24,3 +24,12 @@ test('reenvía los datos de pago (SPEI y tarjeta)', () => {
     assert.match(texto, /036180500687558754/)
     assert.match(texto, /4658 2850 1724 7424/)
 })
+
+test('al liberar se le avisa con su nombre y el taller, y se le deja la puerta abierta', async () => {
+    const { textoLiberado } = await import('./recordatorioAutoService.js')
+    const t = textoLiberado('Ana Ruiz', 'Iridología')
+    assert.match(t, /^Hola Ana ✦/)
+    assert.match(t, /\*Iridología\* se liberó/)
+    assert.match(t, /Si ya pagaste/)
+    assert.match(textoLiberado(null, null), /^Hola ✦/)
+})

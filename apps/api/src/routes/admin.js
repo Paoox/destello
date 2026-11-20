@@ -35,6 +35,8 @@ import { mensajeBienvenidaPago } from '../services/mensajeBienvenidaPago.js'
 import { sendWhatsapp }      from '../services/botService.js'
 import { cuentaConWhatsapp, normalizarWhatsapp } from '../services/usuarioService.js'
 import { listReportes, resolverReporte, responderReporte } from '../services/reporteService.js'
+import { liberarLugar } from '../services/recordatorioAutoService.js'
+import * as prospectoService from '../services/prospectoService.js'
 import { activarAlumno }    from '../services/inscripcionService.js'
 import metricasRouter     from './metricas.js'
 import * as asistenciaService  from '../services/asistenciaService.js'
@@ -510,35 +512,15 @@ router.post('/lista-espera/:id/recordatorio', async (req, res, next) => {
  * persona conservaría su llave y podría seguir entrando al taller que nunca pagó
  * — el lugar quedaría "liberado" solo en la tabla, no en la realidad.
  *
- * Es manual a propósito: alguien puede pagar el domingo y avisar el lunes, y no
- * queremos que un cron le quite el lugar de madrugada.
+ * Desde el 19 nov 2026 también se libera SOLO al vencer la gracia
+ * (`liberarVencidos()` en recordatorioAutoService.js), salvo que tenga un
+ * reporte de pago abierto. Esta ruta queda para liberar a mano.
  */
 router.post('/lista-espera/:id/liberar', async (req, res, next) => {
     try {
-        const { rows } = await query(
-            `UPDATE lista_espera SET estado = 'rechazado' WHERE id = $1 RETURNING *`,
-            [req.params.id]
-        )
-        if (!rows.length) throw new AppError('Registro no encontrado', 404, 'NOT_FOUND')
-        const reg = rows[0]
-
-        const { rows: revocadas } = await query(
-            `UPDATE chispas
-             SET revoked = TRUE
-             WHERE LOWER(usuario_email) = LOWER($1)
-               AND taller_id = $2
-               AND revoked = FALSE
-             RETURNING code`,
-            [reg.email, reg.taller_id]
-        )
-
-        console.log(`[liberar] ${reg.email} · ${reg.taller_id} · ${revocadas.length} chispa(s) revocada(s)`)
-
-        res.json({
-            status:    'ok',
-            registro:  reg,
-            revocadas: revocadas.map(c => c.code),
-        })
+        const r = await liberarLugar(req.params.id, { motivo: 'Liberado a mano desde el panel' })
+        if (!r) throw new AppError('Registro no encontrado', 404, 'NOT_FOUND')
+        res.json({ status: 'ok', ...r })
     } catch (err) { next(err) }
 })
 
@@ -568,6 +550,27 @@ router.get('/reportes', async (req, res, next) => {
 router.post('/reportes/:id/responder', async (req, res, next) => {
     try {
         const r = await responderReporte(req.params.id, { texto: req.body?.texto, cerrar: !!req.body?.cerrar })
+        res.json({ status: 'ok', ...r })
+    } catch (err) { next(err) }
+})
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Prospectos (19 nov 2026): se interesaron y no tomaron el taller
+// ══════════════════════════════════════════════════════════════════════════
+
+/** GET /admin/prospectos?origen=no_pago|sin_cupo&tallerId= */
+router.get('/prospectos', async (req, res, next) => {
+    try {
+        const origen = ['no_pago', 'sin_cupo'].includes(req.query.origen) ? req.query.origen : null
+        const prospectos = await prospectoService.listar({ origen, tallerId: req.query.tallerId || null })
+        res.json({ status: 'ok', prospectos, maxPorEnvio: prospectoService.MAX_POR_ENVIO })
+    } catch (err) { next(err) }
+})
+
+/** POST /admin/prospectos/invitar  body { seleccion: [{email, tallerId, origen}], tallerId } */
+router.post('/prospectos/invitar', async (req, res, next) => {
+    try {
+        const r = await prospectoService.invitar({ seleccion: req.body?.seleccion, tallerId: req.body?.tallerId })
         res.json({ status: 'ok', ...r })
     } catch (err) { next(err) }
 })

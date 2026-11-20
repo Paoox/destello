@@ -121,3 +121,81 @@ export async function enviarRecordatoriosAutomaticos() {
 
     return { revisados: rows.length, enviados }
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Liberación automática (19 nov 2026, decisión de Paola)
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Antes "Liberar" era solo manual, por si alguien pagaba el domingo y avisaba
+// el lunes. Ahora se libera solo al vencer el plazo (48 h + recordatorio +
+// 24 h de gracia, la etapa `gracia_vencida` de v_alertas), con un candado:
+// NO se libera a quien tiene un reporte de pago abierto (ya dijo que pagó y
+// falta que Paola lo coteje).
+
+/** Lo que le llega por WhatsApp cuando se libera su lugar. */
+export function textoLiberado(nombre, tallerNombre) {
+    const primerNombre = nombre?.split(' ')[0] || ''
+    return [
+        `Hola${primerNombre ? ` ${primerNombre}` : ''} ✦`,
+        '',
+        `Como no recibimos tu pago a tiempo, tu lugar en *${tallerNombre || 'el taller'}* se liberó para alguien más.`,
+        '',
+        'Si ya pagaste, mándanos tu comprobante por aquí y lo revisamos enseguida. ' +
+        'Y si todavía quieres tomarlo, escríbenos y vemos si queda cupo. 🙌',
+    ].join('\n')
+}
+
+/**
+ * Libera UN lugar: estado 'rechazado' + revoca su chispa del taller (si no,
+ * conservaría la llave del taller que no pagó). La usan el botón del panel y
+ * la corrida automática.
+ */
+export async function liberarLugar(listaEsperaId, { motivo = null } = {}) {
+    const { rows } = await query(
+        `UPDATE lista_espera
+            SET estado = 'rechazado',
+                notas  = CASE WHEN $2::text IS NULL THEN notas
+                              ELSE CONCAT_WS(' · ', NULLIF(notas, ''), $2::text) END
+          WHERE id = $1 RETURNING *`,
+        [listaEsperaId, motivo])
+    if (!rows.length) return null
+    const reg = rows[0]
+    const { rows: revocadas } = await query(
+        `UPDATE chispas SET revoked = TRUE
+          WHERE LOWER(usuario_email) = LOWER($1) AND taller_id = $2 AND revoked = FALSE
+        RETURNING code`, [reg.email, reg.taller_id])
+    console.log(`[liberar] ${reg.email} · ${reg.taller_id} · ${revocadas.length} chispa(s) revocada(s)`)
+    return { registro: reg, revocadas: revocadas.map(c => c.code) }
+}
+
+/** Libera solo los que ya pasaron su gracia. Corre junto al recordatorio. */
+export async function liberarVencidos() {
+    const { rows } = await query(
+        `SELECT le.id, le.nombre, le.whatsapp, t.nombre AS taller_nombre
+           FROM lista_espera le
+                LEFT JOIN talleres t ON t.id = le.taller_id
+          WHERE le.estado IN ('pendiente', 'cupo_confirmado', 'confirmado')
+            AND le.pagado_at IS NULL
+            AND le.recordatorio_at IS NOT NULL
+            AND le.recordatorio_at < NOW() - INTERVAL '24 hours'
+            AND NOT EXISTS (
+                SELECT 1 FROM reportes_acceso ra
+                 WHERE LOWER(ra.email) = LOWER(le.email)
+                   AND ra.motivo = 'reporte_pago' AND ra.estado = 'abierto')`)
+
+    let liberados = 0
+    for (const r of rows) {
+        try {
+            await liberarLugar(r.id, { motivo: 'Liberado automático: venció el plazo de pago' })
+            liberados++
+            if (r.whatsapp) {
+                await sendWhatsapp(r.whatsapp, textoLiberado(r.nombre, r.taller_nombre))
+                    .catch(err => console.error(`[liberar-auto] aviso WA lista_espera#${r.id}:`, err.message))
+            }
+        } catch (err) {
+            console.error(`[liberar-auto] falló lista_espera#${r.id}:`, err.message)
+        }
+    }
+    if (rows.length) console.log(`[liberar-auto] ${liberados}/${rows.length} lugares liberados`)
+    return { revisados: rows.length, liberados }
+}

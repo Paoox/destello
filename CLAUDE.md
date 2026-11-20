@@ -416,9 +416,9 @@ Métodos de pago incluidos en templates:
 
 ## Panel Admin `/admin`
 
-9 tabs en `PageAdmin.jsx`: **Accesos** · **Talleres** · **Profesores** ·
+10 tabs en `PageAdmin.jsx`: **Accesos** · **Talleres** · **Profesores** ·
 **Lista de espera** · **Reportes** · **Asistencia** · **Usuarios** ·
-**Métricas** · **Detalle talleres**.
+**Métricas** · **Detalle talleres** · **Prospectos**.
 
 **Accesos (`AccesosPanel.jsx`)** — búsqueda por email, historial de chispas del usuario y tabla global de todas las chispas; genera Chispas nuevas para cuentas ya activas (uso principal: demos). Ya no maneja Resplandores — retirado el 18 sep 2026 (T-14a).
 
@@ -431,6 +431,19 @@ Métodos de pago incluidos en templates:
 **Talleres (`TalleresPanel.jsx`)** ✅ completo — CRUD con columnas reales de BD, editor de cupo, fecha y horario (texto libre; `hora_inicio`/`hora_fin` se derivan del texto en el backend)
 
 **Profesores (`ProfesoresPanel.jsx`, T-05, 18 sep 2026)** — ⚠️ desde el 18 nov 2026 **un taller = una profe**: los talleres con profe no aparecen en los selectores y la API responde 409 (índice único, migración 019); para cambiarla hay que quitar a la actual primero. busca una cuenta ya existente por correo (mismo patrón que Accesos) y la asigna como profesora de un taller (`taller_profesores`). No hace falta que tenga chispa de ese taller — dar la clase ya es su acceso. Las cuentas admin (`ADMIN_EMAILS`) siguen entrando como profe a cualquier aula sin pasar por aquí; esto es solo para profesores reales, limitados a lo que se les asigne.
+
+**Lista de espera — desde el 19 nov 2026:** solo 3 botones por fila:
+"Confirmar pago" (cualquier fila sin pagar, también `pendiente`), "Reenviar
+confirmación" (pagada: WhatsApp + correo) y "Recordar pago". El lugar se
+**libera solo** al vencer la gracia (48 h → recordatorio automático → 24 h),
+salvo que tenga un reporte de pago abierto (`liberarVencidos()` en
+`recordatorioAutoService.js`, cada 30 min, solo producción) y se le avisa por
+WhatsApp.
+
+**Prospectos (`ProspectosPanel.jsx`, 19 nov 2026, migración 025)** — quien se
+inscribió y no pagó, y quien no alcanzó lugar (antes no se guardaba;
+`prospectos_sin_cupo`). Filtros por motivo y taller; invitación manual por
+WhatsApp + correo al mismo taller cuando reabre (`prospectoService.js`).
 
 **Reportes** — reportes de acceso (`reportes_acceso`), incluye los que manda una cuenta bloqueada (`POST /bot/reporte-acceso` sigue abierto a propósito)
 
@@ -459,7 +472,7 @@ Métodos de pago incluidos en templates:
 | `/notifs` | PageNotificaciones.jsx | ✅ — avisos de la persona (T-44); campanita con contador en el menú |
 | `/settings` | PageAjustes.jsx | ✅ — tema, avisos, WhatsApp con código, soporte, baja (T-45) |
 | `/perfil` | PagePerfil.jsx | ✅ — datos reales (18 nov 2026): foto (`usuarios.foto`), nombre editable, talleres tomados + certificados, sugeridos por categoría, y para profes "Talleres que impartes" con fechas/horarios y acceso al aula de ensayo y a la real |
-| `/admin` | PageAdmin.jsx | ✅ — protegido con JWT admin, 9 tabs (ver arriba) |
+| `/admin` | PageAdmin.jsx | ✅ — protegido con JWT admin, 10 tabs (ver arriba); la sesión dura 2 h y al vencer regresa sola al login |
 | `/` | PageLanding.jsx | 🔒 CONGELADO — NO modificar sin permiso explícito de Paola |
 
 ---

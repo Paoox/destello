@@ -6,7 +6,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate }                       from 'react-router-dom'
-import { ArrowClockwise, SignOut, Sparkle, BookOpen, ClockCounterClockwise, Tray, ChartLineUp, Certificate, UsersThree, ChalkboardTeacher, Table } from '@phosphor-icons/react'
+import { ArrowClockwise, SignOut, Sparkle, BookOpen, ClockCounterClockwise, Tray, ChartLineUp, Certificate, UsersThree, ChalkboardTeacher, Table, MagnetStraight } from '@phosphor-icons/react'
 import { useAdminSession }                   from '@hooks/useAdminSession.js'
 import AdminAuthOverlay                      from '@components/admin/AdminAuthOverlay.jsx'
 import AccesosPanel                          from '@components/admin/AccesosPanel.jsx'
@@ -18,6 +18,7 @@ import AsistenciaPanel                       from '@components/admin/AsistenciaP
 import UsuariosPanel                          from '@components/admin/UsuariosPanel.jsx'
 import ProfesoresPanel                        from '@components/admin/ProfesoresPanel.jsx'
 import DetalleTalleresPanel                   from '@components/admin/DetalleTalleresPanel.jsx'
+import ProspectosPanel                        from '@components/admin/ProspectosPanel.jsx'
 
 const TABS = [
     { id: 'accesos',      label: 'Accesos',         Icon: Sparkle },
@@ -29,6 +30,7 @@ const TABS = [
     { id: 'usuarios',     label: 'Usuarios',        Icon: UsersThree },
     { id: 'metricas',     label: 'Métricas',        Icon: ChartLineUp },
     { id: 'detalle',      label: 'Detalle talleres', Icon: Table },
+    { id: 'prospectos',   label: 'Prospectos',       Icon: MagnetStraight },
 ]
 
 export default function PageAdmin() {
@@ -207,6 +209,9 @@ export default function PageAdmin() {
                 {/* Tab: Detalle talleres — recorrido completo por taller, con PDF */}
                 {activeTab === 'detalle' && isAuthenticated && (
                     <DetalleTalleresPanel adminToken={adminToken} />
+                )}
+                {activeTab === 'prospectos' && isAuthenticated && (
+                    <ProspectosPanel adminToken={adminToken} />
                 )}
             </div>
         </>

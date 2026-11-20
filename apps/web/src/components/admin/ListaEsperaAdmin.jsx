@@ -2,7 +2,7 @@
  * Destello Admin — ListaEsperaAdmin
  */
 import { useState, useEffect, useCallback } from 'react'
-import { WhatsappLogo, Envelope, ArrowClockwise, CheckCircle, WarningCircle, SealCheck, PaperPlaneTilt, BellRinging, LockKeyOpen } from '@phosphor-icons/react'
+import { ArrowClockwise, CheckCircle, WarningCircle, SealCheck, PaperPlaneTilt, BellRinging } from '@phosphor-icons/react'
 import { fmtFechaCompleta } from '@utils/fecha.js'
 
 const ESTADOS_OPTS = [
@@ -80,9 +80,9 @@ function relojPago(r) {
 const RELOJ_CFG = {
     en_plazo:           { color: 'var(--text-muted)',      etiqueta: h => `${h} h para pagar` },
     por_vencer:         { color: 'var(--color-amber-500)', etiqueta: h => `⏳ vence en ${h} h` },
-    falta_recordatorio: { color: 'var(--color-amber-500)', etiqueta: h => `⚠️ venció hace ${h} h · mándale recordatorio` },
-    en_gracia:          { color: 'var(--color-amber-500)', etiqueta: h => `🔔 ya se le recordó · ${h} h de gracia` },
-    gracia_vencida:     { color: 'var(--color-error)',     etiqueta: h => `⛔ sin responder hace ${h} h · puedes liberar` },
+    falta_recordatorio: { color: 'var(--color-amber-500)', etiqueta: h => `⚠️ venció hace ${h} h · el recordatorio sale solo` },
+    en_gracia:          { color: 'var(--color-amber-500)', etiqueta: h => `🔔 ya se le recordó · se libera sola en ${h} h` },
+    gracia_vencida:     { color: 'var(--color-error)',     etiqueta: h => `⛔ venció hace ${h} h · se libera en la próxima revisión` },
 }
 
 /** Etapas que significan "esta persona necesita algo de ti hoy". */
@@ -150,46 +150,6 @@ function EstadoSelect({ value, onChange, disabled }) {
     )
 }
 
-/** Construye el texto del mensaje WA (sin URL, solo el texto plano) */
-function buildWaMensaje(r) {
-    const nombre  = r.nombre?.split(' ')[0] || 'alumno/a'
-    const taller  = r.taller_nombre || 'el taller'
-    const precio  = r.taller_precio && Number(r.taller_precio) > 0
-        ? `$${Number(r.taller_precio).toLocaleString('es-MX')} MXN` : 'Gratuito'
-    // OJO: esta fecha se le manda a la alumna por WhatsApp. Con `new Date()`
-    // directo se corría un día (medianoche UTC → día anterior en CDMX), o sea
-    // le estábamos dando la fecha equivocada de su taller. Ver `@utils/fecha.js`.
-    const fecha   = fmtFechaCompleta(r.taller_fecha)
-    const horario = r.taller_horario || null
-
-    return [
-        `¡Hola ${nombre}! ✦`,
-        '',
-        `¡Alcanzaste un lugar en Destello! 🎉`,
-        '',
-        `✦ *${taller}*`,
-        fecha   ? `📅 Fecha: ${fecha}` : null,
-        horario ? `🕐 Horario: ${horario} (CDMX)` : null,
-        `💰 Inversión: ${precio}`,
-        '',
-        'Para confirmar tu lugar realiza tu pago:',
-        '',
-        '🏦 *SPEI — Inbursa*',
-        'Titular: Paola Arreola',
-        `CLABE: ${SPEI_CLABE}`,
-        '',
-        '💳 *Pago en efectivo*',
-        `Tarjeta: ${CARD_NUM}`,
-        'Titular: Paola Arreola',
-        '(Walmart · OXXO · Sears · Sanborns · Bodega Aurrera)',
-        '',
-        'Una vez realizado tu pago, envíanos tu *comprobante por WhatsApp* a este mismo número. ✦',
-        '',
-        `⏳ Tienes *${HORAS_PARA_PAGAR} horas* para reportar tu pago. Pasado ese tiempo el lugar se libera para alguien más.`,
-        '',
-        '¿Tienes dudas? Con gusto te atendemos. 😊',
-    ].filter(l => l !== null).join('\n')
-}
 
 /**
  * Recordatorio para quien ya se pasó de las 48 h sin reportar pago.
@@ -204,13 +164,18 @@ function buildWaMensaje(r) {
 function buildWaRecordatorio(r) {
     const nombre = r.nombre?.split(' ')[0] || 'alumno/a'
     const taller = r.taller_nombre || 'el taller'
+    // Desde el 19 nov el botón está siempre: si todavía está en plazo no se
+    // le dice que "ya se cumplió".
+    const vencido = !['en_plazo', 'por_vencer', 'na'].includes(relojPago(r).clave)
 
     return [
         `¡Hola ${nombre}! ✦`,
         '',
         `Te escribo por tu lugar en *${taller}*.`,
         '',
-        'Todavía no nos llega tu comprobante de pago y el plazo ya se cumplió. ' +
+        (vencido
+            ? 'Todavía no nos llega tu comprobante de pago y el plazo ya se cumplió. '
+            : 'Tu lugar sigue apartado y solo falta tu pago. ') +
         'Si ya pagaste, mándame la foto por aquí y lo confirmo enseguida. 📸',
         '',
         'Si no lo has hecho, aquí tienes de nuevo los datos:',
@@ -231,14 +196,24 @@ function buildWaRecordatorio(r) {
     ].join('\n')
 }
 
+/** Estilo de los botones de acción de cada fila. */
+const botonAccion = (acento, ocupado) => ({
+    display: 'flex', alignItems: 'center', gap: 5,
+    height: 28, padding: '0 10px',
+    background: `${acento}22`, border: `1px solid ${acento}`,
+    borderRadius: 'var(--radius-md)',
+    color: ocupado ? 'var(--text-muted)' : acento,
+    cursor: ocupado ? 'wait' : 'pointer',
+    fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
+    fontWeight: 600, whiteSpace: 'nowrap',
+})
+
 export default function ListaEsperaAdmin({ adminToken }) {
     const [lista,        setLista]        = useState([])
     const [loading,      setLoading]      = useState(false)
     const [updating,     setUpdating]     = useState(null)
-    const [enviandoMail, setEnviandoMail] = useState(null)
     const [enviandoWa,   setEnviandoWa]   = useState(null)
     const [confirmandoPago, setConfirmandoPago] = useState(null)
-    const [liberando,    setLiberando]    = useState(null)
     const [toast,        setToast]        = useState(null)
     const [filterEstado, setFilterEstado] = useState('all')
 
@@ -277,23 +252,6 @@ export default function ListaEsperaAdmin({ adminToken }) {
         finally { setUpdating(null) }
     }
 
-    const enviarCorreo = async (r) => {
-        if (!confirm(`¿Enviar correo de confirmación a ${r.nombre || r.email}?\n\nSe enviará con los detalles del taller y métodos de pago.`)) return
-        setEnviandoMail(r.id)
-        try {
-            const res  = await fetch(`/api/admin/lista-espera/${r.id}/confirmar-lugar`, {
-                method: 'POST', headers,
-            })
-            const data = await res.json()
-            if (res.ok) {
-                showToast(data.enviado ? `Correo enviado a ${r.email} ✓` : 'Lugar confirmado (sin correo)')
-                setLista(prev => prev.map(x => x.id === r.id ? { ...x, estado: 'cupo_confirmado' } : x))
-            } else {
-                showToast(data.message || 'Error al enviar correo', false)
-            }
-        } catch { showToast('Error de conexión', false) }
-        finally { setEnviandoMail(null) }
-    }
 
     /**
      * Envía un mensaje por el bot.
@@ -308,13 +266,13 @@ export default function ListaEsperaAdmin({ adminToken }) {
 
         const esRecordatorio = tipo === 'recordatorio'
         const pregunta = esRecordatorio
-            ? `¿Mandar recordatorio de pago a ${r.nombre || r.email}?\n\nSe le avisa que el plazo ya venció y que su lugar podría liberarse.`
+            ? `¿Mandar recordatorio de pago a ${r.nombre || r.email}?\n\nLe llega por WhatsApp con los datos de pago otra vez.`
             : `¿Enviar los DATOS DE PAGO por WhatsApp a ${r.nombre || r.email}?\n\nLe llega "¡Alcanzaste un lugar!" con la CLABE y la tarjeta, desde el número del bot Faro.`
         if (!confirm(pregunta)) return
 
         setEnviandoWa(r.id)
         try {
-            const mensaje = esRecordatorio ? buildWaRecordatorio(r) : buildWaMensaje(r)
+            const mensaje = buildWaRecordatorio(r)
             const res     = await fetch('/api/admin/send-wa', {
                 method: 'POST', headers,
                 body:   JSON.stringify({ numero, mensaje }),
@@ -352,47 +310,19 @@ export default function ListaEsperaAdmin({ adminToken }) {
         finally { setEnviandoWa(null) }
     }
 
-    /**
-     * Libera el lugar de quien no pagó.
-     *
-     * Además de marcar 'rechazado', el backend REVOCA su chispa: si no, la
-     * persona conservaría la llave del taller que nunca pagó.
-     */
-    const liberarLugar = async (r) => {
-        const quien = r.nombre || r.email
-        if (!confirm(
-            `¿Liberar el lugar de ${quien}?\n\n` +
-            `· Su registro pasa a "rechazado"\n` +
-            `· Se revoca su chispa (pierde el acceso al taller)\n` +
-            `· El cupo queda libre para alguien más\n\n` +
-            `Si después paga, tendrás que volver a apartarle el lugar.`
-        )) return
-
-        setLiberando(r.id)
-        try {
-            const res  = await fetch(`/api/admin/lista-espera/${r.id}/liberar`, { method: 'POST', headers })
-            const data = await res.json()
-            if (res.ok) {
-                const n = data.revocadas?.length ?? 0
-                showToast(`Lugar liberado${n ? ` · ${n} chispa${n > 1 ? 's' : ''} revocada${n > 1 ? 's' : ''}` : ''} ✓`)
-                setLista(prev => prev.map(x => x.id === r.id ? { ...x, estado: 'rechazado' } : x))
-            } else {
-                showToast(data.message || 'No se pudo liberar', false)
-            }
-        } catch { showToast('Error de conexión', false) }
-        finally { setLiberando(null) }
-    }
 
     const confirmarPago = async (r) => {
         const esReenvio = r.estado === 'pagado'
         const msg = esReenvio
-            ? `¿Reenviar el acceso a ${r.nombre || r.email}?\n\n` +
+            ? `¿Reenviar la confirmación de pago a ${r.nombre || r.email}?\n\n` +
               `Se volverá a enviar la bienvenida al taller por WhatsApp y correo (sin datos de pago). ` +
               `La cuenta y el taller que ya existen se conservan.`
             : `¿Confirmar el pago de ${r.nombre || r.email}?\n\n` +
               `Se creará/activará su cuenta, se le asignará el taller y se le enviará ` +
               `la bienvenida al taller por WhatsApp y correo (sin datos de pago).`
-        if (!confirm(msg)) return
+        if (!confirm(r.estado === 'rechazado'
+            ? `⚠️ Su lugar se había liberado. Revisa que todavía haya cupo en ${r.taller_nombre || 'el taller'}.\n\n${msg}`
+            : msg)) return
 
         setConfirmandoPago(r.id)
         try {
@@ -404,7 +334,7 @@ export default function ListaEsperaAdmin({ adminToken }) {
                 // cuenta se activa igual, pero el número NO se copia. Hay que
                 // enseñarlo, si no el número "desaparece" sin explicación.
                 if (data.avisoWa) showToast(`⚠️ ${data.avisoWa}`, false)
-                else showToast(`${esReenvio ? 'Acceso reenviado' : 'Cuenta lista'}${canales ? ` · ${canales}` : ''} ✓`)
+                else showToast(`${esReenvio ? 'Confirmación reenviada' : 'Pago confirmado'}${canales ? ` · ${canales}` : ''} ✓`)
                 setLista(prev => prev.map(x => x.id === r.id ? { ...x, estado: 'pagado' } : x))
             } else {
                 showToast(data.message || 'Error al procesar', false)
@@ -589,126 +519,40 @@ export default function ListaEsperaAdmin({ adminToken }) {
                                 </td>
                                 <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
                                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                        {/* Confirmar pago (cupo_confirmado) o Reenviar acceso (pagado) */}
-                                        {(r.estado === 'cupo_confirmado' || r.estado === 'pagado') && (() => {
-                                            const esReenvio = r.estado === 'pagado'
-                                            const acento    = esReenvio ? 'var(--color-jade-500)' : '#8b5cf6'
-                                            return (
-                                                <button
-                                                    onClick={() => confirmarPago(r)}
-                                                    disabled={confirmandoPago === r.id}
-                                                    title={esReenvio
-                                                        ? 'Reenviar acceso (bienvenida al taller por correo + WhatsApp, sin datos de pago)'
-                                                        : 'Confirmar pago → crea la cuenta, asigna el taller y envía la bienvenida'}
-                                                    style={{
-                                                        display: 'flex', alignItems: 'center', gap: 5,
-                                                        height: 28, padding: '0 10px',
-                                                        background: `${acento}22`, border: `1px solid ${acento}`,
-                                                        borderRadius: 'var(--radius-md)',
-                                                        color: confirmandoPago === r.id ? 'var(--text-muted)' : acento,
-                                                        cursor: confirmandoPago === r.id ? 'wait' : 'pointer',
-                                                        fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
-                                                        fontWeight: 600, whiteSpace: 'nowrap',
-                                                    }}>
-                                                    {esReenvio ? <PaperPlaneTilt size={14} weight="fill" /> : <SealCheck size={14} weight="fill" />}
-                                                    {confirmandoPago === r.id
-                                                        ? (esReenvio ? 'Reenviando...' : 'Confirmando...')
-                                                        : (esReenvio ? 'Reenviar acceso' : 'Confirmar pago')}
-                                                </button>
-                                            )
-                                        })()}
-                                        {/* WA — manda los DATOS DE PAGO ("¡Alcanzaste un lugar!"
-                                            + CLABE/tarjeta) desde el bot Faro. Solo mientras
-                                            falta pagar: en un renglón `pagado` mandaba otra vez
-                                            la CLABE a quien ya pagó (T-48, 18 nov 2026). Para
-                                            `pagado` el botón que toca es "Reenviar acceso". */}
-                                        {r.whatsapp && !['pagado', 'rechazado'].includes(r.estado) && (
+                                        {/* Panel simplificado (19 nov 2026, Paola): los datos de pago
+                                            los manda el bot al inscribirse y el lugar se libera solo
+                                            al vencer el plazo. Aquí queda solo lo que es de Paola:
+                                              · Confirmar pago (cualquier fila sin pagar)
+                                              · Reenviar confirmación (ya pagada: WhatsApp + correo)
+                                              · Recordar pago (siempre que falte pagar) */}
+                                        {r.estado !== 'pagado' && !r.is_demo && (
                                             <button
-                                                onClick={() => enviarWa(r)}
-                                                disabled={enviandoWa === r.id}
-                                                title="Enviar datos de pago por WhatsApp (bot Faro)"
-                                                style={{
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    width: 28, height: 28,
-                                                    background: enviandoWa === r.id ? 'transparent' : '#25D36622',
-                                                    border: '1px solid #25D366',
-                                                    borderRadius: 'var(--radius-md)',
-                                                    color: enviandoWa === r.id ? 'var(--text-muted)' : '#25D366',
-                                                    cursor: enviandoWa === r.id ? 'wait' : 'pointer',
-                                                    fontFamily: 'var(--font-sans)',
-                                                }}>
-                                                <WhatsappLogo size={14} weight="fill" />
+                                                onClick={() => confirmarPago(r)}
+                                                disabled={confirmandoPago === r.id}
+                                                title="Confirmar pago → activa la cuenta, asigna el taller y le manda la confirmación por WhatsApp y correo"
+                                                style={botonAccion('#8b5cf6', confirmandoPago === r.id)}>
+                                                <SealCheck size={14} weight="fill" />
+                                                {confirmandoPago === r.id ? 'Confirmando…' : 'Confirmar pago'}
                                             </button>
                                         )}
-                                        {/* Recordar pago — solo aparece cuando el reloj de 48 h
-                                            ya venció o está por vencer. No tiene sentido ofrecerlo
-                                            para alguien que apenas apartó su lugar hace una hora.
-                                            Desde T-36 (18 sep 2026) la API ya manda este mismo
-                                            recordatorio sola al cumplirse las 48 h (ver
-                                            recordatorioAutoService.js) — este botón queda como
-                                            respaldo: para adelantarlo antes de tiempo, o para
-                                            reintentar a mano si el automático falló. */}
-                                        {r.whatsapp && ETAPAS_TRABAJO.includes(relojPago(r).clave) && (
+                                        {r.estado === 'pagado' && (
+                                            <button
+                                                onClick={() => confirmarPago(r)}
+                                                disabled={confirmandoPago === r.id}
+                                                title="Reenviar la confirmación de pago (bienvenida al taller) por WhatsApp y correo"
+                                                style={botonAccion('var(--color-jade-500)', confirmandoPago === r.id)}>
+                                                <PaperPlaneTilt size={14} weight="fill" />
+                                                {confirmandoPago === r.id ? 'Enviando…' : 'Reenviar confirmación'}
+                                            </button>
+                                        )}
+                                        {r.whatsapp && ['pendiente', 'cupo_confirmado', 'confirmado'].includes(r.estado) && !r.is_demo && (
                                             <button
                                                 onClick={() => enviarWa(r, 'recordatorio')}
                                                 disabled={enviandoWa === r.id}
-                                                title="Recordarle que su lugar está por liberarse"
-                                                style={{
-                                                    display: 'flex', alignItems: 'center', gap: 4,
-                                                    padding: '4px 8px', height: 28,
-                                                    background: 'rgba(217,119,6,0.12)',
-                                                    border: '1px solid var(--color-amber-500)',
-                                                    borderRadius: 'var(--radius-md)',
-                                                    color: 'var(--color-amber-500)',
-                                                    cursor: enviandoWa === r.id ? 'wait' : 'pointer',
-                                                    fontFamily: 'var(--font-sans)',
-                                                    fontSize: 'var(--text-xs)', fontWeight: 600,
-                                                    whiteSpace: 'nowrap',
-                                                }}>
-                                                <BellRinging size={13} weight="fill" /> Recordar
-                                            </button>
-                                        )}
-                                        {/* Liberar lugar — solo cuando el plazo YA venció, nunca
-                                            en "por vencer": mientras quede tiempo, la persona
-                                            todavía está en su derecho de pagar. */}
-                                        {relojPago(r).clave === 'gracia_vencida' && (
-                                            <button
-                                                onClick={() => liberarLugar(r)}
-                                                disabled={liberando === r.id}
-                                                title="Liberar el cupo y revocar su chispa"
-                                                style={{
-                                                    display: 'flex', alignItems: 'center', gap: 4,
-                                                    padding: '4px 8px', height: 28,
-                                                    background: 'rgba(239,68,68,0.10)',
-                                                    border: '1px solid var(--color-error)',
-                                                    borderRadius: 'var(--radius-md)',
-                                                    color: 'var(--color-error)',
-                                                    cursor: liberando === r.id ? 'wait' : 'pointer',
-                                                    fontFamily: 'var(--font-sans)',
-                                                    fontSize: 'var(--text-xs)', fontWeight: 600,
-                                                    whiteSpace: 'nowrap',
-                                                }}>
-                                                <LockKeyOpen size={13} weight="fill" />
-                                                {liberando === r.id ? 'Liberando…' : 'Liberar'}
-                                            </button>
-                                        )}
-                                        {/* Correo — envía via Resend con template completo */}
-                                        {r.email && (
-                                            <button
-                                                onClick={() => enviarCorreo(r)}
-                                                disabled={enviandoMail === r.id}
-                                                title="Enviar correo de confirmación (con detalles + pagos)"
-                                                style={{
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    width: 28, height: 28,
-                                                    background: 'var(--color-jade-500)22',
-                                                    border: '1px solid var(--color-jade-500)',
-                                                    borderRadius: 'var(--radius-md)',
-                                                    color: enviandoMail === r.id ? 'var(--text-muted)' : 'var(--color-jade-500)',
-                                                    cursor: enviandoMail === r.id ? 'wait' : 'pointer',
-                                                    fontFamily: 'var(--font-sans)',
-                                                }}>
-                                                <Envelope size={14} weight="fill" />
+                                                title="Mandarle por WhatsApp un recordatorio de pago con los datos de pago"
+                                                style={botonAccion('var(--color-amber-500)', enviandoWa === r.id)}>
+                                                <BellRinging size={13} weight="fill" />
+                                                {enviandoWa === r.id ? 'Enviando…' : 'Recordar pago'}
                                             </button>
                                         )}
                                     </div>
