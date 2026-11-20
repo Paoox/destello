@@ -94,9 +94,18 @@ export default function ProspectosPanel({ adminToken }) {
       })
       const d = await res.json()
       if (!res.ok) { setAviso({ ok: false, txt: d.message || 'No se pudo enviar' }); return }
-      setAviso({ ok: true, txt:
-        `Invitación enviada a ${d.invitados} · ${d.whatsapp} por WhatsApp · ${d.correo} por correo` +
-        (d.omitidos?.length ? ` · ${d.omitidos.length} sin enviar (${d.omitidos.map(o => o.motivo).join(', ')})` : '') })
+      // Si no salió nada, se dice claro y por qué (antes decía "enviada a 0").
+      const detalle = (d.fallas ?? []).map(f => `${f.quien}: ${f.motivos.join(' · ')}`)
+      if (!d.invitados) {
+        setAviso({ ok: false, txt: 'No se pudo enviar la invitación.', detalle })
+      } else {
+        setAviso({
+          ok: !detalle.length ? true : 'parcial',
+          txt: `Invitación enviada a ${d.invitados} ${d.invitados === 1 ? 'persona' : 'personas'}` +
+               ` · ${d.whatsapp} por WhatsApp · ${d.correo} por correo`,
+          detalle,
+        })
+      }
       cargar()
     } catch { setAviso({ ok: false, txt: 'Error de conexión' }) }
     finally { setEnviando(false) }
@@ -140,7 +149,14 @@ export default function ProspectosPanel({ adminToken }) {
         </button>
         {seleccion.length > max && <span className="pr-err">Máximo {max} por envío</span>}
       </div>
-      {aviso && <p className={aviso.ok ? 'pr-ok' : 'pr-err'}>{aviso.txt}</p>}
+      {aviso && (
+        <div className={`pr-aviso ${aviso.ok === true ? 'ok' : aviso.ok === 'parcial' ? 'parcial' : 'err'}`}>
+          <strong>{aviso.txt}</strong>
+          {aviso.detalle?.length > 0 && (
+            <ul>{aviso.detalle.map((t, i) => <li key={i}>{t}</li>)}</ul>
+          )}
+        </div>
+      )}
 
       <div className="pr-tabla">
         <table>
@@ -195,6 +211,11 @@ const CSS = `
 .pr-envio label { display: flex; gap: 6px; align-items: center; color: var(--text-muted); }
 .pr-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--radius-full); border: none; background: var(--color-jade-500); color: #fff; font-family: var(--font-sans); font-size: var(--text-xs); font-weight: 700; cursor: pointer; }
 .pr-btn:disabled { opacity: .5; cursor: default; }
+.pr-aviso { padding: var(--space-3); border-radius: var(--radius-lg); font-size: var(--text-sm); border: 1px solid; }
+.pr-aviso ul { margin: 6px 0 0; padding-left: 18px; font-size: var(--text-xs); line-height: 1.6; }
+.pr-aviso.ok      { color: var(--color-jade-500);  border-color: var(--color-jade-500);  background: rgba(13,115,119,.08); }
+.pr-aviso.parcial { color: var(--color-amber-500); border-color: var(--color-amber-500); background: rgba(217,119,6,.08); }
+.pr-aviso.err     { color: var(--color-error);     border-color: var(--color-error);     background: rgba(239,68,68,.08); }
 .pr-ok  { margin: 0; color: var(--color-jade-500); font-size: var(--text-sm); }
 .pr-err { margin: 0; color: var(--color-error); font-size: var(--text-sm); }
 .pr-tabla { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }

@@ -90,6 +90,19 @@ export async function listar({ origen = null, tallerId = null } = {}) {
 
 const dormir = (ms) => new Promise(r => setTimeout(r, ms))
 
+/** El error técnico de un canal, en palabras para el panel (pura, con pruebas). */
+export function motivoLegible(canal, err) {
+    const m = String(err?.message ?? err ?? '')
+    if (canal === 'whatsapp') {
+        if (/fetch failed|ECONNREFUSED|ENOTFOUND|timeout|aborted/i.test(m)) return 'WhatsApp: el bot Faro no responde'
+        if (/not.*(exist|registered)|no existe|invalid.*(jid|number)/i.test(m)) return 'WhatsApp: ese número no tiene WhatsApp'
+        return `WhatsApp: ${m || 'error desconocido'}`
+    }
+    if (/api key/i.test(m)) return 'correo: la llave de Resend no es válida'
+    if (/invalid.*(email|to)|valid email/i.test(m)) return 'correo: la dirección no es válida'
+    return `correo: ${m || 'error desconocido'}`
+}
+
 /**
  * Invita a los prospectos elegidos a `tallerId` por WhatsApp y correo.
  * `seleccion`: [{ email, tallerId, origen }] tal como vienen en `listar()`;
@@ -113,24 +126,36 @@ export async function invitar({ seleccion = [], tallerId }) {
     const porEmail = new Map()
     for (const p of todos) if (elegidos.has(clave(p)) && !porEmail.has(p.email)) porEmail.set(p.email, p)
 
-    const resultado = { invitados: 0, whatsapp: 0, correo: 0, omitidos: [] }
+    const resultado = { invitados: 0, whatsapp: 0, correo: 0, omitidos: [], fallas: [] }
     for (const p of porEmail.values()) {
-        if (p.noContactar) { resultado.omitidos.push({ email: p.email, motivo: 'cuenta bloqueada o dada de baja' }); continue }
+        const quien = p.nombre || p.email
+        if (p.noContactar) { resultado.omitidos.push({ quien, motivos: ['cuenta bloqueada o dada de baja'] }); continue }
         let wa = false, mail = false
-        if (p.whatsapp && p.avisosWhatsapp) {
+        const fallas = []
+        if (!p.whatsapp)            fallas.push('WhatsApp: no tenemos su número')
+        else if (!p.avisosWhatsapp) fallas.push('WhatsApp: apagó sus avisos')
+        else {
             try {
                 await sendWhatsapp(p.whatsapp, mensajeInvitacion({ nombre: p.nombre, origen: p.origen, taller }))
                 wa = true
                 await dormir(PAUSA_WA_MS)
-            } catch (err) { console.error(`[prospectos] WA a ${p.email}:`, err.message) }
+            } catch (err) {
+                console.error(`[prospectos] WA a ${p.email}:`, err.message)
+                fallas.push(motivoLegible('whatsapp', err))
+            }
         }
-        if (p.avisosCorreo) {
+        if (!p.avisosCorreo) fallas.push('correo: apagó sus avisos')
+        else {
             try {
                 await sendInvitacionTaller({ to: p.email, nombre: p.nombre, origen: p.origen, taller })
                 mail = true
-            } catch (err) { console.error(`[prospectos] correo a ${p.email}:`, err.message) }
+            } catch (err) {
+                console.error(`[prospectos] correo a ${p.email}:`, err.message)
+                fallas.push(motivoLegible('correo', err))
+            }
         }
-        if (!wa && !mail) { resultado.omitidos.push({ email: p.email, motivo: 'no se pudo mandar ni WhatsApp ni correo' }); continue }
+        if (fallas.length) resultado.fallas.push({ quien, enviado: wa || mail, motivos: fallas })
+        if (!wa && !mail) { resultado.omitidos.push({ quien, motivos: fallas }); continue }
         await query(
             `INSERT INTO prospecto_invitaciones (email, taller_id, origen, wa_enviado, correo_enviado)
              VALUES ($1, $2, $3, $4, $5)`, [p.email, taller.id, p.origen, wa, mail])
