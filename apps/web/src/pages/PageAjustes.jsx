@@ -321,7 +321,7 @@ export default function PageAjustes() {
   const [versionReportes, setVersionReportes] = useState(0)
   const [params] = useSearchParams()
   const reporteFoco = Number(params.get('reporte')) || null   // viene de la notificación
-  const waSoporte = `https://wa.me/52${WA_NUMBER}?text=${encodeURIComponent(
+  const waSoporte = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(
     `Hola ✦ Necesito ayuda con mi cuenta de Destello (${datos?.email ?? ''}).`)}`
 
   // ── Baja ──

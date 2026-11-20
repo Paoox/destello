@@ -1436,10 +1436,9 @@ se llama desde el manejador principal de mensajes.
   ⚠️ La 024 va ANTES de desplegar la API: `listReportes()` ya lee
   `imagen_path`. En local no se puede adjuntar sin `SUPABASE_SERVICE_KEY`
   en `apps/api/.env` (responde 503 SIN_STORAGE con mensaje legible).
-- **⚠️ Encontrado de paso:** `WA_NUMBER` en `constants.js` es
-  `5577888800` sin el 52 — `wa.me/5577888800` abre un número de **Brasil**.
-  Lo usan el login ("inscribirme") y la landing (congelada). Ajustes ya
-  arma su enlace con `52`. Pendiente decidir con Paola.
+- **✅ `WA_NUMBER` corregido (19 nov 2026):** ahora es `525577888800` (con
+  el 52). Antes wa.me lo abría como número de Brasil en Login y Landing.
+  La Landing no se editó: toma el número de `constants.js`.
 - **▶ Priorizado por Paola (18 nov 2026):** va en lo siguiente a construir.
 - **Encontrado al revisar el pendiente de Paola (18 sep 2026):** mismo
   caso que T-44 — `Navbar.jsx` tiene "Ajustes" apuntando a `/settings`,
