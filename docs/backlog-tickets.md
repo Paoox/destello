@@ -817,10 +817,9 @@ se llama desde el manejador principal de mensajes.
 >   (hoy `/habitat` es solo el catálogo de talleres). Ver T-24 para la
 >   visión completa (mundo tipo Minecraft con objetos desbloqueables); esto
 >   es el primer paso, no todo T-24. Alcance a definir con Paola.
-> - ~~**T-44 — Pantalla de Notificaciones**~~ ✅ en código (19 nov 2026).
-> - **T-45 — Pantalla de Ajustes** (`/settings`, hoy link muerto) — lo
->   siguiente; arranca con los interruptores `avisos_whatsapp` /
->   `avisos_correo` que T-44 ya respeta.
+> - ~~**T-44 — Pantalla de Notificaciones**~~ ✅ desplegado (19 nov 2026).
+> - ~~**T-45 — Pantalla de Ajustes**~~ ✅ desplegado (19 nov 2026), con
+>   soporte con folio y seguimiento.
 > - **Pagos a profes:** detalle de lo pendiente por pagarle a cada una
 >   (cuelga de `profesor_datos_pago` y del estimado de talleres).
 >
@@ -1382,7 +1381,7 @@ se llama desde el manejador principal de mensajes.
   ticket empieza como "aterrizar qué es esto", no como código.
 
 ### T-45 — Página de Ajustes (hoy: link muerto en el menú)
-- **✅ En código (19 nov 2026), falta correr la migración 022 y desplegar.**
+- **✅ Desplegado en la Toshiba (19 nov 2026); migraciones 022, 023 y 024 corridas en Supabase.**
   `/settings` (`PageAjustes.jsx`, lógica en `ajustesService.js`):
   - **Apariencia** sistema/claro/oscuro, guardada en el aparato
     (`utils/tema.js`, `<html data-theme>`). Las hojas con modo claro
