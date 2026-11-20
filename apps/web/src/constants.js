@@ -32,4 +32,4 @@ export function isAdminEmail(email) {
 }
 
 /** /notifs lo dispara al marcar todo como leído → la campanita del menú se apaga. */
-export const EVENTO_NOTIFS_LEIDAS = 'destello:notificaciones-leidas'
+export const EVENTO_NOTIFS_LEIDAS = 'destello:notificaciones-leidas'
