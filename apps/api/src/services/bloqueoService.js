@@ -102,6 +102,10 @@ export async function cambiar({ email, tipo, bloquear, motivo = null, hechoPor =
     }
 
     const columna = tipo === 'acceso' ? 'acceso_bloqueado' : 'compras_bloqueadas'
+    // Desbloquear el acceso es también la forma de reactivar a alguien que
+    // pidió su baja desde Ajustes (T-45): se limpia la marca de baja.
+    const reactivar = tipo === 'acceso' && !bloquear
+        ? 'baja_solicitada_at = NULL, baja_motivo = NULL,' : ''
 
     // El motivo y la firma solo se escriben al bloquear. Al desbloquear se
     // limpian: dejar el motivo viejo colgado haría ver como bloqueada, en el
@@ -109,6 +113,7 @@ export async function cambiar({ email, tipo, bloquear, motivo = null, hechoPor =
     const { rows } = await query(
         `UPDATE usuarios
             SET ${columna}      = $2,
+                ${reactivar}
                 bloqueo_motivo  = CASE WHEN $2 THEN $3   ELSE NULL END,
                 bloqueo_at      = CASE WHEN $2 THEN NOW() ELSE NULL END,
                 bloqueo_por     = CASE WHEN $2 THEN $4   ELSE NULL END,

@@ -1382,6 +1382,65 @@ se llama desde el manejador principal de mensajes.
   ticket empieza como "aterrizar qué es esto", no como código.
 
 ### T-45 — Página de Ajustes (hoy: link muerto en el menú)
+- **✅ En código (19 nov 2026), falta correr la migración 022 y desplegar.**
+  `/settings` (`PageAjustes.jsx`, lógica en `ajustesService.js`):
+  - **Apariencia** sistema/claro/oscuro, guardada en el aparato
+    (`utils/tema.js`, `<html data-theme>`). Las hojas con modo claro
+    (`tokens.css`, `global.css`, `Navbar`, `Constellation`,
+    `PageCertificado`) escriben el claro dos veces: bajo
+    `prefers-color-scheme: light` con `:root:not([data-theme="dark"])` y
+    con `:root[data-theme="light"]`. ⚠️ `PageLanding` (congelada) sigue
+    solo al sistema.
+  - **Avisos** WhatsApp / correo (`usuarios.avisos_*`, T-44).
+  - **Cuenta:** el correo NO se cambia (llave de Google, chispas, FK). El
+    WhatsApp se cambia solo con código de Faro al número nuevo
+    (`POST /users/me/whatsapp/codigo` + `/confirmar`). De paso se cerró
+    `PUT /users/me` con `whatsapp` (lo cambiaba sin código: quien tuviera
+    una sesión ajena podía poner su número y quedarse con el login).
+  - **Soporte:** WhatsApp, correo, y "Reportar un problema" → reporte
+    `problema_plataforma` en el tab Reportes + WhatsApp a `ADMIN_WA`.
+  - **Baja** (regla de Paola): la puede pedir siempre, escribiendo
+    ELIMINAR. Al momento: `acceso_bloqueado` (con su renglón en el
+    historial), avisos apagados, lugares sin pagar liberados, reporte
+    `baja_cuenta` a Paola. Profes con talleres asignados no pueden solas.
+    Reactivar = tab Usuarios → desbloquear acceso (limpia
+    `baja_solicitada_at`). Borrado de datos a los 6 meses → **T-50**.
+- **Soporte con opciones** ("No puedo entrar a mi taller", "Dudas con los
+  30 días de material", "Perdí el acceso a mi correo", "No me llegan las
+  notificaciones", pago, certificado, video/audio, otro) — la etiqueta va al
+  inicio del reporte (`CATEGORIAS_SOPORTE` en `ajustesService.js`, igual
+  que `OPCIONES_SOPORTE` en `PageAjustes.jsx`).
+- **Responder reportes desde el panel** (migración 023,
+  `reporte_respuestas`): tab Reportes → cuadro "Responder" (+ casilla
+  "y marcar como revisado"). La respuesta le llega al momento a su campanita
+  (notificación `respuesta_soporte`, sin WhatsApp). Sin cuenta → no hay
+  campanita, el panel sugiere WhatsApp. ⚠️ Desde este cambio
+  `listReportes()` lee `reporte_respuestas`: la 023 tiene que estar corrida
+  ANTES de desplegar la API o el tab Reportes falla.
+- **Folio y "Mis reportes"**: cada reporte tiene folio `R-00015`
+  (`folioReporte()`, id con ceros). Al enviar se muestra el folio; en
+  Ajustes → Soporte la persona ve sus reportes (Recibido / Respondido /
+  Resuelto) con la conversación y puede agregar mensajes
+  (`POST /users/me/reportes/:id/mensaje`, `hecho_por = 'persona'`): eso
+  reabre el reporte y le avisa a Paola por WhatsApp. La notificación de
+  respuesta liga a `/settings?reporte=<id>` y abre ese hilo.
+  Cuando ya hay respuesta de soporte, la persona puede darle "Ya se
+  resolvió, gracias" (`POST /users/me/reportes/:id/cerrar`, nota
+  `NOTA_CERRADO_PERSONA`). En el panel: "💬 Te escribió de nuevo" /
+  "😊 Lo dio por resuelto", ordenado por última actividad.
+- **Clip 📎 en Soporte** (migración 024, `reporte_respuestas.imagen_path`):
+  una imagen por reporte o por mensaje, achicada en el navegador
+  (`utils/imagen.js`, JPEG ≤1600 px) y subida al bucket privado de
+  comprobantes en la carpeta `soporte/` (`subirImagenSoporte()` en
+  `storageService.js`). La del reporte inicial usa
+  `reportes_acceso.comprobante_path`. Se ven con URL firmada de 1 h.
+  ⚠️ La 024 va ANTES de desplegar la API: `listReportes()` ya lee
+  `imagen_path`. En local no se puede adjuntar sin `SUPABASE_SERVICE_KEY`
+  en `apps/api/.env` (responde 503 SIN_STORAGE con mensaje legible).
+- **⚠️ Encontrado de paso:** `WA_NUMBER` en `constants.js` es
+  `5577888800` sin el 52 — `wa.me/5577888800` abre un número de **Brasil**.
+  Lo usan el login ("inscribirme") y la landing (congelada). Ajustes ya
+  arma su enlace con `52`. Pendiente decidir con Paola.
 - **▶ Priorizado por Paola (18 nov 2026):** va en lo siguiente a construir.
 - **Encontrado al revisar el pendiente de Paola (18 sep 2026):** mismo
   caso que T-44 — `Navbar.jsx` tiene "Ajustes" apuntando a `/settings`,
@@ -1393,6 +1452,21 @@ se llama desde el manejador principal de mensajes.
 - **Dónde tocar:** ruta nueva en `App.jsx`, página nueva.
 - **Criterio de terminado:** por definir junto con el alcance — mismo
   caso que T-44.
+
+### T-50 — Borrar datos personales de las cuentas dadas de baja (6 meses)
+- **Regla (Paola, 19 nov 2026):** quien pide la baja en Ajustes (T-45)
+  queda bloqueada al momento; sus datos personales se borran cuando lleve
+  **6 meses sin ningún taller** — contando desde lo que pase último: la
+  baja o la fecha de su último taller.
+- **Qué falta:** un proceso (en el mismo revisor de `index.js`, una vez al
+  día) que encuentre `baja_solicitada_at` + 6 meses sin talleres +
+  `anonimizada_at IS NULL`, y borre nombre, apellido, WhatsApp, foto y
+  nombre de certificado; marque `anonimizada_at`.
+- **A decidir antes de construir:** qué hacer con el **correo** (es la
+  llave de `chispas` vía FK con `ON UPDATE CASCADE`, y aparece como texto
+  en `lista_espera`, `pagos`, `asistencias`, `certificados`). Los pagos y
+  certificados se conservan (contabilidad y QR público).
+- **No urge:** la primera cuenta posible cumple 6 meses en mayo 2027.
 
 ### T-46 — Menú de avatares para alumnos con cámara apagada
 - **Pedido por Paola (18 sep 2026):** cuando un alumno trae la cámara

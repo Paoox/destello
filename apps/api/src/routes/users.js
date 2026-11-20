@@ -18,6 +18,7 @@ import { esProfeDelTaller } from '../services/profesorService.js'
 import { validarFoto } from '../services/fotoPerfil.js'
 import * as datosPagoService from '../services/datosPagoService.js'
 import * as notificacionService from '../services/notificacionService.js'
+import * as ajustesService from '../services/ajustesService.js'
 
 const router = Router()
 
@@ -80,10 +81,15 @@ router.put('/me', async (req, res, next) => {
       sets.push('nombre_certificado_at = NOW()')
     }
     if (whatsapp !== undefined) {
-      // No dejar que alguien se apropie del número de otra cuenta editando su
-      // perfil: sería la puerta trasera al mismo acceso cruzado del login.
-      const waNorm = await usuarioService.asegurarWhatsappLibre(whatsapp, req.user.userId)
-      sets.push(`whatsapp = $${i++}`); vals.push(waNorm)
+      // Cerrado el 19 nov 2026 (T-45): cambiar el WhatsApp sin probar que el
+      // número nuevo es tuyo dejaba que quien tuviera una sesión abierta
+      // ajena pusiera su número y se quedara con el login por código. Ahora
+      // solo se cambia con código: POST /users/me/whatsapp/codigo + /confirmar.
+      return res.status(400).json({
+        status:  'error',
+        code:    'USA_AJUSTES',
+        message: 'El WhatsApp se cambia desde Ajustes, confirmando con un código.',
+      })
     }
 
     if (!sets.length) return res.json({ status: 'ok', message: 'Nada que actualizar' })
@@ -453,6 +459,77 @@ router.post('/me/notificaciones/leer', async (req, res, next) => {
     const marcadas = await notificacionService.marcarLeidas(req.user.userId, req.body?.ids ?? null)
     res.json({ status: 'ok', marcadas })
   } catch (err) { next(err) }
+})
+
+// ══════════════════════════════════════════════════════════════════════════
+// Ajustes (T-45) — la lógica vive en services/ajustesService.js
+// ══════════════════════════════════════════════════════════════════════════
+
+/** GET /users/me/ajustes → correo, WhatsApp y avisos. */
+router.get('/me/ajustes', async (req, res, next) => {
+  try { res.json({ status: 'ok', ajustes: await ajustesService.leer(req.user.userId) }) }
+  catch (err) { next(err) }
+})
+
+/** PUT /users/me/avisos → body { avisosWhatsapp?, avisosCorreo? } */
+router.put('/me/avisos', async (req, res, next) => {
+  try { res.json({ status: 'ok', avisos: await ajustesService.guardarAvisos(req.user.userId, req.body ?? {}) }) }
+  catch (err) { next(err) }
+})
+
+/** POST /users/me/whatsapp/codigo → body { whatsapp } (el número NUEVO) */
+router.post('/me/whatsapp/codigo', async (req, res, next) => {
+  try {
+    await ajustesService.pedirCodigoWhatsapp(req.user.userId, req.body?.whatsapp)
+    res.json({ status: 'ok', message: 'Te mandamos un código por WhatsApp al número nuevo' })
+  } catch (err) { next(err) }
+})
+
+/** POST /users/me/whatsapp/confirmar → body { whatsapp, codigo } */
+router.post('/me/whatsapp/confirmar', async (req, res, next) => {
+  try {
+    const r = await ajustesService.confirmarWhatsapp(req.user.userId, req.body?.whatsapp, req.body?.codigo)
+    res.json({ status: 'ok', whatsapp: r.whatsapp })
+  } catch (err) { next(err) }
+})
+
+/** POST /users/me/soporte → body { categoria, detalle, tallerId? } → tab Reportes del panel */
+router.post('/me/soporte', async (req, res, next) => {
+  try { res.json({ status: 'ok', ...(await ajustesService.reportarProblema(req.user.userId, req.body ?? {})) }) }
+  catch (err) { next(err) }
+})
+
+/** GET /users/me/reportes → sus reportes con folio, estado y conversación */
+router.get('/me/reportes', async (req, res, next) => {
+  try { res.json({ status: 'ok', reportes: await ajustesService.misReportes(req.user.userId) }) }
+  catch (err) { next(err) }
+})
+
+/** POST /users/me/reportes/:id/mensaje → body { texto }. Reabre el reporte y avisa a Paola. */
+router.post('/me/reportes/:id/mensaje', async (req, res, next) => {
+  try {
+    const mensaje = await ajustesService.escribirEnReporte(req.user.userId, req.params.id,
+      { texto: req.body?.texto, imagen: req.body?.imagen || null })
+    res.json({ status: 'ok', mensaje })
+  } catch (err) { next(err) }
+})
+
+/** POST /users/me/reportes/:id/cerrar → la persona da por resuelto su reporte */
+router.post('/me/reportes/:id/cerrar', async (req, res, next) => {
+  try { res.json({ status: 'ok', ...(await ajustesService.cerrarMiReporte(req.user.userId, req.params.id)) }) }
+  catch (err) { next(err) }
+})
+
+/** GET /users/me/baja → qué pasaría (¿es profe? ¿tiene talleres pagados por venir?) */
+router.get('/me/baja', async (req, res, next) => {
+  try { res.json({ status: 'ok', ...(await ajustesService.previaBaja(req.user.userId)) }) }
+  catch (err) { next(err) }
+})
+
+/** POST /users/me/baja → body { confirmacion: 'ELIMINAR', motivo? } */
+router.post('/me/baja', async (req, res, next) => {
+  try { res.json({ status: 'ok', ...(await ajustesService.pedirBaja(req.user.userId, req.body ?? {})) }) }
+  catch (err) { next(err) }
 })
 
 export default router

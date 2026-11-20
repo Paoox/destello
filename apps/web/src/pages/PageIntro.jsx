@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import logoLight from '../Images/destello-logo-512.png'
 import logoDark  from '../Images/destello-logo-dark-512.png'
+import { esOscuro } from '@utils/tema.js'
 
 const NOMBRE             = 'Destello'
 const LOGO_FADE_DURATION = 1000
@@ -18,7 +19,7 @@ export default function PageIntro() {
     const navigate = useNavigate()
 
     // Solo se necesita para elegir la imagen — el CSS maneja el resto
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    const prefersDark = esOscuro()  // respeta el tema elegido en Ajustes
     const logo = prefersDark ? logoDark : logoLight
 
     const [logoVisible,   setLogoVisible]   = useState(false)

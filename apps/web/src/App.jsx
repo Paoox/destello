@@ -25,6 +25,7 @@ const PageAdmin    = lazy(() => import('@pages/PageAdmin.jsx'))
 const PageCertificado = lazy(() => import('@pages/PageCertificado.jsx'))
 const PageAulaNueva   = lazy(() => import('@pages/PageAulaNueva.jsx'))
 const PageNotificaciones = lazy(() => import('@pages/PageNotificaciones.jsx'))
+const PageAjustes        = lazy(() => import('@pages/PageAjustes.jsx'))
 
 
 // Loading fallback mientras carga la página
@@ -84,6 +85,7 @@ export default function App() {
                     <Route path="/aula/:id"      element={<PageAula />} />
                     <Route path="/perfil"        element={<PagePerfil />} />
                     <Route path="/notifs"        element={<PageNotificaciones />} />
+                    <Route path="/settings"      element={<PageAjustes />} />
                     {/* Admin integrado en el shell — link visible solo para cuentas admin */}
                     <Route path="/admin"         element={<PageAdmin />} />
                 </Route>

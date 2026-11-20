@@ -96,29 +96,14 @@ code, pre, kbd {
 
 .animate-fade-in { animation: fadeIn 0.35s ease forwards; }
 
-/* ── Modo claro — sobreescribe tokens semánticos ──────────── */
+/* ── Modo claro ───────────────────────────────────────────────
+   Las variables del modo claro viven SOLO en tokens.css (antes estaban
+   repetidas aquí; con el selector de tema de Ajustes, una copia sin
+   `:not([data-theme="dark"])` pisaba el oscuro elegido a mano).
+   Aquí queda solo la barra de scroll, con el mismo doble selector. */
+:root[data-theme="light"] ::-webkit-scrollbar-track { background: #ECEEE8; }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb { background: #DDDDD6; }
 @media (prefers-color-scheme: light) {
-  :root {
-    /* Fondos */
-    --bg-dark:    #ECEEE8;
-    --bg-card:    #FFFFFF;
-    --bg-surface: #F4F5F0;
-
-    /* Texto */
-    --text-primary:   #1A1A1A;
-    --text-secondary: #3A3A3A;
-    --text-muted:     #666660;
-    --text-disabled:  #AAAAAA;
-
-    /* Bordes */
-    --border-subtle:  rgba(0, 0, 0, 0.06);
-    --border-default: #DDDDD6;
-    --border-strong:  #AAAAAA;
-
-    /* Scrollbar */
-    color-scheme: light;
-  }
-
-  ::-webkit-scrollbar-track { background: #ECEEE8; }
-  ::-webkit-scrollbar-thumb { background: #DDDDD6; }
+  :root:not([data-theme="dark"]) ::-webkit-scrollbar-track { background: #ECEEE8; }
+  :root:not([data-theme="dark"]) ::-webkit-scrollbar-thumb { background: #DDDDD6; }
 }

@@ -260,7 +260,7 @@ const CSS_VERIFICACION = `
 
 /* En claro los mismos tonos casi desaparecen sobre el papel crema: se bajan. */
 @media (prefers-color-scheme: light) {
-    .cert-page {
+    :root:not([data-theme="dark"]) .cert-page {
         --v-bueno:  #0B7A54;
         --v-malo:   #B33A3A;
         --v-aviso:  #8A5D0C;
@@ -268,6 +268,14 @@ const CSS_VERIFICACION = `
         --v-nombre: var(--color-jade-700);
         --v-icono:  var(--color-jade-600);
     }
+}
+:root[data-theme="light"] .cert-page {
+    --v-bueno:  #0B7A54;
+    --v-malo:   #B33A3A;
+    --v-aviso:  #8A5D0C;
+    --v-neutro: #0D7377;
+    --v-nombre: var(--color-jade-700);
+    --v-icono:  var(--color-jade-600);
 }
 
 /* Los íconos de Phosphor heredan con currentColor: basta pintar el contenedor. */

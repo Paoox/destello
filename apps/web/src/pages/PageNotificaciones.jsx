@@ -17,7 +17,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Bell, CalendarBlank, Clock, Sparkle, Certificate, CheckCircle, Student,
-  CaretRight, CircleNotch,
+  CaretRight, CircleNotch, ChatCircleText,
 } from '@phosphor-icons/react'
 import { useAuthStore } from '@store/useAuthStore.js'
 import { EVENTO_NOTIFS_LEIDAS } from '@/constants.js'
@@ -31,6 +31,7 @@ const ICONO = {
   certificado:     { Icon: Certificate,   color: 'var(--color-jade-500)' },
   pago_confirmado: { Icon: CheckCircle,   color: 'var(--color-success, #22c55e)' },
   nueva_alumna:    { Icon: Student,       color: 'var(--color-jade-500)' },
+  respuesta_soporte: { Icon: ChatCircleText, color: 'var(--color-jade-500)' },
 }
 
 /** "hace 5 min", "ayer", "12 nov" */
@@ -112,7 +113,7 @@ export default function PageNotificaciones() {
               <li key={n.id}>
                 <button
                   type="button"
-                  className={`nt-item${nueva ? ' nt-item--nueva' : ''}`}
+                  className={`nt-item${nueva ? ' nt-item--nueva' : ''}${n.liga ? '' : ' nt-item--fija'}`}
                   onClick={() => n.liga && navigate(n.liga)}
                 >
                   <span className="nt-ico" style={{ color }}><Icon size={22} weight="fill" /></span>
@@ -161,7 +162,8 @@ const CSS = `
 }
 .nt-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .nt-titulo { font-weight: 600; font-size: var(--text-sm); color: var(--text-primary); }
-.nt-cuerpo { font-size: var(--text-sm); color: var(--text-muted); line-height: 1.5; }
+.nt-cuerpo { font-size: var(--text-sm); color: var(--text-muted); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.nt-item--fija { cursor: default; }
 .nt-hora { font-size: var(--text-xs); color: var(--text-muted); opacity: .8; }
 .nt-punto {
   flex-shrink: 0; width: 9px; height: 9px; margin-top: 6px; border-radius: 50%;

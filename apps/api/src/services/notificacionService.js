@@ -66,6 +66,16 @@ async function crear(u, tipo, ref, datos) {
 const COLS_U = 'u.id, u.email, u.nombre, u.whatsapp, u.avisos_whatsapp, u.avisos_correo'
 
 /**
+ * Para avisos que no esperan al revisor (ej. la respuesta de Paola a un
+ * reporte): se crea en el momento. Mismas reglas que `crear()`.
+ */
+export async function notificarAhora(usuarioId, tipo, ref, datos) {
+    const { rows: [u] } = await query(`SELECT ${COLS_U} FROM usuarios u WHERE u.id = $1`, [usuarioId])
+    if (!u) return false
+    return crear(u, tipo, ref, datos)
+}
+
+/**
  * Talleres que empiezan en las próximas 24 h. `inicio` se arma en hora de
  * CDMX (fecha_inicio + hora_inicio son hora local). `dias` = 0 hoy, 1 mañana.
  */

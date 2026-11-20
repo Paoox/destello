@@ -16,6 +16,7 @@ import { signInWithGoogle }                      from '@services/firebase.js'
 import { WA_INSCRIBIRME_URL }                     from '../constants.js'
 import logoLight from '../Images/destello-logo-512.png'
 import logoDark  from '../Images/destello-logo-dark-512.png'
+import { esOscuro } from '@utils/tema.js'
 
 // ── Icono Google ──────────────────────────────────────────────────────────────
 function IconGoogle() {
@@ -115,7 +116,7 @@ const LOGIN_CSS = `
 
 // ── Wrapper visual compartido ─────────────────────────────────────────────────
 function PageShell({ children }) {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    const prefersDark = esOscuro()  // respeta el tema elegido en Ajustes
     const logo = prefersDark ? logoDark : logoLight
     return (
         <div className="login-shell" style={{

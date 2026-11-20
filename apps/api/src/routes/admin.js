@@ -34,7 +34,7 @@ import { sendConfirmacionTaller, sendConfirmacionLugar, sendBienvenida } from '.
 import { mensajeBienvenidaPago } from '../services/mensajeBienvenidaPago.js'
 import { sendWhatsapp }      from '../services/botService.js'
 import { cuentaConWhatsapp, normalizarWhatsapp } from '../services/usuarioService.js'
-import { listReportes, resolverReporte } from '../services/reporteService.js'
+import { listReportes, resolverReporte, responderReporte } from '../services/reporteService.js'
 import { activarAlumno }    from '../services/inscripcionService.js'
 import metricasRouter     from './metricas.js'
 import * as asistenciaService  from '../services/asistenciaService.js'
@@ -560,6 +560,18 @@ router.get('/reportes', async (req, res, next) => {
  * PATCH /admin/reportes/:id/resolver
  * Marca un reporte como atendido. `nota` guarda qué se hizo (opcional).
  */
+/**
+ * POST /admin/reportes/:id/responder  body { texto, cerrar? }
+ * La respuesta le llega a la persona en su campanita (notificación
+ * 'respuesta_soporte'). 409 SIN_CUENTA si quien reportó no tiene cuenta.
+ */
+router.post('/reportes/:id/responder', async (req, res, next) => {
+    try {
+        const r = await responderReporte(req.params.id, { texto: req.body?.texto, cerrar: !!req.body?.cerrar })
+        res.json({ status: 'ok', ...r })
+    } catch (err) { next(err) }
+})
+
 router.patch('/reportes/:id/resolver', async (req, res, next) => {
     try {
         const reporte = await resolverReporte(req.params.id, req.body?.nota || null)

@@ -456,6 +456,8 @@ Métodos de pago incluidos en templates:
 | `/habitat` | PageHabitat.jsx | ✅ — grid talleres reales desde BD, modal lista de espera |
 | `/aula/:id` | PageAula.jsx | ✅ — LA FRONTERA: única pieza que habla con la API de Destello. Arma la `sesion` del contrato y envuelve `src/aula/Aula.jsx` (el módulo del aula: sellos, contrato de actividades, Quiz, rejilla — no consulta la API a propósito, para poder rentarse a otras escuelas como producto aparte). Le suma los latidos de asistencia que el módulo del aula no puede tener |
 | `/aula-nueva/:id` | PageAulaNueva.jsx | ✅ — salón de ensayo del profesor con datos inventados (sin backend, sin video). Entra como `profe` por defecto; `?rol=alumno` para verla del otro lado; `?actividad=<id>` abre directo un material de `materialesDeEnsayo.js` |
+| `/notifs` | PageNotificaciones.jsx | ✅ — avisos de la persona (T-44); campanita con contador en el menú |
+| `/settings` | PageAjustes.jsx | ✅ — tema, avisos, WhatsApp con código, soporte, baja (T-45) |
 | `/perfil` | PagePerfil.jsx | ✅ — datos reales (18 nov 2026): foto (`usuarios.foto`), nombre editable, talleres tomados + certificados, sugeridos por categoría, y para profes "Talleres que impartes" con fechas/horarios y acceso al aula de ensayo y a la real |
 | `/admin` | PageAdmin.jsx | ✅ — protegido con JWT admin, 9 tabs (ver arriba) |
 | `/` | PageLanding.jsx | 🔒 CONGELADO — NO modificar sin permiso explícito de Paola |
@@ -565,11 +567,10 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
   "Lo que Está Terminado y Funciona" más abajo para el detalle completo.
 
 ### 🟡 Pendiente
-- **▶ Lo próximo (pedido por Paola, 18 nov 2026):** Ajustes (T-45, con
-  los interruptores de avisos por WhatsApp/correo de T-44), Hábitat básico
+- **▶ Lo próximo (pedido por Paola, 18 nov 2026):** Hábitat básico
   (T-49, primer paso de T-24), y después el detalle de pagos pendientes a
-  las profes. Notificaciones (T-44) ✅ en código el 19 nov — falta
-  desplegar en la Toshiba.
+  las profes. Notificaciones (T-44) y Ajustes (T-45) ✅ desplegados el
+  19 nov.
 - **▶ Siguiente: Paola prueba el aula en vivo (T-41/T-42)** — sellos,
   chat, mano, reacciones, actividad/candado y avance, con OpenVidu local y
   dos cuentas. Después: confirmar que un profe dado de alta (T-40) entra
@@ -609,12 +610,22 @@ acotadas, no la revisión completa. Detalle en `docs/backlog-tickets.md`.
     cada 5 min (`notificacionService.js`, solo producción): recordatorio
     24 h y 1 h antes (app + WhatsApp, alumnas y profe), nuevo taller (app +
     correo), certificado listo, pago confirmado, nueva alumna (profe).
-    Detalle en `docs/backlog-tickets.md` (T-44). Migración 021 ✅ ya
-    corrida en Supabase (19 nov 2026); falta reconstruir la API en la
-    Toshiba para que el revisor empiece a correr.
-  - **T-45** — Ajustes: link muerto en el menú (`/settings`). Ya tiene con
-    qué empezar: los interruptores `usuarios.avisos_whatsapp` /
-    `avisos_correo` (T-44) que el revisor ya respeta.
+    Detalle en `docs/backlog-tickets.md` (T-44). Migración 021 ✅ corrida
+    y desplegado en la Toshiba (19 nov 2026), revisor corriendo.
+  - **T-45 — ✅ desplegado (19 nov 2026):** `/settings` — tema
+    sistema/claro/oscuro (`utils/tema.js`, `<html data-theme>`), avisos,
+    cambio de WhatsApp con código (el correo no se cambia), soporte
+    (WhatsApp, correo, "Reportar un problema" → tab Reportes) y baja de
+    cuenta (bloqueo inmediato; borrado de datos a 6 meses = T-50).
+    Migración 022. ⚠️ Al escribir CSS de modo claro nuevo: usar los dos
+    selectores (`:root:not([data-theme="dark"])` dentro del media query y
+    `:root[data-theme="light"]`) — ver `tokens.css`. Detalle en el backlog.
+    **Soporte con seguimiento** (migraciones 023-024): opciones de "¿Qué
+    pasó?", folio `R-00015`, "Mis reportes" con conversación (la persona
+    contesta → se reabre y avisa a Paola por WA; "Ya se resolvió, gracias"
+    lo cierra), Paola responde desde el tab Reportes → llega a la campanita
+    (`respuesta_soporte`), clip 📎 para una imagen (bucket privado,
+    carpeta `soporte/`).
   - **T-46** — catálogo de avatares para alumnos con cámara apagada (el
     campo `Persona.avatarUrl` ya existe, falta la mitad de "elegir y
     guardar").

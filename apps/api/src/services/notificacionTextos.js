@@ -110,6 +110,17 @@ export function armarNotificacion(tipo, d = {}) {
                 cuerpo: `${d.alumna || 'Alguien'} confirmó su lugar. ${resumenAlumnas(d)}`,
                 liga:   '/perfil',
             }
+        case 'respuesta_soporte':
+            return {
+                titulo: [
+                    'Respuesta a tu reporte',
+                    d.folio ? ` ${d.folio}` : '',
+                    d.asunto ? `: ${d.asunto}` : '',
+                ].join('') || 'Respondimos tu reporte ✦',
+                cuerpo: d.respuesta || '',
+                // Lleva a la conversación en Ajustes → Soporte, donde puede contestar.
+                liga:   d.reporteId ? `/settings?reporte=${d.reporteId}` : null,
+            }
         default:
             return { titulo: 'Aviso de Destello', cuerpo: '', liga: '/home' }
     }

@@ -15,6 +15,8 @@
  * la RUTA en la BD y se genera una URL firmada y temporal al momento de verla.
  */
 
+import { AppError } from '../middleware/errorHandler.js'
+
 const SUPABASE_URL  = process.env.SUPABASE_URL || null
 const SERVICE_KEY   = process.env.SUPABASE_SERVICE_KEY || null
 const BUCKET        = process.env.SUPABASE_BUCKET_COMPROBANTES || 'comprobantes'
@@ -87,7 +89,7 @@ export function storageDisponible() {
  * @param {string} mimetype
  * @returns {Promise<string>} ruta guardable en la BD
  */
-export async function subirComprobante(buffer, mimetype = 'image/jpeg') {
+export async function subirComprobante(buffer, mimetype = 'image/jpeg', carpeta = null) {
     if (!SUPABASE_URL) {
         throw new Error('Supabase Storage no está configurado (falta SUPABASE_URL)')
     }
@@ -103,7 +105,7 @@ export async function subirComprobante(buffer, mimetype = 'image/jpeg') {
     const ext   = EXT_POR_MIME[mimetype] || 'jpg'
     const ahora = new Date()
     // Carpetas por año/mes para que el bucket siga siendo navegable con el tiempo.
-    const ruta  =
+    const ruta  = (carpeta ? `${carpeta}/` : '') +
         `${ahora.getFullYear()}/${String(ahora.getMonth() + 1).padStart(2, '0')}/` +
         `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`
 
@@ -164,4 +166,29 @@ export async function urlFirmada(ruta, segundos = VIGENCIA_URL_SEG) {
         console.error('[storage] Error al firmar:', err.message)
         return null
     }
+}
+
+/**
+ * Imagen adjunta en Soporte (clip 📎): llega como data URL desde el navegador
+ * (ya achicada ahí). Pura, con pruebas.
+ * @returns {{ ok: true, buffer: Buffer, mime: string } | { ok: false, message: string }}
+ */
+export function decodificarImagen(dataUrl) {
+    const m = /^data:(image\/(?:png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl ?? ''))
+    if (!m) return { ok: false, message: 'La imagen debe ser JPG, PNG o WEBP' }
+    const buffer = Buffer.from(m[2], 'base64')
+    if (!buffer.length) return { ok: false, message: 'La imagen llegó vacía' }
+    if (buffer.length > MAX_BYTES) return { ok: false, message: `La imagen pesa demasiado (máximo ${MAX_BYTES / 1048576} MB)` }
+    return { ok: true, buffer, mime: m[1] === 'image/jpg' ? 'image/jpeg' : m[1] }
+}
+
+/** Sube la imagen de Soporte y devuelve su ruta, o lanza un error legible. */
+export async function subirImagenSoporte(dataUrl) {
+    const r = decodificarImagen(dataUrl)
+    if (!r.ok) throw new AppError(r.message, 400, 'IMAGEN_INVALIDA')
+    if (!storageDisponible()) {
+        throw new AppError('Por ahora no se pueden adjuntar imágenes. Manda tu reporte sin ella o envíala por WhatsApp.',
+            503, 'SIN_STORAGE')
+    }
+    return subirComprobante(r.buffer, r.mime, 'soporte')
 }

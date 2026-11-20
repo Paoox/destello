@@ -232,10 +232,13 @@ const NAV_CSS = `
 
 /* ── Modo claro: fondo traslúcido claro + divisores jade visibles ── */
 @media (prefers-color-scheme: light) {
-  .ds-nav { border-right: 1px solid rgba(13, 115, 119, 0.18); }
-  .ds-nav__brand { border-bottom-color: rgba(13, 115, 119, 0.28); }
-  .ds-nav__bottom { border-top-color: rgba(13, 115, 119, 0.28); }
+  :root:not([data-theme="dark"]) .ds-nav { border-right: 1px solid rgba(13, 115, 119, 0.18); }
+  :root:not([data-theme="dark"]) .ds-nav__brand { border-bottom-color: rgba(13, 115, 119, 0.28); }
+  :root:not([data-theme="dark"]) .ds-nav__bottom { border-top-color: rgba(13, 115, 119, 0.28); }
 }
+:root[data-theme="light"] .ds-nav { border-right: 1px solid rgba(13, 115, 119, 0.18); }
+:root[data-theme="light"] .ds-nav__brand { border-bottom-color: rgba(13, 115, 119, 0.28); }
+:root[data-theme="light"] .ds-nav__bottom { border-top-color: rgba(13, 115, 119, 0.28); }
 
 /* ── Botón hamburguesa (solo móvil) ── */
 .ds-nav__hamburger {

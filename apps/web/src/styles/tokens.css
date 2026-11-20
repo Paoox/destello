@@ -111,30 +111,46 @@
 /* ── Modo claro ─────────────────────────────────────────────
    Sobreescribe solo las variables semánticas.
    El resto (jade, amber, radios, spacing) no cambia.
+
+   Va DOS veces a propósito (Ajustes, T-45): una cuando el sistema está en
+   claro y la persona no forzó oscuro, y otra cuando eligió "claro" a mano
+   (`<html data-theme="light">`, ver utils/tema.js). Si cambias un valor,
+   cámbialo en los dos bloques.
    ──────────────────────────────────────────────────────────── */
+:root { color-scheme: dark; }
+
 @media (prefers-color-scheme: light) {
-    :root {
-        /* Fondos */
+    :root:not([data-theme="dark"]) {
         --bg-dark:    #ECEEE8;
         --bg-card:    #FFFFFF;
         --bg-surface: #F4F5F0;
-
-        /* Texto */
         --text-primary:   #1A1A1A;
         --text-secondary: #3A3A3A;
         --text-muted:     #666660;
         --text-disabled:  #AAAAAA;
-
-        /* Bordes */
         --border-subtle:  rgba(0, 0, 0, 0.06);
         --border-default: #DDDDD6;
         --border-strong:  #AAAAAA;
-
-        /* Sombras — más suaves en claro */
         --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
         --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
         --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.05), 0 16px 48px rgba(0, 0, 0, 0.06);
-
         color-scheme: light;
     }
+}
+
+:root[data-theme="light"] {
+    --bg-dark:    #ECEEE8;
+    --bg-card:    #FFFFFF;
+    --bg-surface: #F4F5F0;
+    --text-primary:   #1A1A1A;
+    --text-secondary: #3A3A3A;
+    --text-muted:     #666660;
+    --text-disabled:  #AAAAAA;
+    --border-subtle:  rgba(0, 0, 0, 0.06);
+    --border-default: #DDDDD6;
+    --border-strong:  #AAAAAA;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.05), 0 16px 48px rgba(0, 0, 0, 0.06);
+    color-scheme: light;
 }

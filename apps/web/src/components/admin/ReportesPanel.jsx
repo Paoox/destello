@@ -16,10 +16,136 @@ import { useState, useEffect, useCallback } from 'react'
 import {
     ArrowClockwise, CheckCircle, CurrencyDollar,
     WarningCircle, WhatsappLogo, Envelope, UserCheck, UserPlus,
+    PaperPlaneTilt, ChatCircleText,
 } from '@phosphor-icons/react'
+
+/**
+ * Conversación de un reporte + cuadro para responder (19 nov 2026).
+ * La respuesta le llega a la persona en su campanita (POST
+ * /admin/reportes/:id/responder). Sin cuenta no hay campanita: se sugiere WhatsApp.
+ */
+function Respuestas({ reporte, headers, onRespondido, showToast }) {
+    const [texto, setTexto]     = useState('')
+    const [cerrar, setCerrar]   = useState(false)   // queda abierto hasta que ella diga "ya se resolvió"
+    const [enviando, setEnviando] = useState(false)
+    const lista = reporte.respuestas ?? []
+
+    const enviar = async () => {
+        setEnviando(true)
+        try {
+            const res  = await fetch(`/api/admin/reportes/${reporte.id}/responder`, {
+                method: 'POST', headers, body: JSON.stringify({ texto, cerrar }),
+            })
+            const data = await res.json()
+            if (!res.ok) { showToast(data.message || 'No se pudo enviar', false); return }
+            onRespondido(reporte.id, data.respuesta, data.cerrado)
+            setTexto('')
+            showToast('Respuesta enviada a su campanita ✓')
+        } catch {
+            showToast('Error de conexión', false)
+        } finally { setEnviando(false) }
+    }
+
+    return (
+        <div style={{
+            marginTop: 12, padding: 'var(--space-3)',
+            border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-base)',
+        }}>
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10,
+                fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '.04em',
+                textTransform: 'uppercase', color: 'var(--text-muted)',
+            }}>
+                <ChatCircleText size={14} weight="fill" />
+                Seguimiento {lista.length > 0 ? `· ${lista.length} ${lista.length === 1 ? 'mensaje' : 'mensajes'}` : '· sin respuestas aún'}
+            </div>
+            {lista.map(r => (
+                <div key={r.id} style={{
+                    display: 'flex', gap: 8, marginBottom: 8, padding: 'var(--space-3)',
+                    marginLeft: r.de_persona ? 0 : 24, marginRight: r.de_persona ? 24 : 0,
+                    background: r.de_persona ? 'rgba(217,119,6,0.08)' : 'rgba(13,115,119,0.08)',
+                    border: `1px solid ${r.de_persona ? 'rgba(217,119,6,0.3)' : 'rgba(13,115,119,0.25)'}`,
+                    borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', lineHeight: 1.6,
+                }}>
+                    <ChatCircleText size={16} weight="fill" color={r.de_persona ? 'var(--color-amber-500)' : 'var(--color-jade-500)'} style={{ flexShrink: 0, marginTop: 3 }} />
+                    <div style={{ minWidth: 0 }}>
+                        <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{r.texto}</div>
+                        {r.imagen_url && (
+                            <a href={r.imagen_url} target="_blank" rel="noreferrer" title="Abrir en grande"
+                               style={{ display: 'inline-block', marginTop: 6 }}>
+                                <img src={r.imagen_url} alt="Imagen adjunta" loading="lazy" style={{
+                                    maxWidth: 260, maxHeight: 200, display: 'block', objectFit: 'cover',
+                                    borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)' }} />
+                            </a>
+                        )}
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                            {r.de_persona ? `${reporte.nombre?.split(' ')[0] || 'Ella'} escribió` : 'Tu respuesta'} · {haceCuanto(r.created_at)}
+                        </div>
+                    </div>
+                </div>
+            ))}
+
+            {!reporte.tiene_cuenta ? (
+                <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    No tiene cuenta, así que no tiene campanita: respóndele por WhatsApp.
+                </p>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <textarea
+                        rows={2} maxLength={2000}
+                        placeholder={lista.length ? 'Escribe otra respuesta…' : 'Escribe tu respuesta… le llega en sus notificaciones'}
+                        value={texto} onChange={e => setTexto(e.target.value)}
+                        style={{
+                            width: '100%', boxSizing: 'border-box', resize: 'vertical',
+                            padding: '8px 10px', borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--border-default)', background: 'var(--bg-card)',
+                            color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)',
+                        }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                        {reporte.estado !== 'resuelto' ? (
+                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={cerrar} onChange={e => setCerrar(e.target.checked)} />
+                                y marcar como revisado
+                            </label>
+                        ) : <span />}
+                        <button
+                            onClick={enviar}
+                            disabled={enviando || texto.trim().length < 2}
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px',
+                                background: 'var(--color-jade-500)', border: '1px solid var(--color-jade-500)',
+                                borderRadius: 'var(--radius-full)', color: '#fff',
+                                fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', fontWeight: 700,
+                                cursor: enviando ? 'wait' : 'pointer',
+                                opacity: texto.trim().length < 2 ? 0.5 : 1,
+                            }}
+                        >
+                            <PaperPlaneTilt size={14} weight="fill" />
+                            {enviando ? 'Enviando…' : 'Responder'}
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
 
 /** Los motivos vienen de reporteService.MOTIVOS en la API. */
 const MOTIVOS = {
+    problema_plataforma: {
+        label: 'Reporta un problema',
+        ayuda: 'Lo mandó desde Ajustes → Soporte',
+        color: '#0D7377',
+        Icon:  WarningCircle,
+    },
+    baja_cuenta: {
+        label: 'Pidió su baja',
+        ayuda: 'Su acceso ya está bloqueado. Para reactivarla: Usuarios → desbloquear acceso',
+        color: '#B33A3A',
+        Icon:  WarningCircle,
+    },
     reporte_pago: {
         label: 'Reporta un pago',
         ayuda: 'Cotéjalo con el banco antes de activar',
@@ -112,6 +238,14 @@ export default function ReportesPanel({ adminToken }) {
     }, [adminToken])
 
     useEffect(() => { fetchReportes() }, [fetchReportes])
+
+    const alResponder = (id, respuesta, cerrado) => {
+        setReportes(prev => prev.map(x => x.id !== id ? x : {
+            ...x,
+            respuestas: [...(x.respuestas ?? []), respuesta],
+            ...(cerrado && { estado: 'resuelto', resuelto_at: new Date().toISOString() }),
+        }))
+    }
 
     const marcarResuelto = async (r) => {
         const quien = r.nombre || r.email
@@ -269,7 +403,7 @@ export default function ReportesPanel({ adminToken }) {
                                 border: `1px solid ${resuelto ? 'var(--border-subtle)' : m.color + '55'}`,
                                 borderLeft: `3px solid ${resuelto ? 'var(--border-subtle)' : m.color}`,
                                 borderRadius: 'var(--radius-lg)',
-                                opacity: resuelto ? 0.55 : 1,
+                                opacity: resuelto && !(r.respuestas?.length) ? 0.55 : 1,
                             }}
                         >
                             <div style={{
@@ -313,6 +447,24 @@ export default function ReportesPanel({ adminToken }) {
 
                                     <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
                                         {r.nombre || 'Sin nombre'}
+                                        <span style={{ marginLeft: 8, fontFamily: 'monospace', fontWeight: 400,
+                                            fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                                            R-{String(r.id).padStart(5, '0')}
+                                        </span>
+                                        {!resuelto && r.respuestas?.at(-1)?.de_persona && (
+                                            <span style={{ marginLeft: 8, padding: '2px 9px', borderRadius: 'var(--radius-full)',
+                                                background: 'rgba(217,119,6,0.15)', border: '1px solid var(--color-amber-500)',
+                                                color: 'var(--color-amber-500)', fontSize: 'var(--text-xs)', fontWeight: 700 }}>
+                                                💬 Te escribió de nuevo
+                                            </span>
+                                        )}
+                                        {resuelto && r.nota === 'La persona lo dio por resuelto' && (
+                                            <span style={{ marginLeft: 8, padding: '2px 9px', borderRadius: 'var(--radius-full)',
+                                                background: 'rgba(13,115,119,0.12)', border: '1px solid var(--color-jade-500)',
+                                                color: 'var(--color-jade-500)', fontSize: 'var(--text-xs)', fontWeight: 700 }}>
+                                                😊 Lo dio por resuelto
+                                            </span>
+                                        )}
                                     </div>
 
                                     <div style={{
@@ -350,6 +502,14 @@ export default function ReportesPanel({ adminToken }) {
                                         </div>
                                     )}
 
+                                    {/* Responder: le llega a su campanita */}
+                                    <Respuestas
+                                        reporte={r}
+                                        headers={headers}
+                                        showToast={showToast}
+                                        onRespondido={alResponder}
+                                    />
+
                                     {/* Comprobante: se ve aquí mismo, sin ir a WhatsApp.
                                         La URL viene firmada por la API y caduca en 1 h,
                                         así que se abre en pestaña nueva para verla grande. */}
@@ -357,12 +517,12 @@ export default function ReportesPanel({ adminToken }) {
                                         <a
                                             href={r.comprobante_url}
                                             target="_blank" rel="noreferrer"
-                                            title="Abrir el comprobante en grande"
+                                            title={r.motivo === 'reporte_pago' ? 'Abrir el comprobante en grande' : 'Abrir la imagen en grande'}
                                             style={{ display: 'inline-block', marginTop: 10 }}
                                         >
                                             <img
                                                 src={r.comprobante_url}
-                                                alt="Comprobante de pago"
+                                                alt={r.motivo === 'reporte_pago' ? 'Comprobante de pago' : 'Imagen adjunta'}
                                                 loading="lazy"
                                                 style={{
                                                     maxWidth: 260, maxHeight: 200,

@@ -22,8 +22,9 @@ const CSS = `
   .ds-constellation { left: 0; }       /* en móvil el menú es drawer → ancho completo */
 }
 @media (prefers-color-scheme: light) {
-  .ds-constellation { opacity: 0.7; }
+  :root:not([data-theme="dark"]) .ds-constellation { opacity: 0.7; }
 }
+:root[data-theme="light"] .ds-constellation { opacity: 0.7; }
 `
 
 /* ── Piscis ── dos peces unidos por el cordón (nudo = Alrescha). */

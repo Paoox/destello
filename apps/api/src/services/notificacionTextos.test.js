@@ -48,6 +48,17 @@ test('solo los recordatorios de clase llevan WhatsApp', () => {
     }
 })
 
+test('la respuesta a un reporte trae el asunto y el texto completo, sin WhatsApp', () => {
+    const n = armarNotificacion('respuesta_soporte', {
+        asunto: 'Perdí el acceso a mi correo', respuesta: 'Listo, ya cambié tu correo.', folio: 'R-00015', reporteId: 15 })
+    assert.equal(n.titulo, 'Respuesta a tu reporte R-00015: Perdí el acceso a mi correo')
+    assert.equal(n.cuerpo, 'Listo, ya cambié tu correo.')
+    assert.equal(n.liga, '/settings?reporte=15')
+    assert.equal(mensajeWhatsapp('respuesta_soporte', {}), null)
+    assert.equal(armarNotificacion('respuesta_soporte', { respuesta: 'x' }).titulo, 'Respuesta a tu reporte')
+    assert.equal(armarNotificacion('respuesta_soporte', { respuesta: 'x' }).liga, null)
+})
+
 test('el certificado liga a su folio', () => {
     assert.equal(armarNotificacion('certificado', { taller: 'X', folio: 'DST-2026-ABC123' }).liga,
         '/certificado/DST-2026-ABC123')

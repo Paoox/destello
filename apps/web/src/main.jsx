@@ -12,6 +12,12 @@ import './styles/global.css'
 // Los tokens CSS ahora viven en src/styles/tokens.css
 // importado automáticamente por global.css — no se necesita inyección JS
 
+import { aplicarTema } from './utils/tema.js'
+
+// Tema elegido en Ajustes (claro/oscuro/sistema), antes del primer render
+// para que no parpadee.
+aplicarTema()
+
 // Restaura token + usuario desde sessionStorage antes del primer render
 useAuthStore.getState().restoreSession()
 
